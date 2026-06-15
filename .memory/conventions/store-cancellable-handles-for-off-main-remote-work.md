@@ -8,13 +8,15 @@ tags:
 - ssh
 - conventions
 - audit-2026-06-13
+source_sha: f770fe49412e097d9b082179e1f96a83d3ebbc21
+reviewed: 2026-06-15
 ---
 
 ## Observations
 - [rule] 🚨 When a ViewModel launches off-main remote work (SSH round-trips, backups, multi-call loads), STORE the `Task` handle and cancel it on view disappear so navigating away stops in-flight network/subprocess work. #rule
-- [pattern] Reference: `DashboardViewModel.inFlightLoad` (guards overlapping loads + cancellable). Counter-example: `HealthViewModel.load()` (handle not stored). `.task` self-cancels and is preferred where the work belongs to a single view's lifetime. `RemoteBackupService` already threads `Task.checkCancellation()` through its stages — but only fires if the Task is actually cancelled.
+- [pattern] References: `DashboardViewModel.inFlightLoad` (guards overlapping loads + cancellable) and `HealthViewModel.loadTask` + `cancelLoad()` (assigned + cancelled in `.onDisappear`, with `Task.isCancelled` checked between the 5 SSH round-trips). `BackupServerSheet` calls `viewModel.cancel()` in `.onDisappear` so dismissing mid-backup cancels the remote `tar`/SSH work. `.task` self-cancels and is preferred where the work belongs to a single view's lifetime. `RemoteBackupService` already threads `Task.checkCancellation()` through its stages — but only fires if the Task is actually cancelled.
 - [check] Look for `Task.detached`/`Task {` launched from a VM method whose handle isn't assigned to a stored property and has no `.onDisappear` cancel.
-- [history] 2026-06-13 Cycle 2: `HealthViewModel.swift:144-176` (6+ SSH round-trips keep running after tab-away), `BackupServerSheet.swift:31-34`. #history
+- [history] 2026-06-13 Cycle 2: originally `HealthViewModel.swift:144-176` (6+ SSH round-trips keep running after tab-away) and `BackupServerSheet.swift:31-34` (no cancel-on-dismiss). Fixed via t-aud11 (Health) and t-aud17 (BackupServerSheet). #history
 
 ## Relations
 - relates_to [[Task.detached capture lists must be explicit]]

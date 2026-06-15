@@ -31,7 +31,7 @@ for `basic-memory`.
 - Fallback (only if the MCP tools above are not present in this session): grep `.memory/` and
   `wiki/` directly — `grep -rn "<query>" .memory/ wiki/`.
 
-**1. Basic Memory (`.memory/`) — structured atomic facts.** A searchable knowledge graph
+**1. Memophant Memory (`.memory/`) — structured atomic facts.** A searchable knowledge graph
 of observations and relations. Search it before assuming; it is the source of truth for past
 decisions and learnings.
 - Search: invoke `search_memories(query: "<text>", project: "scarf")` via MCP.
@@ -212,10 +212,18 @@ its own codebase.
 is yours to edit directly.
 - **Read `TASKS.md` at the start of work.** When you pick up a task, move its line into `## Doing`;
   when you finish, move it into `## Done` (and flip the checkbox to `- [x]`).
-- Add tasks you discover to `## Todo`. Keep titles short; optional `(source: <note>)` /
-  `(added: YYYY-MM-DD)` annotations are preserved.
+- Add tasks you discover to `## Todo` with a SHORT imperative title — the board card shows the
+  title verbatim, so don't pack a paragraph into it. When a task needs real detail, annotate the
+  line `(id: t-xxxxxx)` (`t-` + 6 random hex) and create `tasks/t-xxxxxx.md` with frontmatter
+  (`id`, `title`, `status: todo`, `added: YYYY-MM-DD`) and a `## Description` holding the detail
+  (plus empty `## Plan` / `## Artifacts`). The board shows the title; the card body reads the
+  Description. Optional `(source: <note>)` / `(added: YYYY-MM-DD)` line annotations are preserved.
 - Memophant renders this as a live kanban, so your edits to `TASKS.md` show up on the board as you
   work — keep it current.
+- **A task's status is the section its line sits in — change it by MOVING the line, here in
+  `TASKS.md`.** A task may have a detail file at `tasks/<id>.md` carrying a mirrored `status:` /
+  `priority:`; that's a Memophant-managed mirror you don't need to touch. (If an out-of-band edit
+  makes the two disagree, Memophant reconciles by last-edit-wins — but the board line is canonical.)
 
 **Commits for `.memory/`, `wiki/`, `design/`, `code/`, `sessions/`, `documents/`,
 `vendors/`, `templates/`, and `TASKS.md` are owned by Memophant.** When you write_memory, edit a wiki/design/code page, move a

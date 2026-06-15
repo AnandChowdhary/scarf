@@ -8,13 +8,15 @@ tags:
 - ux
 - conventions
 - audit-2026-06-13
+source_sha: f770fe49412e097d9b082179e1f96a83d3ebbc21
+reviewed: 2026-06-15
 ---
 
 ## Observations
 - [rule] 🚨 When a view loads data asynchronously (any `.task`/`.onChange` calling a ViewModel `load()`), the ViewModel must expose `isLoading: Bool` and the view must apply `.loadingOverlay(viewModel.isLoading, label: "Loading …", isEmpty: viewModel.<collection>.isEmpty)`. Treat the overlay as a required part of a data pane, not optional polish. #rule
-- [pattern] `.loadingOverlay()` lives in `LoadingOverlay.swift` and is used correctly across Dashboard, Activity, Settings, Memory, Plugins, Health, CredentialPools, Cron, MCPServers. Panes that skip it leave users on blank/stale content during SSH fetches; some VMs (Logs, Sessions) don't even expose `isLoading`.
+- [pattern] `.loadingOverlay()` lives in `LoadingOverlay.swift` and is used correctly across Dashboard, Activity, Settings, Memory, Plugins, Health, CredentialPools, Cron, MCPServers, Insights, Sessions, Logs. Skipping it leaves users on blank/stale content during SSH fetches. For tail-poll loops (e.g. Logs's 2s tail), do NOT toggle `isLoading` — only set it on initial load / explicit switch — so the overlay doesn't flash on every poll.
 - [check] For each `Features/*/Views/*View.swift` with `.task { await viewModel.load() }`, confirm a matching `.loadingOverlay(` and an `isLoading` on the VM.
-- [history] 2026-06-13 Cycle 3: `InsightsView.swift:21-47` (high — stale on period change), `SessionsView.swift:43-77` (VM lacks isLoading), `LogsView.swift:17-28` (VM lacks isLoading). #history
+- [history] 2026-06-13 Cycle 3: originally `InsightsView.swift:21-47` (stale on period change), `SessionsView.swift:43-77` (VM lacked isLoading), `LogsView.swift:17-28` (VM lacked isLoading). Fixed via t-aud07 — `SessionsViewModel`/`LogsViewModel` now expose `isLoading` and Insights/Sessions/Logs all apply the overlay. #history
 
 ## Relations
 - relates_to [[Scarf Design System (ScarfDesign)]]
