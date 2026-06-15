@@ -109,16 +109,33 @@ struct ProjectScaffolder: Sendable {
                 data: Data(agentsMd.utf8)
             )
 
-            // 5. Register the project.
-            let entry = ProjectEntry(name: cleanedName, path: projectDir)
-            var nextRegistry = registry
-            nextRegistry.projects.append(entry)
-            try dashboardService.saveRegistry(nextRegistry)
+            // 5. Mint the stable id and write the first-class
+            //    ScarfProject record. `ProjectStore.save` writes the
+            //    canonical `.scarf/project.json` AND indexes the project
+            //    into the registry carrying the UUID — replacing the old
+            //    manual registry append. A scratch project starts with
+            //    no bindings beyond its single host materialization.
+            let projectID = UUID()
+            let entry = ProjectEntry(name: cleanedName, path: projectDir, uuid: projectID)
+            let scarfProject = ScarfProject(
+                id: projectID,
+                name: cleanedName,
+                rootPath: projectDir,
+                hostBindings: [
+                    ScarfProject.HostBinding(
+                        serverId: context.id.uuidString,
+                        rootPath: projectDir,
+                        materializedAt: Date()
+                    )
+                ]
+            )
+            try ProjectStore(context: context).save(scarfProject)
 
             // 6. Populate the marker block with project identity.
             // Non-fatal — the chat handoff calls refresh() again
             // anyway via startACPSession's project-prep step. Logging
-            // the failure here is enough.
+            // the failure here is enough. `refresh` now renders from the
+            // ScarfProject record written in step 5.
             do {
                 try ProjectAgentContextService(context: context).refresh(for: entry)
             } catch {

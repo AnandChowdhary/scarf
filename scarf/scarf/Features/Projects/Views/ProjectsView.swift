@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 private enum DashboardTab: String, CaseIterable {
     case dashboard = "Dashboard"
+    case cockpit = "Cockpit"
     case site = "Site"
     case sessions = "Sessions"
     case kanban = "Kanban"
@@ -13,6 +14,7 @@ private enum DashboardTab: String, CaseIterable {
     var displayName: LocalizedStringResource {
         switch self {
         case .dashboard: return "Dashboard"
+        case .cockpit: return "Cockpit"
         case .site: return "Site"
         case .sessions: return "Sessions"
         case .kanban: return "Kanban"
@@ -23,6 +25,7 @@ private enum DashboardTab: String, CaseIterable {
     var systemImage: String {
         switch self {
         case .dashboard: return "square.grid.2x2"
+        case .cockpit: return "speedometer"
         case .site: return "globe"
         case .sessions: return "bubble.left.and.bubble.right"
         case .kanban: return "rectangle.split.3x1"
@@ -104,6 +107,15 @@ struct ProjectsView: View {
         .toolbar { templatesToolbar }
         .task {
             viewModel.load()
+            // Phase-1: lazily migrate existing projects to the first-class
+            // ScarfProject model — write each `.scarf/project.json` record
+            // and back-fill the registry UUID. Additive, idempotent, and
+            // non-fatal (errors are swallowed per-entry); runs off-main and
+            // writes nothing once every project is already migrated.
+            let migrationContext = serverContext
+            Task.detached(priority: .utility) {
+                _ = ProjectStore(context: migrationContext).derive()
+            }
             if let name = coordinator.selectedProjectName,
                let project = viewModel.projects.first(where: { $0.name == name }) {
                 viewModel.selectProject(project)
@@ -454,6 +466,12 @@ struct ProjectsView: View {
                 switch selectedTab {
                 case .dashboard:
                     widgetsTab(dashboard)
+                case .cockpit:
+                    if let project = viewModel.selectedProject {
+                        ProjectCockpitView(project: project)
+                    } else {
+                        ContentUnavailableView("No project selected", systemImage: "speedometer")
+                    }
                 case .site:
                     if let widget = siteWidget {
                         siteTab(widget)

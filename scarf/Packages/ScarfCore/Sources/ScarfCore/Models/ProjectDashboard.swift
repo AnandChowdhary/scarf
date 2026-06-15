@@ -25,16 +25,51 @@ public struct ProjectEntry: Codable, Sendable, Identifiable, Hashable {
     /// by default; non-destructive. v2.3 schema v2; defaults to `false`.
     public var archived: Bool
 
+    /// Stable per-project UUID — the registry's index into the
+    /// first-class `ScarfProject` record (`<path>/.scarf/project.json`)
+    /// and the key behind the `[proj:<id>]` cron tag. `nil` for
+    /// pre-Phase-1 rows; `ProjectStore` mints + back-fills it on first
+    /// migration (additive — old `projects.json` files decode cleanly
+    /// as `nil`). It is intentionally **excluded from `Equatable`/
+    /// `Hashable`** below: a project's logical identity stays
+    /// name+path+folder+archived (what the sidebar selection and sheet
+    /// presentation key on), so back-filling the UUID never changes
+    /// equality and never disturbs selection highlight.
+    public var uuid: UUID?
+
     public init(
         name: String,
         path: String,
         folder: String? = nil,
-        archived: Bool = false
+        archived: Bool = false,
+        uuid: UUID? = nil
     ) {
         self.name = name
         self.path = path
         self.folder = folder
         self.archived = archived
+        self.uuid = uuid
+    }
+
+    // MARK: - Equatable / Hashable (logical identity, sans `uuid`)
+    //
+    // Hand-written to EXCLUDE `uuid` so the metadata back-fill is
+    // invisible to selection (`selectedProject == project`), sheet
+    // presentation, and any set membership. Mirrors the exact field
+    // set the compiler synthesized before `uuid` was added.
+
+    public static func == (lhs: ProjectEntry, rhs: ProjectEntry) -> Bool {
+        lhs.name == rhs.name
+            && lhs.path == rhs.path
+            && lhs.folder == rhs.folder
+            && lhs.archived == rhs.archived
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(path)
+        hasher.combine(folder)
+        hasher.combine(archived)
     }
 
     public var dashboardPath: String { path + "/.scarf/dashboard.json" }
@@ -49,7 +84,7 @@ public struct ProjectEntry: Codable, Sendable, Identifiable, Hashable {
     // MARK: - Codable (custom for backward compat)
 
     private enum CodingKeys: String, CodingKey {
-        case name, path, folder, archived
+        case name, path, folder, archived, uuid
     }
 
     public init(from decoder: Decoder) throws {
@@ -58,6 +93,7 @@ public struct ProjectEntry: Codable, Sendable, Identifiable, Hashable {
         self.path = try c.decode(String.self, forKey: .path)
         self.folder = try c.decodeIfPresent(String.self, forKey: .folder)
         self.archived = try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+        self.uuid = try c.decodeIfPresent(UUID.self, forKey: .uuid)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -68,6 +104,7 @@ public struct ProjectEntry: Codable, Sendable, Identifiable, Hashable {
         if archived {
             try c.encode(archived, forKey: .archived)
         }
+        try c.encodeIfPresent(uuid, forKey: .uuid)
     }
 }
 

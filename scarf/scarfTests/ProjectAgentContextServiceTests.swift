@@ -77,7 +77,7 @@ import ScarfCore
     @Test func renderBlockIncludesProjectIdentity() throws {
         let dir = try Self.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: dir) }
-        let project = ProjectEntry(name: "My Project", path: dir)
+        let project = ScarfProject(name: "My Project", rootPath: dir)
         let svc = ProjectAgentContextService(context: .local)
         let block = svc.renderBlock(for: project)
 
@@ -91,7 +91,7 @@ import ScarfCore
     @Test func renderBlockOmitsTemplateSectionForBareProject() throws {
         let dir = try Self.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: dir) }
-        let project = ProjectEntry(name: "Bare", path: dir)
+        let project = ScarfProject(name: "Bare", rootPath: dir)
         let svc = ProjectAgentContextService(context: .local)
         let block = svc.renderBlock(for: project)
         #expect(!block.contains("**Template:**"))
@@ -116,7 +116,7 @@ import ScarfCore
         """
         try manifest.data(using: .utf8)!.write(to: URL(fileURLWithPath: scarfDir + "/manifest.json"))
 
-        let project = ProjectEntry(name: "Example", path: dir)
+        let project = ScarfProject(name: "Example", rootPath: dir)
         let svc = ProjectAgentContextService(context: .local)
         let block = svc.renderBlock(for: project)
         #expect(block.contains("**Template:** `author/example` v1.2.3"))
@@ -162,7 +162,7 @@ import ScarfCore
         """
         try configJSON.data(using: .utf8)!.write(to: URL(fileURLWithPath: scarfDir + "/config.json"))
 
-        let project = ProjectEntry(name: "Y", path: dir)
+        let project = ScarfProject(name: "Y", rootPath: dir)
         let svc = ProjectAgentContextService(context: .local)
         let block = svc.renderBlock(for: project)
 

@@ -61,8 +61,14 @@ struct ProjectAgentContextService: Sendable {
     /// with no intervening state change produce byte-identical
     /// output.
     nonisolated func refresh(for project: ProjectEntry) throws {
-        let block = renderBlock(for: project)
-        let path = agentsMdPath(for: project)
+        // Render the managed block FROM the first-class ScarfProject —
+        // the object is the structured source of truth, the block its
+        // projection. Load the canonical record if it exists, otherwise
+        // derive it from existing on-disk state (additive, non-fatal).
+        let store = ProjectStore(context: context)
+        let scarfProject = store.load(projectPath: project.path) ?? store.derive(from: project)
+        let block = renderBlock(for: scarfProject)
+        let path = agentsMdPath(forProjectPath: project.path)
         let transport = context.makeTransport()
 
         // Ensure the project directory exists — this service is the
@@ -125,15 +131,20 @@ struct ProjectAgentContextService: Sendable {
     /// Build the Markdown block for a given project. Pure function of
     /// project state — exposed for tests that want to assert on
     /// rendered content without touching disk.
-    nonisolated func renderBlock(for project: ProjectEntry) -> String {
-        let templateInfo = readTemplateInfo(for: project)
-        let configFieldsLine = renderConfigFieldsLine(for: project)
-        let cronLines = renderCronLines(for: project, templateId: templateInfo?.id)
-        let slashCommandNames = readSlashCommandNames(for: project)
-        let kanbanTenant = readKanbanTenant(for: project)
-        let lockFilePresent = context.makeTransport().fileExists(
-            project.path + "/.scarf/template.lock.json"
+    nonisolated func renderBlock(for project: ScarfProject) -> String {
+        let projectPath = project.rootPath
+        let templateInfo = readTemplateInfo(projectPath: projectPath)
+        let configFieldsLine = renderConfigFieldsLine(projectPath: projectPath)
+        let cronLines = renderCronLines(
+            projectId: project.id,
+            templateId: templateInfo?.id
         )
+        let slashCommandNames = readSlashCommandNames(projectPath: projectPath)
+        // Prefer the structured binding on the object; fall back to a
+        // disk read so a minimally-constructed ScarfProject still renders.
+        let kanbanTenant = project.board ?? readKanbanTenant(projectPath: projectPath)
+        let lockFilePresent = project.templateLockRef != nil
+            || context.makeTransport().fileExists(projectPath + "/.scarf/template.lock.json")
 
         var lines: [String] = []
         lines.append(Self.beginMarker)
@@ -143,8 +154,8 @@ struct ProjectAgentContextService: Sendable {
         lines.append("")
         lines.append("You are operating inside a Scarf project named **\"\(project.name)\"**. Scarf is a macOS GUI for Hermes; the user is working with this project through it. This chat session's working directory is the project's directory — path-relative tool calls resolve inside the project.")
         lines.append("")
-        lines.append("- **Project directory:** `\(project.path)`")
-        lines.append("- **Dashboard:** `\(project.path)/.scarf/dashboard.json`")
+        lines.append("- **Project directory:** `\(projectPath)`")
+        lines.append("- **Dashboard:** `\(projectPath)/.scarf/dashboard.json`")
 
         if let tpl = templateInfo {
             lines.append("- **Template:** `\(tpl.id)` v\(tpl.version)")
@@ -170,7 +181,7 @@ struct ProjectAgentContextService: Sendable {
         }
 
         if lockFilePresent {
-            lines.append("- **Uninstall manifest:** `\(project.path)/.scarf/template.lock.json` (tracks files written by template install)")
+            lines.append("- **Uninstall manifest:** `\(projectPath)/.scarf/template.lock.json` (tracks files written by template install)")
         }
 
         // P4 of the projects-feature fix: surface Scarf's actual
@@ -194,7 +205,7 @@ struct ProjectAgentContextService: Sendable {
         lines.append("- **Kanban board.** Hermes Kanban tasks created from this chat should pass `--tenant <kanban tenant>` (above) so they land on this project's per-project board, not the global \"Untagged\" pile. Tasks are also auto-stamped with the ACP `session_id` of this chat, so the project's Kanban tab can scope to \"tasks from THIS chat\" with a single toggle.")
         lines.append("- **Per-project model preset.** The user may have bound a `(model, provider)` preset to this project — `session/set_model` already applied it at session boot. Mention the active model only when relevant; the user picks presets via Scarf's right-click → \"Set Model…\".")
         lines.append("- **Typed configuration schema.** `<project>/.scarf/manifest.json` may declare `config.schema` with typed fields. Secret-typed values live in the macOS Keychain and are referenced from `config.json` via opaque URI handles, not stored inline. NEVER write a secret value to disk yourself — route Keychain reads through `ProjectConfigService.resolveSecret(_:for:)`.")
-        lines.append("- **Cron jobs.** Schedule recurring work with `hermes cron create --workdir \(project.path) …` so the job inherits this project's AGENTS.md context and resolves relative paths inside the project.")
+        lines.append("- **Cron jobs.** Schedule recurring work with `hermes cron create --workdir \(projectPath) …` so the job inherits this project's AGENTS.md context and resolves relative paths inside the project.")
         lines.append("- **Skills.** Hermes loads SKILL.md files from `~/.hermes/skills/`. Scarf bundles `scarf-template-author` (v1.1+) for project authoring; users can install more via `hermes skills install <https-url>` or by dropping a directory under `~/.hermes/skills/`.")
         lines.append("- **Export to template.** When the dashboard, optional schema, and AGENTS.md are stable, the user can right-click the project in Scarf → \"Export as Template…\" to produce a shareable `.scarftemplate` bundle. Authoring guidance: `~/.hermes/skills/scarf-template-author/SKILL.md`.")
         lines.append("")
@@ -212,24 +223,24 @@ struct ProjectAgentContextService: Sendable {
     /// is absent or no `.md` files parse cleanly. Used by `renderBlock`
     /// to surface the available commands to the agent so it knows what
     /// `<!-- scarf-slash:<name> -->` markers to expect on user prompts.
-    nonisolated private func readSlashCommandNames(for project: ProjectEntry) -> [String] {
+    nonisolated private func readSlashCommandNames(projectPath: String) -> [String] {
         ProjectSlashCommandService(context: context)
-            .loadCommands(at: project.path)
+            .loadCommands(at: projectPath)
             .map(\.name)
     }
 
     // MARK: - Helpers
 
-    nonisolated private func agentsMdPath(for project: ProjectEntry) -> String {
-        project.path + "/AGENTS.md"
+    nonisolated private func agentsMdPath(forProjectPath projectPath: String) -> String {
+        projectPath + "/AGENTS.md"
     }
 
     /// Read `<project>/.scarf/manifest.json` for template id + version.
     /// Nil when not present (bare project) or when the file is
     /// unparseable — the block still renders cleanly without the
     /// template line.
-    nonisolated private func readTemplateInfo(for project: ProjectEntry) -> (id: String, version: String)? {
-        let manifestPath = project.path + "/.scarf/manifest.json"
+    nonisolated private func readTemplateInfo(projectPath: String) -> (id: String, version: String)? {
+        let manifestPath = projectPath + "/.scarf/manifest.json"
         let transport = context.makeTransport()
         guard transport.fileExists(manifestPath) else { return nil }
         guard let data = try? transport.readFile(manifestPath) else { return nil }
@@ -247,8 +258,8 @@ struct ProjectAgentContextService: Sendable {
     /// Read `<project>/.scarf/manifest.json` for the Scarf-minted Kanban
     /// tenant. Nil when no tenant has been minted yet (no kanban
     /// interaction has happened for this project).
-    nonisolated private func readKanbanTenant(for project: ProjectEntry) -> String? {
-        let manifestPath = project.path + "/.scarf/manifest.json"
+    nonisolated private func readKanbanTenant(projectPath: String) -> String? {
+        let manifestPath = projectPath + "/.scarf/manifest.json"
         let transport = context.makeTransport()
         guard transport.fileExists(manifestPath),
               let data = try? transport.readFile(manifestPath),
@@ -263,8 +274,8 @@ struct ProjectAgentContextService: Sendable {
     /// comma-joined list of backticked field names with inline type
     /// hints (`(secret)`), or the literal string "(none)" when the
     /// project has no config schema. **Never** includes values.
-    nonisolated private func renderConfigFieldsLine(for project: ProjectEntry) -> String {
-        let manifestPath = project.path + "/.scarf/manifest.json"
+    nonisolated private func renderConfigFieldsLine(projectPath: String) -> String {
+        let manifestPath = projectPath + "/.scarf/manifest.json"
         let transport = context.makeTransport()
         guard transport.fileExists(manifestPath),
               let data = try? transport.readFile(manifestPath),
@@ -282,15 +293,19 @@ struct ProjectAgentContextService: Sendable {
     }
 
     /// Return a list of human-readable cron-job descriptions for jobs
-    /// attributed to this project via the `[tmpl:<id>] …` name prefix.
-    /// Empty array when no jobs match (either the project has no
-    /// template or no jobs carry the tag).
-    nonisolated private func renderCronLines(for project: ProjectEntry, templateId: String?) -> [String] {
-        guard let templateId else { return [] }
-        let prefix = "[tmpl:\(templateId)]"
+    /// attributed to this project — via the first-class `[proj:<id>]`
+    /// tag or the legacy template `[tmpl:<id>]` prefix. Empty array when
+    /// no jobs match.
+    nonisolated private func renderCronLines(projectId: UUID, templateId: String?) -> [String] {
+        let projPrefix = "[proj:\(projectId.uuidString)]"
+        let tmplPrefix = templateId.map { "[tmpl:\($0)]" }
         let jobs = HermesFileService(context: context).loadCronJobs()
         return jobs
-            .filter { $0.name.hasPrefix(prefix) }
+            .filter { job in
+                if job.name.hasPrefix(projPrefix) { return true }
+                if let tmplPrefix, job.name.hasPrefix(tmplPrefix) { return true }
+                return false
+            }
             .map { job in
                 let scheduleDesc = job.schedule.display
                     ?? job.schedule.expression
