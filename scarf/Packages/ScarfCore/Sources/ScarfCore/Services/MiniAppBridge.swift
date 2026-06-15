@@ -68,11 +68,11 @@ public enum MiniAppBridgeMethod: String, CaseIterable, Sendable {
     public var isImplemented: Bool {
         switch self {
         case .contextGet, .uiToast, .uiSetTitle, .uiResize, .uiRequestClose,
-             .storeGet, .storeSet, .promptSend, .eventsSubscribe:
+             .storeGet, .storeSet, .promptSend, .eventsSubscribe,
+             .query, .fileRead, .kanbanRead:
             return true
-        case .query, .fileRead, .kanbanRead:
-            return false
         }
+        // A future surface added to the enum must decide its status here.
     }
 }
 
@@ -236,6 +236,15 @@ public enum MiniAppBridge {
               const r = await post("query", [String(kind), JSON.stringify(params || {})]);
               return (r === null || r === undefined || r === "") ? null : JSON.parse(r);
             },
+            file: Object.freeze({
+              read: async (path) => post("file.read", [String(path)])
+            }),
+            kanban: Object.freeze({
+              read: async () => {
+                const r = await post("kanban.read", []);
+                return (r === null || r === undefined || r === "") ? [] : JSON.parse(r);
+              }
+            }),
             onEvent: (cb) => {
               if (typeof cb === "function") { __listeners.push(cb); post("events.subscribe", []); }
             }

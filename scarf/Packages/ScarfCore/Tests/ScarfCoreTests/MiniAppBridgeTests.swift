@@ -26,15 +26,17 @@ import Foundation
         #expect(granted.preflight(.storeSet) == nil)
     }
 
-    @Test func permissionCheckedBeforeImplementation() {
-        // file.read is gated AND not-yet-implemented. Without the grant it
-        // must read as denied (never leaking that the surface exists); with
-        // the grant it reads as not_implemented.
-        let noGrant = MiniAppBridgeDispatcher(grantedPermissions: [])
-        #expect(noGrant.preflight(.fileRead)?.errorCode == "permission_denied")
-
-        let withGrant = MiniAppBridgeDispatcher(grantedPermissions: [.fileRead])
-        #expect(withGrant.preflight(.fileRead)?.errorCode == "not_implemented")
+    @Test func dataChannelGating() {
+        // All surfaces are implemented now; gating is purely by permission.
+        // file.read → file:read.
+        #expect(MiniAppBridgeDispatcher(grantedPermissions: []).preflight(.fileRead)?.errorCode == "permission_denied")
+        #expect(MiniAppBridgeDispatcher(grantedPermissions: [.fileRead]).preflight(.fileRead) == nil)
+        // kanban.read → query:kanban.tasks.
+        #expect(MiniAppBridgeDispatcher(grantedPermissions: []).preflight(.kanbanRead)?.errorCode == "permission_denied")
+        #expect(MiniAppBridgeDispatcher(grantedPermissions: [.query("kanban.tasks")]).preflight(.kanbanRead) == nil)
+        // query's static perm is nil (the kind-specific query:<kind> check is
+        // enforced in the handler), so preflight passes.
+        #expect(MiniAppBridgeDispatcher(grantedPermissions: []).preflight(.query) == nil)
     }
 
     @Test func agentChannelGatedAndImplemented() {
@@ -44,13 +46,6 @@ import Foundation
         #expect(MiniAppBridgeDispatcher(grantedPermissions: [.prompt]).preflight(.promptSend) == nil)
         #expect(MiniAppBridgeDispatcher(grantedPermissions: []).preflight(.eventsSubscribe)?.errorCode == "permission_denied")
         #expect(MiniAppBridgeDispatcher(grantedPermissions: [.events]).preflight(.eventsSubscribe) == nil)
-    }
-
-    @Test func deferredDataSurfacesReportNotImplemented() {
-        let d = MiniAppBridgeDispatcher(grantedPermissions: [.fileRead, .query("kanban.tasks")])
-        #expect(d.preflight(.query)?.errorCode == "not_implemented")
-        #expect(d.preflight(.fileRead)?.errorCode == "not_implemented")
-        #expect(d.preflight(.kanbanRead)?.errorCode == "not_implemented")
     }
 
     @Test func methodPermissionMap() {

@@ -56,6 +56,7 @@ struct MiniAppHostView: NSViewRepresentable {
         let bridge = ScarfMiniAppBridge(
             projectPath: projectPath,
             miniAppId: manifest.id,
+            serverContext: serverContext,
             dispatcher: MiniAppBridgeDispatcher(grantedPermissions: grantedPermissions),
             store: MiniAppStore(context: serverContext),
             context: miniContext,

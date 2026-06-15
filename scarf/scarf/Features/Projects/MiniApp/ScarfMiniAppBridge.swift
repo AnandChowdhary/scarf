@@ -17,8 +17,12 @@ import os
 final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
     private static let logger = Logger(subsystem: "com.scarf", category: "ScarfMiniAppBridge")
 
+    /// Largest project file `scarf.file.read` will return.
+    private static let maxFileReadBytes = 4 * 1024 * 1024
+
     private let projectPath: String
     private let miniAppId: String
+    private let serverContext: ServerContext
     private let dispatcher: MiniAppBridgeDispatcher
     private let store: MiniAppStore
     private let contextJSON: String
@@ -37,6 +41,7 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
     init(
         projectPath: String,
         miniAppId: String,
+        serverContext: ServerContext,
         dispatcher: MiniAppBridgeDispatcher,
         store: MiniAppStore,
         context: MiniAppContext,
@@ -45,6 +50,7 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
     ) {
         self.projectPath = projectPath
         self.miniAppId = miniAppId
+        self.serverContext = serverContext
         self.dispatcher = dispatcher
         self.store = store
         self.agentSession = agentSession
@@ -142,10 +148,41 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
                 await MainActor.run { replyHandler(nil, nil) }
             }
 
-        case .query, .fileRead, .kanbanRead:
-            // Unreachable: preflight already returned not_implemented for
-            // these. Defensive fallback keeps the switch exhaustive.
-            replyHandler(nil, "not_implemented: \(method.rawValue)")
+        case .fileRead:
+            // Read-only, contained to the project root via the same
+            // symlink-hardened resolver the asset server uses.
+            guard let rel = args.first else {
+                replyHandler(nil, "bad_request: file.read needs a path"); return
+            }
+            let projectPath = projectPath
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let path = MiniAppAssetResolver.containedFilePath(requestPath: rel, baseDirectory: projectPath),
+                      let data = FileManager.default.contents(atPath: path),
+                      data.count <= Self.maxFileReadBytes,
+                      let text = String(data: data, encoding: .utf8) else {
+                    DispatchQueue.main.async {
+                        replyHandler(nil, "not_found: file is missing, too large, outside the project, or not UTF-8 text")
+                    }
+                    return
+                }
+                DispatchQueue.main.async { replyHandler(text, nil) }
+            }
+
+        case .query:
+            // query's permission is the kind-specific query:<kind>, so it's
+            // gated here (preflight passes it through with a nil static perm).
+            guard let kind = args.first else {
+                replyHandler(nil, "bad_request: query needs a kind"); return
+            }
+            guard dispatcher.grantedPermissions.contains(.query(kind)) else {
+                replyHandler(nil, "permission_denied: query:\(kind) is not granted")
+                return
+            }
+            handleQuery(kind: kind, replyHandler: replyHandler)
+
+        case .kanbanRead:
+            // Gated by preflight on query:kanban.tasks.
+            handleQuery(kind: "kanban.tasks", replyHandler: replyHandler)
         }
     }
 
@@ -177,6 +214,37 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
         guard let data = try? JSONSerialization.data(withJSONObject: obj),
               let string = String(data: data, encoding: .utf8) else { return nil }
         return string
+    }
+
+    // MARK: - Data channel (scarf.query / scarf.kanban)
+
+    /// Resolve a whitelisted, read-only data `kind` to a JSON array string.
+    /// v1 serves `kanban.tasks` (project-scoped, Codable). Sensitive kinds
+    /// (sessions/messages/insights) are deferred pending a privacy review —
+    /// chat content must not be exposed to untrusted web content lightly.
+    private func handleQuery(kind: String, replyHandler: @escaping (Any?, String?) -> Void) {
+        switch kind {
+        case "kanban.tasks":
+            let ctx = serverContext
+            let projectPath = projectPath
+            Task {
+                do {
+                    // Scope to the project's kanban tenant; no tenant → no
+                    // project board yet → empty result.
+                    guard let tenant = KanbanTenantReader(context: ctx).tenant(forProjectPath: projectPath) else {
+                        await MainActor.run { replyHandler("[]", nil) }
+                        return
+                    }
+                    let tasks = try await KanbanService(context: ctx).list(KanbanListFilter(tenant: tenant))
+                    let json = String(data: try JSONEncoder().encode(tasks), encoding: .utf8) ?? "[]"
+                    await MainActor.run { replyHandler(json, nil) }
+                } catch {
+                    await MainActor.run { replyHandler(nil, "internal_error: \(error.localizedDescription)") }
+                }
+            }
+        default:
+            replyHandler(nil, "not_implemented: query:\(kind) is not available in this build")
+        }
     }
 }
 
