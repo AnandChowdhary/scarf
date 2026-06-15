@@ -4,19 +4,29 @@ import ScarfCore
 import os
 
 /// Renders one mini-app inside Scarf — a `WKWebView` wired to the
-/// directory-scoped `scarf-miniapp://` scheme handler. This is the host
-/// surface from the Mini-App Bridge Contract; the `window.scarf` bridge is
-/// layered on in a later increment, so v1 renders a sandboxed *static*
-/// surface (strict CSP, no network, no tool access).
+/// directory-scoped `scarf-miniapp://` scheme handler AND the
+/// `window.scarf` bridge.
 ///
-/// **Sandboxing in this layer:**
-/// - Non-persistent data store (no cookies/localStorage leak across apps).
+/// **Sandboxing:**
+/// - Non-persistent data store (no cross-app cookie/localStorage leak).
 /// - Assets only via the scheme handler scoped to the mini-app dir.
-/// - Navigation locked to `scarf-miniapp://` — any attempt to navigate to
-///   `https://`/`file://`/external is cancelled (defense in depth behind CSP).
+/// - Navigation locked to `scarf-miniapp://`.
+/// - Bridge calls pass through `MiniAppBridgeDispatcher` (default-deny):
+///   `grantedPermissions` is empty until the permission-preview sheet
+///   ships, so only the ungated baseline surfaces (`context`, `ui.*`) work
+///   out of the box; `store` needs the `store` grant; the agent/data
+///   channels report `not_implemented`.
 struct MiniAppHostView: NSViewRepresentable {
-    let projectPath: String
+    let project: ScarfProject
     let manifest: MiniAppManifest
+    let serverContext: ServerContext
+    /// User-approved permissions. Empty = default-deny (the secure default
+    /// until the permission-preview sheet supplies grants).
+    var grantedPermissions: Set<MiniAppPermission> = []
+    /// Optional host handler for `ui.*` actions (toast/close/resize).
+    var onUIAction: ((MiniAppUIAction) -> Void)? = nil
+
+    private var projectPath: String { project.rootPath }
 
     func makeNSView(context: Context) -> WKWebView {
         let baseDir = MiniAppService.miniAppDir(forProjectPath: projectPath, id: manifest.id)
@@ -28,16 +38,43 @@ struct MiniAppHostView: NSViewRepresentable {
             forURLScheme: MiniAppAssetResolver.scheme
         )
 
+        let miniContext = MiniAppContext(
+            projectId: project.id.uuidString,
+            projectName: project.name,
+            projectRoot: project.rootPath,
+            serverId: serverContext.id.uuidString,
+            miniAppId: manifest.id,
+            generated: manifest.generated
+        )
+        let custom = onUIAction
+        let bridge = ScarfMiniAppBridge(
+            projectPath: projectPath,
+            miniAppId: manifest.id,
+            dispatcher: MiniAppBridgeDispatcher(grantedPermissions: grantedPermissions),
+            store: MiniAppStore(context: serverContext),
+            context: miniContext,
+            onUIAction: { action in Self.handleUIAction(action, custom: custom) }
+        )
+        // The userContentController retains the handler; both die with the
+        // webview when SwiftUI tears the representable down. The handler
+        // holds no strong ref back to the webview, so no cycle.
+        config.userContentController.addScriptMessageHandler(
+            bridge, contentWorld: .page, name: MiniAppBridge.messageHandlerName
+        )
+        config.userContentController.addUserScript(WKUserScript(
+            source: MiniAppBridge.javaScriptSource(context: miniContext),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
-        // Mini-apps are self-contained; no back/forward gestures.
         webView.allowsBackForwardNavigationGestures = false
         load(into: webView)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Reload only when the bound mini-app actually changes.
         guard context.coordinator.loadedAppID != manifest.id else { return }
         context.coordinator.loadedAppID = manifest.id
         load(into: webView)
@@ -46,6 +83,13 @@ struct MiniAppHostView: NSViewRepresentable {
     private func load(into webView: WKWebView) {
         guard let url = URL(string: MiniAppAssetResolver.entryURLString(entry: manifest.entry)) else { return }
         webView.load(URLRequest(url: url))
+    }
+
+    /// Default `ui.*` handling: log, then forward to the host's handler.
+    private static func handleUIAction(_ action: MiniAppUIAction, custom: ((MiniAppUIAction) -> Void)?) {
+        Logger(subsystem: "com.scarf", category: "MiniAppHostView")
+            .info("mini-app ui action: \(String(describing: action), privacy: .public)")
+        custom?(action)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(appID: manifest.id) }
@@ -61,10 +105,6 @@ struct MiniAppHostView: NSViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            // Only our own scheme may load. Everything else — external
-            // links, file://, http(s):// — is refused. (A future increment
-            // can route user-intended external links out via NSWorkspace
-            // behind a confirmation; v1 simply blocks.)
             if navigationAction.request.url?.scheme == MiniAppAssetResolver.scheme {
                 decisionHandler(.allow)
             } else {

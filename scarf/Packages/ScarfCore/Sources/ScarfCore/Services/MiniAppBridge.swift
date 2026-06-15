@@ -1,0 +1,222 @@
+import Foundation
+
+/// The pure, WebKit-free core of the `window.scarf` bridge: the method
+/// registry, the default-deny permission gate, the reply model, and the
+/// injected JS shim. The Mac-target `ScarfMiniAppBridge`
+/// (`WKScriptMessageHandlerWithReply`) is a thin shell that decodes a
+/// message, runs it through `MiniAppBridgeDispatcher.preflight`, and — if
+/// authorized — executes the handler and replies.
+///
+/// Keeping the trust boundary here makes it unit-testable without a
+/// `WKWebView`: every bridge call is permission-checked host-side, and
+/// **default-deny** is the rule — a surface a mini-app didn't declare AND
+/// the user didn't grant is refused before any handler runs.
+
+/// Semver of the bridge contract. Mini-apps check it via `scarf.version`
+/// and declare `minBridgeVersion`; the host refuses/degrades on mismatch.
+public let miniAppBridgeVersion = "1.0"
+
+// MARK: - Methods
+
+/// Every `window.scarf` surface, as a wire method string, with its
+/// required permission (nil = ungated baseline surface) and whether this
+/// build implements it yet. Adding a method here + handling it in the
+/// WebKit layer is the only way to extend the bridge.
+public enum MiniAppBridgeMethod: String, CaseIterable, Sendable {
+    case contextGet = "context.get"
+    case uiToast = "ui.toast"
+    case uiSetTitle = "ui.setTitle"
+    case uiResize = "ui.resize"
+    case uiRequestClose = "ui.requestClose"
+    case storeGet = "store.get"
+    case storeSet = "store.set"
+    case promptSend = "prompt.send"
+    case eventsSubscribe = "events.subscribe"
+    case query = "query"
+    case fileRead = "file.read"
+    case kanbanRead = "kanban.read"
+
+    /// Permission this method requires, or `nil` for ungated baseline
+    /// surfaces (context + benign UI affordances carry no permission —
+    /// they expose no secrets and reach nothing outside the host frame).
+    public var requiredPermission: MiniAppPermission? {
+        switch self {
+        case .contextGet, .uiToast, .uiSetTitle, .uiResize, .uiRequestClose:
+            return nil
+        case .storeGet, .storeSet:
+            return .store
+        case .promptSend:
+            return .prompt
+        case .eventsSubscribe:
+            return .events
+        case .fileRead:
+            return .fileRead
+        case .kanbanRead:
+            return .query("kanban.tasks")
+        case .query:
+            // The concrete `query:<kind>` permission depends on the call's
+            // `kind` argument, so it's enforced in the handler when query
+            // ships. Until then `isImplemented` short-circuits it.
+            return nil
+        }
+    }
+
+    /// Whether the WebKit layer wires this method in the current build.
+    /// The agent (`prompt`/`events`) and data (`query`/`file`/`kanban`)
+    /// channels land in follow-on increments; until then they are gated +
+    /// reported as `not_implemented` (never silently succeeding).
+    public var isImplemented: Bool {
+        switch self {
+        case .contextGet, .uiToast, .uiSetTitle, .uiResize, .uiRequestClose,
+             .storeGet, .storeSet:
+            return true
+        case .promptSend, .eventsSubscribe, .query, .fileRead, .kanbanRead:
+            return false
+        }
+    }
+}
+
+// MARK: - Reply
+
+public enum MiniAppBridgeErrorCode: String, Sendable {
+    case permissionDenied = "permission_denied"
+    case notImplemented = "not_implemented"
+    case badRequest = "bad_request"
+    case internalError = "internal_error"
+}
+
+/// Host → web reply. `result` is a JSON string (the shim `JSON.parse`s it);
+/// a failure rejects the JS promise with `code: message`.
+public struct MiniAppBridgeReply: Sendable, Equatable {
+    public let ok: Bool
+    public let result: String?
+    public let errorCode: String?
+    public let errorMessage: String?
+
+    public static func success(_ result: String?) -> MiniAppBridgeReply {
+        MiniAppBridgeReply(ok: true, result: result, errorCode: nil, errorMessage: nil)
+    }
+
+    public static func failure(_ code: MiniAppBridgeErrorCode, _ message: String) -> MiniAppBridgeReply {
+        MiniAppBridgeReply(ok: false, result: nil, errorCode: code.rawValue, errorMessage: message)
+    }
+}
+
+// MARK: - Dispatcher (the trust boundary)
+
+/// Authorizes bridge calls against the user-granted permission set.
+/// Default-deny: anything not granted is refused. Construct with the set
+/// the user approved at the permission-preview sheet (empty until that
+/// sheet ships — so only ungated baseline surfaces work, which is the
+/// correct secure default).
+public struct MiniAppBridgeDispatcher: Sendable {
+    public let grantedPermissions: Set<MiniAppPermission>
+
+    public init(grantedPermissions: Set<MiniAppPermission>) {
+        self.grantedPermissions = grantedPermissions
+    }
+
+    /// Returns `nil` when the call is authorized AND implemented (caller
+    /// proceeds to run it); otherwise a failure reply to send back. Order
+    /// matters: permission is checked BEFORE implementation status so an
+    /// ungranted call to a future surface still reads as denied, never
+    /// leaking which surfaces exist.
+    public func preflight(_ method: MiniAppBridgeMethod) -> MiniAppBridgeReply? {
+        if let required = method.requiredPermission, !grantedPermissions.contains(required) {
+            return .failure(.permissionDenied, "Permission '\(required.rawValue)' is not granted to this mini-app.")
+        }
+        if !method.isImplemented {
+            return .failure(.notImplemented, "\(method.rawValue) is not available in this build yet.")
+        }
+        return nil
+    }
+}
+
+// MARK: - Readonly context
+
+/// The readonly `scarf.context` object injected at document start. No
+/// secrets — project identity + provenance only. (`sessionId`,
+/// `capabilities`, `locale`, `theme` arrive with later increments.)
+public struct MiniAppContext: Codable, Sendable, Equatable {
+    public var bridgeVersion: String
+    public var projectId: String
+    public var projectName: String
+    public var projectRoot: String
+    public var serverId: String
+    public var miniAppId: String
+    public var generated: Bool
+
+    public init(
+        bridgeVersion: String = miniAppBridgeVersion,
+        projectId: String,
+        projectName: String,
+        projectRoot: String,
+        serverId: String,
+        miniAppId: String,
+        generated: Bool
+    ) {
+        self.bridgeVersion = bridgeVersion
+        self.projectId = projectId
+        self.projectName = projectName
+        self.projectRoot = projectRoot
+        self.serverId = serverId
+        self.miniAppId = miniAppId
+        self.generated = generated
+    }
+}
+
+// MARK: - JS shim
+
+public enum MiniAppBridge {
+    /// `WKScriptMessageHandler` name the shim posts to.
+    public static let messageHandlerName = "scarfbridge"
+
+    /// The `window.scarf` shim, injected at document start with the
+    /// frozen `context` baked in. Async methods post `{method, args}` to
+    /// the native handler and return its reply promise; `args` are strings
+    /// (complex values are `JSON.stringify`-ed by the shim and re-parsed
+    /// native-side / here), so the native wire stays string-typed.
+    public static func javaScriptSource(context: MiniAppContext) -> String {
+        let contextJSON: String
+        if let data = try? JSONEncoder().encode(context),
+           let json = String(data: data, encoding: .utf8) {
+            contextJSON = json
+        } else {
+            contextJSON = "{}"
+        }
+        return """
+        (function () {
+          "use strict";
+          const post = (method, args) =>
+            window.webkit.messageHandlers.\(messageHandlerName).postMessage({ method: method, args: args || [] });
+          const api = {
+            version: "\(miniAppBridgeVersion)",
+            context: Object.freeze(\(contextJSON)),
+            store: Object.freeze({
+              get: async (key) => {
+                const r = await post("store.get", [String(key)]);
+                return (r === null || r === undefined || r === "") ? null : JSON.parse(r);
+              },
+              set: async (key, value) => {
+                await post("store.set", [String(key), JSON.stringify(value === undefined ? null : value)]);
+                return true;
+              }
+            }),
+            ui: Object.freeze({
+              toast: (msg) => post("ui.toast", [String(msg)]),
+              setTitle: (title) => post("ui.setTitle", [String(title)]),
+              resize: (w, h) => post("ui.resize", [String(w), String(h)]),
+              requestClose: () => post("ui.requestClose", [])
+            }),
+            prompt: async (text, opts) => post("prompt.send", [String(text), JSON.stringify(opts || {})]),
+            query: async (kind, params) => {
+              const r = await post("query", [String(kind), JSON.stringify(params || {})]);
+              return (r === null || r === undefined || r === "") ? null : JSON.parse(r);
+            },
+            onEvent: (_cb) => { throw new Error("scarf.onEvent is not available in this build yet."); }
+          };
+          Object.defineProperty(window, "scarf", { value: Object.freeze(api), writable: false, configurable: false });
+        })();
+        """
+    }
+}

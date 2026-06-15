@@ -1,0 +1,115 @@
+import Testing
+import Foundation
+@testable import ScarfCore
+
+/// Trust-boundary coverage for the mini-app bridge: default-deny
+/// permission enforcement, the method registry, the injected JS shim, and
+/// the sandboxed store.
+@Suite struct MiniAppBridgeTests {
+
+    // MARK: - Dispatcher (default-deny)
+
+    @Test func ungatedSurfacesAllowedWithNoGrants() {
+        let d = MiniAppBridgeDispatcher(grantedPermissions: [])
+        for m in [MiniAppBridgeMethod.contextGet, .uiToast, .uiSetTitle, .uiResize, .uiRequestClose] {
+            #expect(d.preflight(m) == nil, "\(m.rawValue) should be ungated")
+        }
+    }
+
+    @Test func storeDeniedWithoutGrantAllowedWithGrant() {
+        let denied = MiniAppBridgeDispatcher(grantedPermissions: [])
+        #expect(denied.preflight(.storeGet)?.errorCode == "permission_denied")
+        #expect(denied.preflight(.storeSet)?.errorCode == "permission_denied")
+
+        let granted = MiniAppBridgeDispatcher(grantedPermissions: [.store])
+        #expect(granted.preflight(.storeGet) == nil)
+        #expect(granted.preflight(.storeSet) == nil)
+    }
+
+    @Test func permissionCheckedBeforeImplementation() {
+        // prompt is gated AND not-yet-implemented. Without the grant it must
+        // read as denied (never leaking that the surface exists); with the
+        // grant it reads as not_implemented.
+        let noGrant = MiniAppBridgeDispatcher(grantedPermissions: [])
+        #expect(noGrant.preflight(.promptSend)?.errorCode == "permission_denied")
+
+        let withGrant = MiniAppBridgeDispatcher(grantedPermissions: [.prompt])
+        #expect(withGrant.preflight(.promptSend)?.errorCode == "not_implemented")
+    }
+
+    @Test func deferredDataSurfacesReportNotImplemented() {
+        let d = MiniAppBridgeDispatcher(grantedPermissions: [.fileRead, .query("kanban.tasks")])
+        #expect(d.preflight(.query)?.errorCode == "not_implemented")
+        #expect(d.preflight(.fileRead)?.errorCode == "not_implemented")
+        #expect(d.preflight(.kanbanRead)?.errorCode == "not_implemented")
+    }
+
+    @Test func methodPermissionMap() {
+        #expect(MiniAppBridgeMethod.storeGet.requiredPermission == .store)
+        #expect(MiniAppBridgeMethod.promptSend.requiredPermission == .prompt)
+        #expect(MiniAppBridgeMethod.eventsSubscribe.requiredPermission == .events)
+        #expect(MiniAppBridgeMethod.kanbanRead.requiredPermission == .query("kanban.tasks"))
+        #expect(MiniAppBridgeMethod.contextGet.requiredPermission == nil)
+        #expect(MiniAppBridgeMethod.uiToast.requiredPermission == nil)
+    }
+
+    // MARK: - JS shim
+
+    @Test func javaScriptSourceShape() {
+        let ctx = MiniAppContext(
+            projectId: "11111111-2222-3333-4444-555555555555",
+            projectName: "Demo", projectRoot: "/tmp/demo",
+            serverId: "srv", miniAppId: "burndown", generated: false
+        )
+        let js = MiniAppBridge.javaScriptSource(context: ctx)
+        #expect(js.contains("messageHandlers.scarfbridge.postMessage"))
+        #expect(js.contains("version: \"\(miniAppBridgeVersion)\""))
+        #expect(js.contains("\"burndown\""))                 // context baked in
+        #expect(js.contains("Object.defineProperty(window, \"scarf\""))
+        #expect(js.contains("Object.freeze"))
+        // The deferred event channel must throw, not silently no-op.
+        #expect(js.contains("onEvent"))
+    }
+
+    @Test func contextRoundTrips() throws {
+        let ctx = MiniAppContext(
+            projectId: "p", projectName: "N", projectRoot: "/r",
+            serverId: "s", miniAppId: "m", generated: true
+        )
+        let decoded = try JSONDecoder().decode(MiniAppContext.self, from: JSONEncoder().encode(ctx))
+        #expect(decoded == ctx)
+        #expect(decoded.bridgeVersion == miniAppBridgeVersion)
+    }
+
+    // MARK: - MiniAppStore (sandboxed KV)
+
+    @Test func storeRoundTripsAndIsolatesByMiniApp() throws {
+        let dir = try Self.makeTempProject()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let store = MiniAppStore(context: .local)
+
+        #expect(store.get(projectPath: dir, miniAppId: "a", key: "k") == nil)
+        try store.set(projectPath: dir, miniAppId: "a", key: "k", value: "{\"n\":1}")
+        #expect(store.get(projectPath: dir, miniAppId: "a", key: "k") == "{\"n\":1}")
+        // Different mini-app id is a separate sandbox.
+        #expect(store.get(projectPath: dir, miniAppId: "b", key: "k") == nil)
+        // State file lives under the mini-app's own directory.
+        let path = MiniAppStore.statePath(projectPath: dir, miniAppId: "a")
+        #expect(path.hasSuffix("/.scarf/miniapps/a/state.json"))
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func storeRejectsEmptyKey() throws {
+        let dir = try Self.makeTempProject()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        #expect(throws: MiniAppStore.StoreError.self) {
+            try MiniAppStore(context: .local).set(projectPath: dir, miniAppId: "a", key: "", value: "1")
+        }
+    }
+
+    static func makeTempProject() throws -> String {
+        let dir = NSTemporaryDirectory() + "scarf-miniappstore-" + UUID().uuidString
+        try FileManager.default.createDirectory(atPath: dir + "/.scarf", withIntermediateDirectories: true)
+        return dir
+    }
+}
