@@ -38,6 +38,8 @@ final class ProjectCockpitViewModel {
     /// Installed-template id + version for the Templates panel.
     var templateID: String?
     var templateVersion: String?
+    /// Discovered mini-apps for the Mini-apps panel.
+    var miniApps: [MiniAppManifest] = []
     var isLoading = false
 
     @ObservationIgnored private var hasLoaded = false
@@ -100,13 +102,16 @@ final class ProjectCockpitViewModel {
                 )
             }
 
+            let miniApps = MiniAppService(context: context).discover(projectPath: project.path)
+
             return Loaded(
                 project: sp,
                 block: block,
                 jobs: jobs,
                 memory: memory,
                 templateID: tmpl?.id,
-                templateVersion: tmpl?.version
+                templateVersion: tmpl?.version,
+                miniApps: miniApps
             )
         }.value
 
@@ -116,6 +121,7 @@ final class ProjectCockpitViewModel {
         memoryBlock = result.memory
         templateID = result.templateID
         templateVersion = result.templateVersion
+        miniApps = result.miniApps
         isLoading = false
 
         // Resolve the bound preset's display name (actor hop), if any.
@@ -164,5 +170,6 @@ final class ProjectCockpitViewModel {
         let memory: String?
         let templateID: String?
         let templateVersion: String?
+        let miniApps: [MiniAppManifest]
     }
 }

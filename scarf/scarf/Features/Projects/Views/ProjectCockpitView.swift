@@ -177,6 +177,12 @@ struct ProjectCockpitView: View {
                 templateVersion: viewModel?.templateVersion,
                 lockRef: viewModel?.scarfProject?.templateLockRef
             )
+        case .miniapps:
+            CockpitMiniAppsPanel(
+                project: viewModel?.scarfProject,
+                manifests: viewModel?.miniApps ?? [],
+                serverContext: serverContext
+            )
         }
     }
 }
@@ -184,7 +190,7 @@ struct ProjectCockpitView: View {
 // MARK: - Panel identity
 
 private enum CockpitPanel: String, CaseIterable {
-    case sessions, board, context, cron, memory, secrets, templates
+    case sessions, board, context, cron, memory, secrets, templates, miniapps
 
     var title: String {
         switch self {
@@ -195,6 +201,7 @@ private enum CockpitPanel: String, CaseIterable {
         case .memory:    return "Memory"
         case .secrets:   return "Secrets"
         case .templates: return "Templates"
+        case .miniapps:  return "Mini-apps"
         }
     }
 
@@ -207,6 +214,7 @@ private enum CockpitPanel: String, CaseIterable {
         case .memory:    return "brain"
         case .secrets:   return "key"
         case .templates: return "shippingbox"
+        case .miniapps:  return "square.grid.2x2"
         }
     }
 }
@@ -387,7 +395,7 @@ private struct CockpitTemplatesPanel: View {
 }
 
 /// Shared empty-state for the lightweight panels.
-private struct CockpitEmptyState: View {
+struct CockpitEmptyState: View {
     let icon: String
     let text: String
 

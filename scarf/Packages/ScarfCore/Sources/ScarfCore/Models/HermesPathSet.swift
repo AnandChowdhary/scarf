@@ -114,6 +114,13 @@ public struct HermesPathSet: Sendable, Hashable {
     /// via `session/set_model` and at `hermes -z` invocation via
     /// `-m`/`--provider` flags.
     public nonisolated var modelPresetsJSON: String { scarfDir + "/model_presets.json" }
+    /// Per-machine mini-app permission grants. Scarf-owned; Hermes never
+    /// touches it. Keyed by (projectId, miniAppId). Deliberately NOT in the
+    /// portable `<project>/.scarf/project.json` — a clone of the repo must
+    /// re-approve untrusted (especially agent-generated) web content for
+    /// itself. Read by `MiniAppGrantStore` at mount; written by the
+    /// permission-preview sheet.
+    public nonisolated var miniAppGrantsJSON: String { scarfDir + "/miniapp_grants.json" }
     /// Global Scarf slash commands available in every chat (not just
     /// project-scoped). Populated by `SlashCommandBootstrapService` from
     /// the app bundle on launch — same idempotent + version-gated pattern
