@@ -68,9 +68,9 @@ public enum MiniAppBridgeMethod: String, CaseIterable, Sendable {
     public var isImplemented: Bool {
         switch self {
         case .contextGet, .uiToast, .uiSetTitle, .uiResize, .uiRequestClose,
-             .storeGet, .storeSet, .promptSend:
+             .storeGet, .storeSet, .promptSend, .eventsSubscribe:
             return true
-        case .eventsSubscribe, .query, .fileRead, .kanbanRead:
+        case .query, .fileRead, .kanbanRead:
             return false
         }
     }
@@ -204,6 +204,14 @@ public enum MiniAppBridge {
           "use strict";
           const post = (method, args) =>
             window.webkit.messageHandlers.\(messageHandlerName).postMessage({ method: method, args: args || [] });
+          // Live agent-event fan-out for scarf.onEvent. The host pushes
+          // events by calling window.__scarfEmit via evaluateJavaScript.
+          const __listeners = [];
+          window.__scarfEmit = function (ev) {
+            for (let i = 0; i < __listeners.length; i++) {
+              try { __listeners[i](ev); } catch (e) { /* a listener throwing is the mini-app's concern */ }
+            }
+          };
           const api = {
             version: "\(miniAppBridgeVersion)",
             context: Object.freeze(\(contextJSON)),
@@ -228,7 +236,9 @@ public enum MiniAppBridge {
               const r = await post("query", [String(kind), JSON.stringify(params || {})]);
               return (r === null || r === undefined || r === "") ? null : JSON.parse(r);
             },
-            onEvent: (_cb) => { throw new Error("scarf.onEvent is not available in this build yet."); }
+            onEvent: (cb) => {
+              if (typeof cb === "function") { __listeners.push(cb); post("events.subscribe", []); }
+            }
           };
           Object.defineProperty(window, "scarf", { value: Object.freeze(api), writable: false, configurable: false });
         })();

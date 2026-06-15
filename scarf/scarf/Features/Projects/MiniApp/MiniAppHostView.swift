@@ -77,6 +77,8 @@ struct MiniAppHostView: NSViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = false
+        // Let the bridge push streamed agent events into this page (weak ref).
+        bridge.webView = webView
         load(into: webView)
         return webView
     }

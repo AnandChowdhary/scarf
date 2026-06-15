@@ -35,6 +35,10 @@ actor MiniAppAgentSession {
     private var pendingContinuation: CheckedContinuation<String, Error>?
     private var pendingBuffer = ""
 
+    /// Live event forwarder for `scarf.onEvent`. Set by the bridge when the
+    /// mini-app subscribes; receives this session's streamed events.
+    private var eventSink: (@Sendable (ACPEvent) -> Void)?
+
     init(context: ServerContext, projectRoot: String) {
         self.context = context
         self.projectRoot = projectRoot
@@ -54,6 +58,12 @@ actor MiniAppAgentSession {
             case .connectionLost(let r): return "Agent connection lost: \(r)"
             }
         }
+    }
+
+    /// Register the live event forwarder for `scarf.onEvent`. Replaces any
+    /// prior sink (one subscriber per mini-app instance).
+    func setEventSink(_ sink: @escaping @Sendable (ACPEvent) -> Void) {
+        eventSink = sink
     }
 
     /// Send `text` to the mini-app's agent and resolve with the full reply.
@@ -127,8 +137,20 @@ actor MiniAppAgentSession {
         switch event {
         case .messageChunk(_, let text):
             if pendingContinuation != nil { pendingBuffer += text }
+            eventSink?(event)
+        case .thoughtChunk, .toolCallStart, .toolCallUpdate:
+            eventSink?(event)
         case .promptComplete:
+            eventSink?(event)
             resumePending(.success(pendingBuffer))
+        case .permissionRequest(_, let requestId, _):
+            // A mini-app session has no human UI to answer ACP permission
+            // prompts, so auto-deny — otherwise the agent loop hangs waiting
+            // on a permission it can't be granted here. (v1 limitation: a
+            // mini-app's agent can't perform permissioned tool actions.)
+            if let client {
+                Task { await client.cancelPermission(requestId: requestId) }
+            }
         case .connectionLost(let reason):
             resumePending(.failure(AgentError.connectionLost(reason)))
         default:

@@ -27,20 +27,23 @@ import Foundation
     }
 
     @Test func permissionCheckedBeforeImplementation() {
-        // events is gated AND not-yet-implemented. Without the grant it must
-        // read as denied (never leaking that the surface exists); with the
-        // grant it reads as not_implemented.
+        // file.read is gated AND not-yet-implemented. Without the grant it
+        // must read as denied (never leaking that the surface exists); with
+        // the grant it reads as not_implemented.
         let noGrant = MiniAppBridgeDispatcher(grantedPermissions: [])
-        #expect(noGrant.preflight(.eventsSubscribe)?.errorCode == "permission_denied")
+        #expect(noGrant.preflight(.fileRead)?.errorCode == "permission_denied")
 
-        let withGrant = MiniAppBridgeDispatcher(grantedPermissions: [.events])
-        #expect(withGrant.preflight(.eventsSubscribe)?.errorCode == "not_implemented")
+        let withGrant = MiniAppBridgeDispatcher(grantedPermissions: [.fileRead])
+        #expect(withGrant.preflight(.fileRead)?.errorCode == "not_implemented")
     }
 
-    @Test func promptGatedAndImplemented() {
-        // prompt is now wired: denied without grant, authorized (nil) with it.
+    @Test func agentChannelGatedAndImplemented() {
+        // prompt + events are now wired: denied without grant, authorized
+        // (nil) with it.
         #expect(MiniAppBridgeDispatcher(grantedPermissions: []).preflight(.promptSend)?.errorCode == "permission_denied")
         #expect(MiniAppBridgeDispatcher(grantedPermissions: [.prompt]).preflight(.promptSend) == nil)
+        #expect(MiniAppBridgeDispatcher(grantedPermissions: []).preflight(.eventsSubscribe)?.errorCode == "permission_denied")
+        #expect(MiniAppBridgeDispatcher(grantedPermissions: [.events]).preflight(.eventsSubscribe) == nil)
     }
 
     @Test func deferredDataSurfacesReportNotImplemented() {

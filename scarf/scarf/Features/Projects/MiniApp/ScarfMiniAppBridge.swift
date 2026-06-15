@@ -29,6 +29,10 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
     /// Invoked on the main thread for `ui.*` calls. Host wires real UI
     /// (toast/close) later; defaults to logging.
     private let onUIAction: (MiniAppUIAction) -> Void
+    /// Set by the host once the webview exists, so streamed agent events can
+    /// be pushed into the page. Weak: the userContentController already
+    /// retains this handler, so a strong ref back would cycle.
+    weak var webView: WKWebView?
 
     init(
         projectPath: String,
@@ -126,11 +130,53 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
                 }
             }
 
-        case .eventsSubscribe, .query, .fileRead, .kanbanRead:
+        case .eventsSubscribe:
+            guard let agentSession else {
+                replyHandler(nil, "internal_error: no agent session bound")
+                return
+            }
+            Task {
+                await agentSession.setEventSink { [weak self] event in
+                    self?.emitToWeb(event)
+                }
+                await MainActor.run { replyHandler(nil, nil) }
+            }
+
+        case .query, .fileRead, .kanbanRead:
             // Unreachable: preflight already returned not_implemented for
             // these. Defensive fallback keeps the switch exhaustive.
             replyHandler(nil, "not_implemented: \(method.rawValue)")
         }
+    }
+
+    // MARK: - Event streaming (scarf.onEvent)
+
+    /// Push one streamed agent event into the page (main thread). Called
+    /// from the agent session's sink; a closed mini-app (weak webview)
+    /// silently drops late events.
+    private func emitToWeb(_ event: ACPEvent) {
+        guard let json = Self.eventJSON(event) else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript("window.__scarfEmit(\(json))", completionHandler: nil)
+        }
+    }
+
+    /// Serialize the subset of agent events a mini-app renders into a JSON
+    /// literal. Returns `nil` for events that aren't forwarded (e.g.
+    /// permission requests, which are auto-handled host-side).
+    private static func eventJSON(_ event: ACPEvent) -> String? {
+        let obj: [String: Any]
+        switch event {
+        case .messageChunk(_, let text): obj = ["type": "message", "text": text]
+        case .thoughtChunk(_, let text): obj = ["type": "thought", "text": text]
+        case .toolCallStart(_, let call): obj = ["type": "tool", "title": call.title, "status": call.status]
+        case .toolCallUpdate: obj = ["type": "tool_update"]
+        case .promptComplete: obj = ["type": "complete"]
+        default: return nil
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: obj),
+              let string = String(data: data, encoding: .utf8) else { return nil }
+        return string
     }
 }
 
