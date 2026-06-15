@@ -153,6 +153,7 @@ public struct ProjectStore: Sendable {
         let cronJobIds = cronJobIds(projectId: id, templateId: templateId)
         let secretsScope = secretKeys(projectPath: projectPath)
         let memoryNamespace = memoryBlockId(projectPath: projectPath)
+        let miniApps = MiniAppService(context: context).discoverRefs(projectPath: projectPath)
 
         let binding = ScarfProject.HostBinding(
             serverId: context.id.uuidString,
@@ -170,7 +171,8 @@ public struct ProjectStore: Sendable {
             memoryNamespace: memoryNamespace,
             secretsScope: secretsScope,
             templateLockRef: templateLockRef,
-            hostBindings: [binding]
+            hostBindings: [binding],
+            miniApps: miniApps
         )
     }
 

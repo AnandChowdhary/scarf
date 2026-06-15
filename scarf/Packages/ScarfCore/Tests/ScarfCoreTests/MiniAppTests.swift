@@ -1,0 +1,159 @@
+import Testing
+import Foundation
+@testable import ScarfCore
+
+/// Model-layer coverage for Milestone 2 mini-apps: permission + manifest
+/// Codable, on-disk discovery via `MiniAppService`, and `ProjectStore`
+/// populating `ScarfProject.miniApps`. Pure data + temp dirs — no Xcode,
+/// no real `~/.hermes`.
+@Suite struct MiniAppTests {
+
+    // MARK: - MiniAppPermission
+
+    @Test func permissionRawValueRoundTrips() {
+        let cases: [(MiniAppPermission, String)] = [
+            (.prompt, "prompt"),
+            (.events, "events"),
+            (.store, "store"),
+            (.net, "net"),
+            (.kanbanWrite, "kanban:write"),
+            (.fileRead, "file:read"),
+            (.fileWrite, "file:write"),
+            (.query("kanban.tasks"), "query:kanban.tasks"),
+            (.unknown("future:thing"), "future:thing"),
+        ]
+        for (perm, raw) in cases {
+            #expect(perm.rawValue == raw)
+            #expect(MiniAppPermission(rawValue: raw) == perm)
+        }
+    }
+
+    @Test func permissionDecodesFromStringArray() throws {
+        let json = #"["prompt","query:messages","kanban:write","weird"]"#
+        let perms = try JSONDecoder().decode([MiniAppPermission].self, from: Data(json.utf8))
+        #expect(perms == [.prompt, .query("messages"), .kanbanWrite, .unknown("weird")])
+        // Encode round-trips back to the same strings.
+        let reencoded = try JSONEncoder().encode(perms)
+        let strings = try JSONDecoder().decode([String].self, from: reencoded)
+        #expect(strings == ["prompt", "query:messages", "kanban:write", "weird"])
+    }
+
+    @Test func sensitivePermissionsAreFlagged() {
+        #expect(MiniAppPermission.net.isSensitive)
+        #expect(MiniAppPermission.fileWrite.isSensitive)
+        #expect(MiniAppPermission.kanbanWrite.isSensitive)
+        #expect(MiniAppPermission.unknown("x").isSensitive)  // deny-by-default
+        #expect(!MiniAppPermission.prompt.isSensitive)
+        #expect(!MiniAppPermission.query("sessions").isSensitive)
+        #expect(!MiniAppPermission.fileRead.isSensitive)
+        #expect(!MiniAppPermission.store.isSensitive)
+    }
+
+    // MARK: - MiniAppManifest
+
+    @Test func manifestMinimalDecodeFillsDefaults() throws {
+        let json = #"{ "id": "burndown", "name": "Burndown" }"#
+        let m = try JSONDecoder().decode(MiniAppManifest.self, from: Data(json.utf8))
+        #expect(m.id == "burndown")
+        #expect(m.name == "Burndown")
+        #expect(m.entry == "index.html")
+        #expect(m.version == "1.0.0")
+        #expect(m.minBridgeVersion == "1.0")
+        #expect(m.permissions.isEmpty)        // default-deny
+        #expect(m.generated == false)
+        #expect(m.panelHint == nil)
+    }
+
+    @Test func manifestFullRoundTrips() throws {
+        let json = """
+        {
+          "id": "burndown", "name": "Burndown", "version": "2.1.0",
+          "entry": "app.html", "minBridgeVersion": "1.0",
+          "permissions": ["query:kanban.tasks", "prompt", "events", "store"],
+          "panelHint": { "preferredWidth": 420, "placement": "panel" },
+          "generated": true
+        }
+        """
+        let m = try JSONDecoder().decode(MiniAppManifest.self, from: Data(json.utf8))
+        #expect(m.entry == "app.html")
+        #expect(m.generated == true)
+        #expect(m.permissions.contains(.prompt))
+        #expect(m.permissions.contains(.query("kanban.tasks")))
+        #expect(m.panelHint?.preferredWidth == 420)
+        #expect(m.panelHint?.placement == "panel")
+        // Re-encode + decode is stable.
+        let again = try JSONDecoder().decode(MiniAppManifest.self, from: JSONEncoder().encode(m))
+        #expect(again == m)
+    }
+
+    // MARK: - MiniAppService discovery
+
+    @Test func discoverFindsMiniAppsAndForcesDirId() throws {
+        let dir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        // Two valid mini-apps; the second's manifest LIES about its id —
+        // discovery must force the id to the directory name.
+        try Self.writeMiniApp(dir, id: "alpha", manifest: #"{ "id": "alpha", "name": "Alpha" }"#)
+        try Self.writeMiniApp(dir, id: "beta", manifest: #"{ "id": "NOT-beta", "name": "Beta", "generated": true }"#)
+        // A stray dir with no miniapp.json is ignored.
+        try FileManager.default.createDirectory(atPath: dir + "/.scarf/miniapps/empty", withIntermediateDirectories: true)
+
+        let svc = MiniAppService(context: .local)
+        let found = svc.discover(projectPath: dir)
+        #expect(found.map(\.id) == ["alpha", "beta"])  // sorted, "empty" skipped
+        let beta = found.first { $0.id == "beta" }
+        #expect(beta?.id == "beta")           // forced to dir name, not "NOT-beta"
+        #expect(beta?.generated == true)
+
+        let refs = svc.discoverRefs(projectPath: dir)
+        #expect(refs.map(\.id) == ["alpha", "beta"])
+        #expect(refs.first { $0.id == "beta" }?.generated == true)
+    }
+
+    @Test func discoverEmptyWhenNoMiniAppsDir() throws {
+        let dir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        #expect(MiniAppService(context: .local).discover(projectPath: dir).isEmpty)
+    }
+
+    // MARK: - ProjectStore.derive includes miniApps
+
+    @Test func deriveDiscoversMiniApps() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("scarf-miniapp-derive-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let projectDir = home.appendingPathComponent("proj", isDirectory: true).path
+        try FileManager.default.createDirectory(atPath: projectDir + "/.scarf", withIntermediateDirectories: true)
+        try Self.writeMiniApp(projectDir, id: "board", manifest: #"{ "id": "board", "name": "Board" }"#)
+
+        let ctx = ServerContext.local(home: home)
+        let derived = ProjectStore(context: ctx).derive(from: ProjectEntry(name: "Proj", path: projectDir))
+        #expect(derived.miniApps.map(\.id) == ["board"])
+    }
+
+    // MARK: - ScarfProject.miniApps round-trip
+
+    @Test func scarfProjectMiniAppsRoundTrip() throws {
+        let p = ScarfProject(
+            name: "X", rootPath: "/tmp/x",
+            miniApps: [.init(id: "a"), .init(id: "b", generated: true)]
+        )
+        let decoded = try JSONDecoder().decode(ScarfProject.self, from: JSONEncoder().encode(p))
+        #expect(decoded.miniApps.map(\.id) == ["a", "b"])
+        #expect(decoded.miniApps.first { $0.id == "b" }?.generated == true)
+    }
+
+    // MARK: - Helpers
+
+    static func makeTempDir() throws -> String {
+        let dir = NSTemporaryDirectory() + "scarf-miniapp-test-" + UUID().uuidString
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    static func writeMiniApp(_ projectDir: String, id: String, manifest: String) throws {
+        let appDir = projectDir + "/.scarf/miniapps/" + id
+        try FileManager.default.createDirectory(atPath: appDir, withIntermediateDirectories: true)
+        try manifest.data(using: .utf8)!.write(to: URL(fileURLWithPath: appDir + "/miniapp.json"))
+    }
+}

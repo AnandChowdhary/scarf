@@ -106,6 +106,17 @@ public struct ScarfProject: Codable, Sendable, Identifiable, Hashable {
     /// single binding for the current server.
     public var hostBindings: [HostBinding]
 
+    // MARK: - Mini-apps (Milestone 2 bridge field)
+
+    /// Registry of mini-apps belonging to this project — the portable
+    /// "what's installed" list. Each entry locates a mini-app dir at
+    /// `<rootPath>/.scarf/miniapps/<id>/`; the full `MiniAppManifest`
+    /// (and the user's per-machine permission grants) are loaded
+    /// separately, NOT stored here. Granted permissions deliberately do
+    /// NOT travel in this portable record — a clone must re-approve
+    /// untrusted (especially agent-generated) web content for itself.
+    public var miniApps: [MiniAppRef]
+
     /// One host's materialization of a project — the fleet dimension
     /// that a per-gateway client structurally cannot offer.
     public struct HostBinding: Codable, Sendable, Hashable {
@@ -120,6 +131,36 @@ public struct ScarfProject: Codable, Sendable, Identifiable, Hashable {
             self.serverId = serverId
             self.rootPath = rootPath
             self.materializedAt = materializedAt
+        }
+    }
+
+    /// A mini-app registered to this project. Lightweight — the full
+    /// manifest lives in `<rootPath>/.scarf/miniapps/<id>/miniapp.json`
+    /// (loaded via `MiniAppService`); this carries only the id (which
+    /// locates the dir) and the agent-generated provenance flag.
+    public struct MiniAppRef: Codable, Sendable, Hashable, Identifiable {
+        public var id: String
+        /// Mirrors `MiniAppManifest.generated` — `true` for agent-written
+        /// mini-apps, which get stricter trust defaults.
+        public var generated: Bool
+
+        public init(id: String, generated: Bool = false) {
+            self.id = id
+            self.generated = generated
+        }
+
+        private enum CodingKeys: String, CodingKey { case id, generated }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.id = try c.decode(String.self, forKey: .id)
+            self.generated = try c.decodeIfPresent(Bool.self, forKey: .generated) ?? false
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(id, forKey: .id)
+            try c.encode(generated, forKey: .generated)
         }
     }
 
@@ -140,7 +181,8 @@ public struct ScarfProject: Codable, Sendable, Identifiable, Hashable {
         memoryNamespace: String? = nil,
         secretsScope: [String] = [],
         templateLockRef: String? = nil,
-        hostBindings: [HostBinding] = []
+        hostBindings: [HostBinding] = [],
+        miniApps: [MiniAppRef] = []
     ) {
         self.id = id
         self.name = name
@@ -157,6 +199,7 @@ public struct ScarfProject: Codable, Sendable, Identifiable, Hashable {
         self.secretsScope = secretsScope
         self.templateLockRef = templateLockRef
         self.hostBindings = hostBindings
+        self.miniApps = miniApps
     }
 
     // MARK: - Codable (lenient + additive; ISO-8601 dates)
@@ -165,7 +208,7 @@ public struct ScarfProject: Codable, Sendable, Identifiable, Hashable {
         case schemaVersion, id, name, rootPath, createdAt, updatedAt
         case modelPresetId, scopedToolsets, scopedSkills, board
         case cronJobIds, memoryNamespace, secretsScope, templateLockRef
-        case hostBindings
+        case hostBindings, miniApps
     }
 
     public init(from decoder: Decoder) throws {
@@ -188,6 +231,7 @@ public struct ScarfProject: Codable, Sendable, Identifiable, Hashable {
         self.secretsScope = try c.decodeIfPresent([String].self, forKey: .secretsScope) ?? []
         self.templateLockRef = try c.decodeIfPresent(String.self, forKey: .templateLockRef)
         self.hostBindings = try c.decodeIfPresent([HostBinding].self, forKey: .hostBindings) ?? []
+        self.miniApps = try c.decodeIfPresent([MiniAppRef].self, forKey: .miniApps) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -207,6 +251,7 @@ public struct ScarfProject: Codable, Sendable, Identifiable, Hashable {
         try c.encode(secretsScope, forKey: .secretsScope)
         try c.encodeIfPresent(templateLockRef, forKey: .templateLockRef)
         try c.encode(hostBindings, forKey: .hostBindings)
+        try c.encode(miniApps, forKey: .miniApps)
     }
 
     /// Shared ISO-8601 formatter for the date fields. `static let` so
