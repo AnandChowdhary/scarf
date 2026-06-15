@@ -255,6 +255,10 @@ private actor UserHomeCache {
         cache.removeValue(forKey: contextID)
     }
 
+    func seed(_ home: String, contextID: ServerID) {
+        cache[contextID] = home
+    }
+
     private func probe(context: ServerContext) async -> String {
         if !context.isRemote { return NSHomeDirectory() }
         let transport = context.makeTransport()
@@ -292,6 +296,16 @@ extension ServerContext {
     /// the instance method above.
     public static func invalidateCachedHome(forServerID id: ServerID) async {
         await UserHomeCache.shared.invalidate(contextID: id)
+    }
+
+    /// Prime the resolved-home cache for a server id so the next
+    /// `resolvedUserHome()` returns `home` without probing. A caller that
+    /// already knows a host's `$HOME` can skip the SSH round-trip; tests
+    /// use it to make `resolvedUserHome()` deterministic and independent
+    /// of the process-global `sshTransportFactory` (which a concurrent
+    /// suite may have set).
+    public static func primeResolvedHome(_ home: String, forServerID id: ServerID) async {
+        await UserHomeCache.shared.seed(home, contextID: id)
     }
 }
 

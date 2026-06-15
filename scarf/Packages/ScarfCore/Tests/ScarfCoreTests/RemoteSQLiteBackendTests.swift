@@ -82,9 +82,22 @@ private struct LocalSQLite3Transport: ServerTransport {
                 proc.executableURL = URL(fileURLWithPath: "/bin/sh")
                 proc.arguments = ["-c", script]
                 if let homeOverride {
-                    var env = ProcessInfo.processInfo.environment
-                    env["HOME"] = homeOverride
-                    proc.environment = env
+                    // Deterministic child environment — do NOT snapshot the
+                    // live process environment here. Reading
+                    // `ProcessInfo.processInfo.environment` (or getenv) races
+                    // with sibling suites that mutate the process-global
+                    // environment via `setenv` (e.g. HermesProfileResolverTests):
+                    // `setenv` can `realloc` `environ` underneath this read,
+                    // which under the FULL parallel suite intermittently yielded
+                    // a torn/empty `HOME` and a spurious "unable to open database
+                    // file" failure (the test passed in isolation). A fixed env
+                    // removes the read entirely, so this test is hermetic
+                    // regardless of what other suites do to the environment.
+                    // `/usr/bin` carries the system sqlite3 (see requireSqlite3).
+                    proc.environment = [
+                        "HOME": homeOverride,
+                        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin",
+                    ]
                 }
                 let outPipe = Pipe()
                 let errPipe = Pipe()
@@ -275,6 +288,14 @@ private struct LocalSQLite3Transport: ServerTransport {
             displayName: "fixture",
             kind: .ssh(SSHConfig(host: "fake.invalid"))
         )
+        // Prime resolvedUserHome to "~" so `open()` skips its probe. That
+        // probe runs through `context.makeTransport()` + the process-global
+        // `ServerContext.sshTransportFactory`, which a concurrent suite
+        // (M5FeatureVMTests) sets/clears — intermittently handing this test a
+        // bogus resolved home and a wrong absolute DB path. Priming "~" forces
+        // the deterministic "$HOME"-rewrite fallback this test is meant to
+        // exercise, independent of that global.
+        await ServerContext.primeResolvedHome("~", forServerID: ctx.id)
         let backend = RemoteSQLiteBackend(
             context: ctx,
             transport: LocalSQLite3Transport(homeOverride: tempHome.path)
