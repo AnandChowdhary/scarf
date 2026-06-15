@@ -46,6 +46,12 @@ struct MiniAppHostView: NSViewRepresentable {
             miniAppId: manifest.id,
             generated: manifest.generated
         )
+        // Dedicated agent session for scarf.prompt — lazy (no hermes acp
+        // process until the first granted prompt). Held by the coordinator
+        // so dismantleNSView can tear it (and its process) down.
+        let agentSession = MiniAppAgentSession(context: serverContext, projectRoot: projectPath)
+        context.coordinator.agentSession = agentSession
+
         let custom = onUIAction
         let bridge = ScarfMiniAppBridge(
             projectPath: projectPath,
@@ -53,6 +59,7 @@ struct MiniAppHostView: NSViewRepresentable {
             dispatcher: MiniAppBridgeDispatcher(grantedPermissions: grantedPermissions),
             store: MiniAppStore(context: serverContext),
             context: miniContext,
+            agentSession: agentSession,
             onUIAction: { action in Self.handleUIAction(action, custom: custom) }
         )
         // The userContentController retains the handler; both die with the
@@ -92,11 +99,22 @@ struct MiniAppHostView: NSViewRepresentable {
         custom?(action)
     }
 
+    /// Tear down the mini-app's agent session (and its `hermes acp`
+    /// process) when SwiftUI removes the host — including on `.id`-driven
+    /// recreation when permissions change, so a revoked grant doesn't leave
+    /// an old session running.
+    static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        let session = coordinator.agentSession
+        coordinator.agentSession = nil
+        Task { await session?.shutdown() }
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator(appID: manifest.id) }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         private let logger = Logger(subsystem: "com.scarf", category: "MiniAppHostView")
         var loadedAppID: String
+        var agentSession: MiniAppAgentSession?
 
         init(appID: String) { self.loadedAppID = appID }
 

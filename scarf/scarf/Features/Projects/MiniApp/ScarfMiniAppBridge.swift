@@ -22,6 +22,10 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
     private let dispatcher: MiniAppBridgeDispatcher
     private let store: MiniAppStore
     private let contextJSON: String
+    /// Dedicated agent session backing `scarf.prompt`. Lazily spawns its
+    /// own `hermes acp` on first use; `nil` only in contexts that never
+    /// grant `prompt`.
+    private let agentSession: MiniAppAgentSession?
     /// Invoked on the main thread for `ui.*` calls. Host wires real UI
     /// (toast/close) later; defaults to logging.
     private let onUIAction: (MiniAppUIAction) -> Void
@@ -32,12 +36,14 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
         dispatcher: MiniAppBridgeDispatcher,
         store: MiniAppStore,
         context: MiniAppContext,
+        agentSession: MiniAppAgentSession?,
         onUIAction: @escaping (MiniAppUIAction) -> Void
     ) {
         self.projectPath = projectPath
         self.miniAppId = miniAppId
         self.dispatcher = dispatcher
         self.store = store
+        self.agentSession = agentSession
         self.onUIAction = onUIAction
         if let data = try? JSONEncoder().encode(context), let json = String(data: data, encoding: .utf8) {
             self.contextJSON = json
@@ -105,7 +111,22 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
             onUIAction(.requestClose)
             replyHandler(nil, nil)
 
-        case .promptSend, .eventsSubscribe, .query, .fileRead, .kanbanRead:
+        case .promptSend:
+            guard let agentSession else {
+                replyHandler(nil, "internal_error: no agent session bound")
+                return
+            }
+            let text = args.first ?? ""
+            Task {
+                do {
+                    let reply = try await agentSession.prompt(text)
+                    await MainActor.run { replyHandler(reply, nil) }
+                } catch {
+                    await MainActor.run { replyHandler(nil, "error: \(error.localizedDescription)") }
+                }
+            }
+
+        case .eventsSubscribe, .query, .fileRead, .kanbanRead:
             // Unreachable: preflight already returned not_implemented for
             // these. Defensive fallback keeps the switch exhaustive.
             replyHandler(nil, "not_implemented: \(method.rawValue)")

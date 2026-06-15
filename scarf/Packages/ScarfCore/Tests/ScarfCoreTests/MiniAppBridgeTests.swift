@@ -27,14 +27,20 @@ import Foundation
     }
 
     @Test func permissionCheckedBeforeImplementation() {
-        // prompt is gated AND not-yet-implemented. Without the grant it must
+        // events is gated AND not-yet-implemented. Without the grant it must
         // read as denied (never leaking that the surface exists); with the
         // grant it reads as not_implemented.
         let noGrant = MiniAppBridgeDispatcher(grantedPermissions: [])
-        #expect(noGrant.preflight(.promptSend)?.errorCode == "permission_denied")
+        #expect(noGrant.preflight(.eventsSubscribe)?.errorCode == "permission_denied")
 
-        let withGrant = MiniAppBridgeDispatcher(grantedPermissions: [.prompt])
-        #expect(withGrant.preflight(.promptSend)?.errorCode == "not_implemented")
+        let withGrant = MiniAppBridgeDispatcher(grantedPermissions: [.events])
+        #expect(withGrant.preflight(.eventsSubscribe)?.errorCode == "not_implemented")
+    }
+
+    @Test func promptGatedAndImplemented() {
+        // prompt is now wired: denied without grant, authorized (nil) with it.
+        #expect(MiniAppBridgeDispatcher(grantedPermissions: []).preflight(.promptSend)?.errorCode == "permission_denied")
+        #expect(MiniAppBridgeDispatcher(grantedPermissions: [.prompt]).preflight(.promptSend) == nil)
     }
 
     @Test func deferredDataSurfacesReportNotImplemented() {
@@ -51,6 +57,23 @@ import Foundation
         #expect(MiniAppBridgeMethod.kanbanRead.requiredPermission == .query("kanban.tasks"))
         #expect(MiniAppBridgeMethod.contextGet.requiredPermission == nil)
         #expect(MiniAppBridgeMethod.uiToast.requiredPermission == nil)
+    }
+
+    // MARK: - Rate limiter
+
+    @Test func rateLimiterSlidingWindow() {
+        let rl = MiniAppRateLimiter(maxEvents: 2, windowSeconds: 60)
+        let t0 = Date(timeIntervalSince1970: 1000)
+        var (allowed, hist) = rl.decide(now: t0, history: [])
+        #expect(allowed); #expect(hist.count == 1)
+        (allowed, hist) = rl.decide(now: t0.addingTimeInterval(1), history: hist)
+        #expect(allowed); #expect(hist.count == 2)
+        // Third within the window → denied, history unchanged.
+        (allowed, hist) = rl.decide(now: t0.addingTimeInterval(2), history: hist)
+        #expect(!allowed); #expect(hist.count == 2)
+        // Once the window slides past the earlier calls → allowed again.
+        (allowed, hist) = rl.decide(now: t0.addingTimeInterval(61), history: hist)
+        #expect(allowed); #expect(hist.count == 1)
     }
 
     // MARK: - JS shim

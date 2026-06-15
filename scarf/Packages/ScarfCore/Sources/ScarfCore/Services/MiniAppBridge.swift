@@ -68,9 +68,9 @@ public enum MiniAppBridgeMethod: String, CaseIterable, Sendable {
     public var isImplemented: Bool {
         switch self {
         case .contextGet, .uiToast, .uiSetTitle, .uiResize, .uiRequestClose,
-             .storeGet, .storeSet:
+             .storeGet, .storeSet, .promptSend:
             return true
-        case .promptSend, .eventsSubscribe, .query, .fileRead, .kanbanRead:
+        case .eventsSubscribe, .query, .fileRead, .kanbanRead:
             return false
         }
     }

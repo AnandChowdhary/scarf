@@ -83,9 +83,11 @@ public enum MiniAppPermission: Codable, Sendable, Hashable {
     /// denied by default until the user explicitly elevates.
     public var isSensitive: Bool {
         switch self {
-        case .net, .fileWrite, .kanbanWrite: return true
+        // `prompt` drives a tool-enabled agent with web-supplied text — the
+        // biggest escalation, so agent-generated apps don't get it by default.
+        case .prompt, .net, .fileWrite, .kanbanWrite: return true
         case .unknown: return true  // unrecognized → treat as sensitive (deny-by-default)
-        case .prompt, .events, .query, .fileRead, .store: return false
+        case .events, .query, .fileRead, .store: return false
         }
     }
 

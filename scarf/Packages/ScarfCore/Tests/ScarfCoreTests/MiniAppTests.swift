@@ -43,7 +43,7 @@ import Foundation
         #expect(MiniAppPermission.fileWrite.isSensitive)
         #expect(MiniAppPermission.kanbanWrite.isSensitive)
         #expect(MiniAppPermission.unknown("x").isSensitive)  // deny-by-default
-        #expect(!MiniAppPermission.prompt.isSensitive)
+        #expect(MiniAppPermission.prompt.isSensitive)         // drives a tool-enabled agent
         #expect(!MiniAppPermission.query("sessions").isSensitive)
         #expect(!MiniAppPermission.fileRead.isSensitive)
         #expect(!MiniAppPermission.store.isSensitive)
