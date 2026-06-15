@@ -78,13 +78,18 @@ struct MiniAppLaunchSheet: View {
     @State private var phase: Phase = .loading
     @State private var granted: Set<MiniAppPermission> = []
 
-    private enum Phase { case loading, review, run }
+    private enum Phase { case loading, incompatible, review, run }
 
     var body: some View {
         Group {
             switch phase {
             case .loading:
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .incompatible:
+                CockpitEmptyState(
+                    icon: "exclamationmark.triangle",
+                    text: "“\(manifest.name)” needs a newer mini-app bridge (requires \(manifest.minBridgeVersion); this Scarf provides \(miniAppBridgeVersion)). Update Scarf to run it."
+                )
             case .review:
                 MiniAppPermissionPreview(
                     manifest: manifest,
@@ -108,6 +113,12 @@ struct MiniAppLaunchSheet: View {
         }
         .frame(minWidth: 560, minHeight: 520)
         .task(id: manifest.id) {
+            // Version gate first: refuse a mini-app built against a newer
+            // bridge contract rather than silently half-running it.
+            guard MiniAppBridge.satisfiesMinBridgeVersion(manifest.minBridgeVersion) else {
+                phase = .incompatible
+                return
+            }
             let store = MiniAppGrantStore(context: serverContext)
             let pid = project.id.uuidString
             if store.hasDecision(projectId: pid, miniAppId: manifest.id) {
@@ -251,6 +262,10 @@ private struct MiniAppRunner: View {
                 serverContext: serverContext,
                 grantedPermissions: granted
             )
+            // Recreate the web host (fresh dispatcher) whenever the granted
+            // set changes — so re-reviewing to a NARROWER set actually
+            // revokes access on the live instance, not just on next launch.
+            .id(manifest.id + "|" + granted.map(\.rawValue).sorted().joined(separator: ","))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

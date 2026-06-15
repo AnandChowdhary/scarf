@@ -71,6 +71,15 @@ import Foundation
         #expect(js.contains("onEvent"))
     }
 
+    @Test func minBridgeVersionGate() {
+        // Host provides miniAppBridgeVersion ("1.0").
+        #expect(MiniAppBridge.satisfiesMinBridgeVersion("1.0"))
+        #expect(MiniAppBridge.satisfiesMinBridgeVersion("0.9"))   // older requirement ok
+        #expect(MiniAppBridge.satisfiesMinBridgeVersion("1"))     // "1" → 1.0
+        #expect(!MiniAppBridge.satisfiesMinBridgeVersion("1.1"))  // needs a newer minor
+        #expect(!MiniAppBridge.satisfiesMinBridgeVersion("2.0"))  // needs a newer major
+    }
+
     @Test func contextRoundTrips() throws {
         let ctx = MiniAppContext(
             projectId: "p", projectName: "N", projectRoot: "/r",

@@ -68,4 +68,31 @@ import Foundation
         #expect(MiniAppAssetResolver.contentSecurityPolicy.contains("connect-src 'none'"))
         #expect(MiniAppAssetResolver.contentSecurityPolicy.contains("default-src 'none'"))
     }
+
+    /// The HIGH-severity fix: a symlink planted inside the mini-app dir must
+    /// not be readable through to a target outside the dir.
+    @Test func containedFilePathRejectsEscapingSymlink() throws {
+        let fm = FileManager.default
+        let base = NSTemporaryDirectory() + "scarf-miniapp-base-" + UUID().uuidString
+        let outside = NSTemporaryDirectory() + "scarf-miniapp-outside-" + UUID().uuidString
+        try fm.createDirectory(atPath: base, withIntermediateDirectories: true)
+        try fm.createDirectory(atPath: outside, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(atPath: base); try? fm.removeItem(atPath: outside) }
+
+        try Data("<html>".utf8).write(to: URL(fileURLWithPath: base + "/index.html"))
+        try Data("TOPSECRET".utf8).write(to: URL(fileURLWithPath: outside + "/secret.txt"))
+        try fm.createSymbolicLink(atPath: base + "/leak", withDestinationPath: outside + "/secret.txt")
+        try fm.createDirectory(atPath: base + "/sub", withIntermediateDirectories: true)
+
+        // Real in-dir file → allowed.
+        #expect(MiniAppAssetResolver.containedFilePath(requestPath: "/index.html", baseDirectory: base) != nil)
+        // Symlink escaping the dir → refused (the bypass that was the bug).
+        #expect(MiniAppAssetResolver.containedFilePath(requestPath: "/leak", baseDirectory: base) == nil)
+        // A directory is not a servable file.
+        #expect(MiniAppAssetResolver.containedFilePath(requestPath: "/sub", baseDirectory: base) == nil)
+        // Missing file → nil.
+        #expect(MiniAppAssetResolver.containedFilePath(requestPath: "/nope.js", baseDirectory: base) == nil)
+        // Lexical escape still rejected before any FS touch.
+        #expect(MiniAppAssetResolver.containedFilePath(requestPath: "../secret.txt", baseDirectory: base) == nil)
+    }
 }

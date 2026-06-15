@@ -171,6 +171,21 @@ public enum MiniAppBridge {
     /// `WKScriptMessageHandler` name the shim posts to.
     public static let messageHandlerName = "scarfbridge"
 
+    /// Whether this host's bridge satisfies a manifest's `minBridgeVersion`
+    /// — checked at mount so a mini-app built against a newer contract is
+    /// refused rather than silently half-working. The host must be at least
+    /// the required `major.minor` (within a major, minors are additive, so
+    /// a higher host minor still satisfies a lower required one).
+    public static func satisfiesMinBridgeVersion(_ required: String) -> Bool {
+        func tuple(_ s: String) -> (Int, Int) {
+            let parts = s.split(separator: ".", maxSplits: 1).map { Int($0.prefix(while: \.isNumber)) ?? 0 }
+            return (parts.first ?? 0, parts.count > 1 ? parts[1] : 0)
+        }
+        let host = tuple(miniAppBridgeVersion)
+        let req = tuple(required)
+        return host.0 > req.0 || (host.0 == req.0 && host.1 >= req.1)
+    }
+
     /// The `window.scarf` shim, injected at document start with the
     /// frozen `context` baked in. Async methods post `{method, args}` to
     /// the native handler and return its reply promise; `args` are strings

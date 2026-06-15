@@ -43,11 +43,17 @@ public enum MiniAppAssetResolver {
         + "frame-ancestors 'none'"
 
     /// Resolve a request path (`url.path`, already percent-decoded) to an
-    /// absolute file path strictly inside `baseDirectory`. Returns `nil`
-    /// when the path is empty, names the directory itself, or escapes the
-    /// base (`..`, absolute re-root, `~` expansion). The returned path is
-    /// normalized but NOT existence-checked — the caller reads it and 404s
-    /// on miss.
+    /// absolute file path **lexically** inside `baseDirectory`. Returns
+    /// `nil` when the path is empty, names the directory itself, or escapes
+    /// the base via `..`. A leading-`/` "absolute" request and a literal
+    /// `~` are treated as relative to base (so they stay contained — they
+    /// name would-be subdirectories, they don't re-root). The returned path
+    /// is normalized but NOT symlink- or existence-checked.
+    ///
+    /// **This is the lexical layer only.** It cannot see symlinks (it does
+    /// no filesystem I/O, for testability). Callers that actually open the
+    /// file MUST use `containedFilePath` instead, which adds the
+    /// symlink-resolved containment + existence check.
     public static func resolvedPath(requestPath: String, baseDirectory: String) -> String? {
         let base = (baseDirectory as NSString).standardizingPath
         guard !base.isEmpty else { return nil }
@@ -66,6 +72,35 @@ public enum MiniAppAssetResolver {
         // (Equal-to-base means they asked for the directory, not a file.)
         guard normalized.hasPrefix(base + "/") else { return nil }
         return normalized
+    }
+
+    /// Resolve a request to an absolute file path that is provably an
+    /// existing, non-directory file **inside** `baseDirectory` even after
+    /// symlinks are followed — the path the scheme handler may safely read.
+    /// Returns `nil` for any escape, miss, or directory.
+    ///
+    /// This closes the gap `resolvedPath` can't: a symlink planted inside
+    /// the (agent-writable / template-delivered) mini-app dir could point
+    /// at `~/.hermes/auth.json`, pass the lexical check, and be read
+    /// through. Here both the base and the candidate are run through
+    /// `resolvingSymlinksInPath` and re-checked, so a link that escapes the
+    /// real base is refused. Resolving BOTH sides also keeps legitimate
+    /// serves working when the base itself lives under a symlinked prefix
+    /// (e.g. macOS `/tmp` → `/private/tmp`).
+    public static func containedFilePath(requestPath: String, baseDirectory: String) -> String? {
+        guard let lexical = resolvedPath(requestPath: requestPath, baseDirectory: baseDirectory) else {
+            return nil
+        }
+        let baseReal = URL(fileURLWithPath: (baseDirectory as NSString).standardizingPath)
+            .resolvingSymlinksInPath().path
+        let fileReal = URL(fileURLWithPath: lexical).resolvingSymlinksInPath().path
+        guard fileReal == baseReal || fileReal.hasPrefix(baseReal + "/") else { return nil }
+
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: lexical, isDirectory: &isDir), !isDir.boolValue else {
+            return nil
+        }
+        return lexical
     }
 
     /// MIME type for a file path, by extension. Unknown → octet-stream.

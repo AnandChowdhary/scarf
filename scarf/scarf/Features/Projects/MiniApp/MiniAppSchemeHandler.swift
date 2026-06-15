@@ -32,20 +32,20 @@ final class MiniAppSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
-        guard let filePath = MiniAppAssetResolver.resolvedPath(
+        // `containedFilePath` adds the symlink-resolved containment +
+        // existence/non-dir check on top of the lexical resolve, so a
+        // symlink planted inside the mini-app dir can't be read through to
+        // escape the directory.
+        guard let filePath = MiniAppAssetResolver.containedFilePath(
             requestPath: url.path,
             baseDirectory: baseDirectory
         ) else {
-            Self.logger.warning("blocked out-of-bounds mini-app request: \(url.path, privacy: .public)")
+            Self.logger.warning("blocked out-of-bounds / escaping mini-app request: \(url.path, privacy: .public)")
             respond(urlSchemeTask, url: url, status: 404, mime: "text/plain; charset=utf-8", body: Data("Not found".utf8))
             return
         }
 
-        let fm = FileManager.default
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: filePath, isDirectory: &isDir),
-              !isDir.boolValue,
-              let data = fm.contents(atPath: filePath) else {
+        guard let data = FileManager.default.contents(atPath: filePath) else {
             respond(urlSchemeTask, url: url, status: 404, mime: "text/plain; charset=utf-8", body: Data("Not found".utf8))
             return
         }
