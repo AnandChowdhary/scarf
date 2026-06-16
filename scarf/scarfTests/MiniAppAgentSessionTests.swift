@@ -223,6 +223,27 @@ import ScarfCore
         #expect(sink.hasPromptComplete)
     }
 
+    /// Ordering guarantee: a chunk emitted immediately before the turn-end
+    /// reply must still land in the resolved text, even though completion is
+    /// signaled by `sendPrompt`'s return on a different task than the
+    /// chunk-draining event loop. We do NOT wait for the sink here (unlike
+    /// the test above), so completion races the drain — `completeTurn` must
+    /// wait for the buffer to quiesce. Flaky/truncating before the drain fix.
+    @Test func promptResolvesFullReplyWhenCompletionRacesTheChunkDrain() async throws {
+        let fake = FakeACPChannel()
+        let session = makeSession(fake)
+
+        let prompt = Task { try await session.prompt("hi") }
+        try await waitFor { await fake.promptRequestCount >= 1 }
+
+        // Emit the chunk and the turn-end reply back-to-back; no sink wait.
+        await fake.emitMessageChunk(sessionId: FakeACPChannel.defaultSessionId, text: "deterministic")
+        await fake.replyToPrompt()
+
+        let reply = try await withTimeout { try await prompt.value }
+        #expect(reply == "deterministic")
+    }
+
     /// Regression for the non-atomic busy guard (commit 350c3bd). `prompt()`
     /// claims `promptInFlight` BEFORE the `await ensureSession()`
     /// suspension; a second cold-start prompt racing in while the first is

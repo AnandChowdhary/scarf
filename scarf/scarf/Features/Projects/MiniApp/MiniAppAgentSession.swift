@@ -116,7 +116,7 @@ actor MiniAppAgentSession {
             Task {
                 do {
                     let result = try await client.sendPrompt(sessionId: sid, text: text)
-                    await self.handle(.promptComplete(sessionId: sid, response: result))
+                    await self.completeTurn(sessionId: sid, result: result)
                 } catch {
                     await self.failPending(error)
                 }
@@ -171,6 +171,24 @@ actor MiniAppAgentSession {
 
     private func streamEnded() {
         resumePending(.failure(AgentError.connectionLost("agent session ended")))
+    }
+
+    /// Synthesize turn completion AFTER the event loop has folded every
+    /// buffered `messageChunk` into the reply. `sendPrompt`'s return is the
+    /// completion signal, but the chunks are accumulated by a SEPARATE
+    /// event-loop task — so resolving immediately could race ahead of an
+    /// undrained chunk and truncate the reply. ACPClient delivers a turn's
+    /// chunks BEFORE its `session/prompt` response (one ordered read loop),
+    /// so they're all buffered by the time we get here; yielding until the
+    /// reply buffer stops growing drains them deterministically. Terminates:
+    /// no new chunks arrive (the single in-flight prompt's turn has ended).
+    private func completeTurn(sessionId: String, result: ACPPromptResult) async {
+        var lastCount = -1
+        while pendingBuffer.count != lastCount {
+            lastCount = pendingBuffer.count
+            await Task.yield()
+        }
+        handle(.promptComplete(sessionId: sessionId, response: result))
     }
 
     private func handle(_ event: ACPEvent) {
