@@ -55,16 +55,15 @@ public enum MiniAppBridgeMethod: String, CaseIterable, Sendable {
             return .query("kanban.tasks")
         case .query:
             // The concrete `query:<kind>` permission depends on the call's
-            // `kind` argument, so it's enforced in the handler when query
-            // ships. Until then `isImplemented` short-circuits it.
+            // `kind` argument, so it's enforced in the handler.
             return nil
         }
     }
 
-    /// Whether the WebKit layer wires this method in the current build.
-    /// The agent (`prompt`/`events`) and data (`query`/`file`/`kanban`)
-    /// channels land in follow-on increments; until then they are gated +
-    /// reported as `not_implemented` (never silently succeeding).
+    /// Whether the WebKit layer wires this method. All current surfaces are
+    /// implemented; this remains as the guard a future surface must satisfy
+    /// (and the `not_implemented` reply path is the fail-closed default for
+    /// anything added but not yet wired).
     public var isImplemented: Bool {
         switch self {
         case .contextGet, .uiToast, .uiSetTitle, .uiResize, .uiRequestClose,

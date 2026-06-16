@@ -10,10 +10,11 @@ import os
 /// executes the handler and replies. A denied call rejects the JS promise
 /// with `code: message`; nothing reaches a service before the gate.
 ///
-/// This increment wires the safe surfaces: `context`, `store` (sandboxed
-/// KV), and the benign `ui.*` affordances. The agent (`prompt`/`events`)
-/// and data (`query`/`file`/`kanban`) channels are gated and report
-/// `not_implemented` until their follow-on increments.
+/// All surfaces are wired: `context`, `store` (sandboxed KV), `ui.*`, the
+/// agent channel (`prompt` via a dedicated session, `onEvent` streaming),
+/// and the read-only data channel (`file.read`, `query`/`kanban.read` for
+/// `kanban.tasks`). Privacy-sensitive query kinds (sessions/messages/…)
+/// remain fail-closed pending a deliberate decision.
 final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
     private static let logger = Logger(subsystem: "com.scarf", category: "ScarfMiniAppBridge")
 

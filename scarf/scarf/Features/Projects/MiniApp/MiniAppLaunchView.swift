@@ -77,6 +77,10 @@ struct MiniAppLaunchSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var phase: Phase = .loading
     @State private var granted: Set<MiniAppPermission> = []
+    /// Seeds the preview's checkboxes on RE-review (nil = first decision →
+    /// default policy). Without this, re-reviewing reset to defaults and
+    /// silently discarded the user's prior customization on approve.
+    @State private var reviewSeed: Set<MiniAppPermission>? = nil
 
     private enum Phase { case loading, incompatible, review, run }
 
@@ -93,6 +97,7 @@ struct MiniAppLaunchSheet: View {
             case .review:
                 MiniAppPermissionPreview(
                     manifest: manifest,
+                    seed: reviewSeed,
                     onApprove: { approved in
                         save(approved)
                         granted = approved
@@ -106,7 +111,7 @@ struct MiniAppLaunchSheet: View {
                     manifest: manifest,
                     serverContext: serverContext,
                     granted: granted,
-                    onReviewPermissions: { phase = .review },
+                    onReviewPermissions: { reviewSeed = granted; phase = .review },
                     onClose: { dismiss() }
                 )
             }
@@ -144,6 +149,9 @@ struct MiniAppLaunchSheet: View {
 /// exactly the checked set; unknown permissions can never be granted.
 struct MiniAppPermissionPreview: View {
     let manifest: MiniAppManifest
+    /// Existing grant to pre-select when re-reviewing; `nil` on a first
+    /// decision (use the default policy instead of clobbering prior choices).
+    var seed: Set<MiniAppPermission>? = nil
     let onApprove: (Set<MiniAppPermission>) -> Void
     let onCancel: () -> Void
 
@@ -208,7 +216,7 @@ struct MiniAppPermissionPreview: View {
             }
             .padding()
         }
-        .task { checked = defaultChecked() }
+        .task { checked = seed ?? defaultChecked() }
     }
 
     private func permissionRow(_ perm: MiniAppPermission) -> some View {

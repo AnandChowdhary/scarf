@@ -34,6 +34,10 @@ actor MiniAppAgentSession {
     // At most one prompt in flight; the event loop resolves it.
     private var pendingContinuation: CheckedContinuation<String, Error>?
     private var pendingBuffer = ""
+    // Claimed synchronously before the ensureSession() suspension so two
+    // racing cold-start prompts can't both pass the busy guard (actors don't
+    // hold isolation across `await`). Cleared whenever the prompt resolves.
+    private var promptInFlight = false
 
     /// Live event forwarder for `scarf.onEvent`. Set by the bridge when the
     /// mini-app subscribes; receives this session's streamed events.
@@ -68,12 +72,25 @@ actor MiniAppAgentSession {
 
     /// Send `text` to the mini-app's agent and resolve with the full reply.
     func prompt(_ text: String) async throws -> String {
+        // Busy check FIRST (so a rejected prompt doesn't burn a rate-limit
+        // slot) and claim the slot BEFORE the ensureSession() suspension —
+        // otherwise two cold-start prompts both pass the guard and one
+        // continuation leaks (the caller hangs forever).
+        guard !promptInFlight else { throw AgentError.busy }
         let (allowed, history) = rateLimiter.decide(now: Date(), history: promptHistory)
         promptHistory = history
         guard allowed else { throw AgentError.rateLimited }
-        guard pendingContinuation == nil else { throw AgentError.busy }
+        promptInFlight = true
 
-        let (client, sid) = try await ensureSession()
+        let client: ACPClient
+        let sid: String
+        do {
+            (client, sid) = try await ensureSession()
+        } catch {
+            promptInFlight = false  // no continuation registered yet
+            throw error
+        }
+
         return try await withCheckedThrowingContinuation { continuation in
             pendingContinuation = continuation
             pendingBuffer = ""
@@ -94,11 +111,7 @@ actor MiniAppAgentSession {
     func shutdown() async {
         eventLoop?.cancel()
         eventLoop = nil
-        if let continuation = pendingContinuation {
-            continuation.resume(throwing: AgentError.cancelled)
-            pendingContinuation = nil
-            pendingBuffer = ""
-        }
+        resumePending(.failure(AgentError.cancelled))
         if let client {
             await client.stop()
         }
@@ -130,7 +143,17 @@ actor MiniAppAgentSession {
                     await self.handle(event)
                 }
             }
+            // The stream finishes on connection loss / clean shutdown.
+            // ACPClient never yields `.connectionLost`, so this is the only
+            // signal for a prompt still awaiting `.promptComplete` — without
+            // it the JS promise hangs forever and the session stays wedged at
+            // busy. `resumePending` is a no-op when nothing is pending.
+            await self?.streamEnded()
         }
+    }
+
+    private func streamEnded() {
+        resumePending(.failure(AgentError.connectionLost("agent session ended")))
     }
 
     private func handle(_ event: ACPEvent) {
@@ -162,15 +185,13 @@ actor MiniAppAgentSession {
         resumePending(.failure(error))
     }
 
-    /// Resolve the in-flight prompt exactly once (first signal wins).
+    /// Resolve the in-flight prompt exactly once (first signal wins) and
+    /// release the busy slot. Honors the passed result.
     private func resumePending(_ result: Result<String, Error>) {
         guard let continuation = pendingContinuation else { return }
         pendingContinuation = nil
-        let buffer = pendingBuffer
         pendingBuffer = ""
-        switch result {
-        case .success: continuation.resume(returning: buffer)
-        case .failure(let error): continuation.resume(throwing: error)
-        }
+        promptInFlight = false
+        continuation.resume(with: result)
     }
 }

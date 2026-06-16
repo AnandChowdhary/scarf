@@ -12,10 +12,10 @@ import os
 /// - Assets only via the scheme handler scoped to the mini-app dir.
 /// - Navigation locked to `scarf-miniapp://`.
 /// - Bridge calls pass through `MiniAppBridgeDispatcher` (default-deny):
-///   `grantedPermissions` is empty until the permission-preview sheet
-///   ships, so only the ungated baseline surfaces (`context`, `ui.*`) work
-///   out of the box; `store` needs the `store` grant; the agent/data
-///   channels report `not_implemented`.
+///   ungated surfaces (`context`, `ui.*`) always work; everything else
+///   (`store`, `prompt`/`onEvent`, `file.read`, `query`/`kanban.read`)
+///   requires its granted permission. The permission-preview sheet supplies
+///   `grantedPermissions`; empty = nothing beyond the baseline.
 struct MiniAppHostView: NSViewRepresentable {
     let project: ScarfProject
     let manifest: MiniAppManifest
