@@ -49,6 +49,23 @@ public struct MiniAppService: Sendable {
         miniAppDir(forProjectPath: projectPath, id: id) + "/miniapp.json"
     }
 
+    /// A mini-app id must be a single, conservative path component:
+    /// `[A-Za-z0-9._-]`, non-empty, ≤64 chars, no leading dot. Discovery
+    /// already yields bare directory names (no `/` or `..`), so this is
+    /// defense-in-depth that makes the locator's safety self-evident rather
+    /// than relying on transport listing behavior — an unusual id never flows
+    /// into a `scarf-miniapp://` base dir, a store path, or a grant key.
+    public nonisolated static func isValidMiniAppId(_ id: String) -> Bool {
+        guard !id.isEmpty, id.count <= 64, !id.hasPrefix(".") else { return false }
+        for scalar in id.unicodeScalars {
+            let c = Character(scalar)
+            let ok = ("a"..."z").contains(c) || ("A"..."Z").contains(c)
+                || ("0"..."9").contains(c) || c == "-" || c == "_" || c == "."
+            if !ok { return false }
+        }
+        return true
+    }
+
     // MARK: - Load
 
     /// Load + parse `<project>/.scarf/miniapps/<id>/miniapp.json`. Returns
@@ -56,6 +73,7 @@ public struct MiniAppService: Sendable {
     /// manifest's `id` is forced to `id` (the dir name) regardless of what
     /// the file claims — the dir is the locator.
     public nonisolated func loadManifest(projectPath: String, id: String) -> MiniAppManifest? {
+        guard Self.isValidMiniAppId(id) else { return nil }
         let path = Self.manifestPath(forProjectPath: projectPath, id: id)
         let transport = context.makeTransport()
         guard transport.fileExists(path), let data = try? transport.readFile(path) else { return nil }

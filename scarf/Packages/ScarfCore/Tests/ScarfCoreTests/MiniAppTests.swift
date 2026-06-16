@@ -110,6 +110,22 @@ import Foundation
         #expect(refs.first { $0.id == "beta" }?.generated == true)
     }
 
+    @Test func discoverSkipsInvalidIds() throws {
+        let dir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        try Self.writeMiniApp(dir, id: "good", manifest: #"{ "id": "good", "name": "Good" }"#)
+        try Self.writeMiniApp(dir, id: "has space", manifest: #"{ "id": "x", "name": "Spacey" }"#)
+        try Self.writeMiniApp(dir, id: ".hidden", manifest: #"{ "id": "y", "name": "Hidden" }"#)
+
+        #expect(MiniAppService(context: .local).discover(projectPath: dir).map(\.id) == ["good"])
+        #expect(MiniAppService.isValidMiniAppId("good"))
+        #expect(MiniAppService.isValidMiniAppId("a-b_c.1"))
+        #expect(!MiniAppService.isValidMiniAppId("has space"))
+        #expect(!MiniAppService.isValidMiniAppId(".hidden"))
+        #expect(!MiniAppService.isValidMiniAppId(""))
+        #expect(!MiniAppService.isValidMiniAppId("a/b"))
+    }
+
     @Test func discoverEmptyWhenNoMiniAppsDir() throws {
         let dir = try Self.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: dir) }
