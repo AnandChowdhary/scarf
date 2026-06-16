@@ -24,6 +24,10 @@ actor MiniAppAgentSession {
 
     private let context: ServerContext
     private let projectRoot: String
+    /// Builds the per-mini-app `ACPClient`. Injected so tests can supply a
+    /// client wired to an in-memory channel; production defaults to the
+    /// `ProcessACPChannel`-backed `forMacApp` factory.
+    private let clientFactory: @Sendable (ServerContext) -> ACPClient
     private let rateLimiter = MiniAppRateLimiter(maxEvents: 8, windowSeconds: 60)
     private var promptHistory: [Date] = []
 
@@ -43,9 +47,14 @@ actor MiniAppAgentSession {
     /// mini-app subscribes; receives this session's streamed events.
     private var eventSink: (@Sendable (ACPEvent) -> Void)?
 
-    init(context: ServerContext, projectRoot: String) {
+    init(
+        context: ServerContext,
+        projectRoot: String,
+        clientFactory: @escaping @Sendable (ServerContext) -> ACPClient = { ACPClient.forMacApp(context: $0) }
+    ) {
         self.context = context
         self.projectRoot = projectRoot
+        self.clientFactory = clientFactory
     }
 
     enum AgentError: LocalizedError {
@@ -94,12 +103,20 @@ actor MiniAppAgentSession {
         return try await withCheckedThrowingContinuation { continuation in
             pendingContinuation = continuation
             pendingBuffer = ""
-            // Kick off the prompt. Completion arrives via the event loop's
-            // .promptComplete; this task only needs to surface a launch /
-            // timeout / transport failure.
+            // Kick off the prompt. `sendPrompt` returns when the turn ends,
+            // and ITS return is the completion signal: ACPClient's event
+            // stream never carries `.promptComplete` (only `ChatViewModel`
+            // synthesizes one for the chat path), so we synthesize one here
+            // and route it through `handle()` — that forwards the `onEvent`
+            // "complete" AND resolves this continuation with the accumulated
+            // reply buffer. By the time the turn-end response arrives, the
+            // streamed messageChunk notifications that precede it on the wire
+            // have already landed in the buffer. A launch / timeout /
+            // transport failure surfaces via the catch.
             Task {
                 do {
-                    _ = try await client.sendPrompt(sessionId: sid, text: text)
+                    let result = try await client.sendPrompt(sessionId: sid, text: text)
+                    await self.handle(.promptComplete(sessionId: sid, response: result))
                 } catch {
                     await self.failPending(error)
                 }
@@ -123,7 +140,7 @@ actor MiniAppAgentSession {
 
     private func ensureSession() async throws -> (ACPClient, String) {
         if let client, let sessionId { return (client, sessionId) }
-        let newClient = ACPClient.forMacApp(context: context)
+        let newClient = clientFactory(context)
         try await newClient.start()
         let sid = try await newClient.newSession(cwd: projectRoot)
         client = newClient
