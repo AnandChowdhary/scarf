@@ -330,6 +330,18 @@ final class TestRegistryLock: @unchecked Sendable {
         #expect(lock.projectFiles.contains(plan.projectDir + "/AGENTS.md"))
         #expect(lock.cronJobNames.isEmpty)
         #expect(lock.memoryBlockId == nil)
+
+        // Installer parity (M2 review): mints a stable UUID + writes the
+        // canonical project.json AFTER the lock, so the record captures
+        // templateLockRef.
+        #expect(entry.uuid != nil)
+        let recordPath = plan.projectDir + "/.scarf/project.json"
+        #expect(FileManager.default.fileExists(atPath: recordPath))
+        let record = try JSONDecoder().decode(
+            ScarfProject.self, from: Data(contentsOf: URL(fileURLWithPath: recordPath))
+        )
+        #expect(record.id == entry.uuid)
+        #expect(record.templateLockRef == plan.projectDir + "/.scarf/template.lock.json")
     }
 
     @Test func preflightRejectsExistingProjectDir() throws {

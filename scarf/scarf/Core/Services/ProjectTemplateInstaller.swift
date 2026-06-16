@@ -30,6 +30,19 @@ struct ProjectTemplateInstaller: Sendable {
         let entry = try registerProject(plan: plan)
         try writeLockFile(plan: plan, cronJobNames: cronJobNames)
 
+        // Write the canonical .scarf/project.json now that all facets exist
+        // on disk (manifest, config, cron, and — just above — the lock file),
+        // so derive() captures templateLockRef + memoryNamespace too. Reuses
+        // the registry entry's minted UUID as the stable id. Non-fatal: a
+        // missing record is re-derived by lazy migration; the registry row
+        // already drives sidebar visibility.
+        do {
+            let store = ProjectStore(context: context)
+            try store.save(store.derive(from: entry))
+        } catch {
+            Self.logger.warning("install couldn't write project.json for \(plan.projectRegistryName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+
         // Mirror resolved Keychain secrets into ~/.hermes/.env so the
         // template's cron jobs (and any other agent process Hermes
         // spawns) can use them via $SCARF_<SLUG>_<FIELD>. Hermes
@@ -268,7 +281,14 @@ struct ProjectTemplateInstaller: Sendable {
     nonisolated private func registerProject(plan: TemplateInstallPlan) throws -> ProjectEntry {
         let service = ProjectDashboardService(context: context)
         var registry = service.loadRegistry()
-        let entry = ProjectEntry(name: plan.projectRegistryName, path: plan.projectDir)
+        // Mint the stable UUID at install time (parity with the scaffolder).
+        // Without it the project stays pre-Phase-1 until lazy migration runs,
+        // and `derive()` mints a FRESH uuid on each call until it persists —
+        // so anything keying on `project.id` in the meantime (mini-app
+        // grants, `[proj:<id>]` cron tags, fleet/portfolio) could observe an
+        // unstable id. The canonical `project.json` is written after the lock
+        // file lands (see install()).
+        let entry = ProjectEntry(name: plan.projectRegistryName, path: plan.projectDir, uuid: UUID())
         registry.projects.append(entry)
         // Must throw on failure — silent failure here used to make the
         // installer return a valid entry while the registry on disk
