@@ -14,20 +14,26 @@ stays consistent and nothing is lost. Keep `AGENTS.md` and the per-agent shims (
 `GEMINI.md` / `.github/copilot-instructions.md` / `.cursor/rules/memophant.mdc`) **minimal**:
 they point at the memory system, they don't BE the memory system.
 
-**Memory engine — get to know these tools before you start.** Memophant ships an in-repo
-native MCP server (`memophant-mcp`) that owns the memory backend end-to-end. When the server
-is loaded by your agent, the tools below show up directly. **Before you begin a task, take
-stock of the `memophant` MCP tools available in this session and read their descriptions so
-you know what each does** — they're how you read and write every tier here, so reach for them
-first rather than ad-hoc file reads, greps, or hand-edits. The basic-memory CLI was retired
-from production on 2026-06-06; if the MCP tools aren't present in this session, fall back to
-grep over `.memory/` and `wiki/` until the server is restored, rather than reaching
-for `basic-memory`.
+**Memory engine — use these tools for everything you can, and get to know them before you
+start.** Memophant ships an in-repo native MCP server (`memophant-mcp`) that owns the memory
+backend end-to-end. When the server is loaded by your agent, the tools below show up directly.
+**Before you begin a task, take stock of the `memophant` MCP tools available in this session
+and read their descriptions so you know what each does.** They are the PRIMARY interface to
+every tier in this repo — memory, wiki, design, code, vendors, templates: **default to them
+for any read or write you can express as a tool call** (search, read, write, edit, move,
+context-build), and treat ad-hoc file reads, `grep`, and hand-edits as a LAST RESORT — only
+when no tool covers the need or the server is down. Hand-editing a managed-tier file when a
+tool exists is a mistake: you bypass slug generation, automatic reindexing, and the
+write-time secret/dedup guards, and your change can be silently overwritten on the next
+regen. The basic-memory CLI was retired from production on 2026-06-06; if the MCP tools aren't
+present in this session, fall back to grep over `.memory/` and `wiki/` until the
+server is restored, rather than reaching for `basic-memory`.
 
 - Native MCP tools (preferred): `search_memories`, `read_memory`, `view_memory`, `write_memory`,
   `edit_memory`, `move_memory`, `delete_memory`, `list_directory`, `list_memory_projects`,
-  `recent_activity`, `build_context`. All accept a `project` argument (default
-  scarf).
+  `recent_activity`, `build_context` (all accept a `project` argument, default
+  scarf) — plus `search_code` (structural symbol search over THIS repo's code index;
+  repo-scoped, no `project` arg).
 - Fallback (only if the MCP tools above are not present in this session): grep `.memory/` and
   `wiki/` directly — `grep -rn "<query>" .memory/ wiki/`.
 
@@ -76,10 +82,12 @@ OUT of this auto-loaded file to save context — search it on demand.
 gives every session a queryable map of THIS repo's source. Two halves: curated `code/` markdown
 overviews (module purpose, key types, public surface) for orientation, and an indexed SQLite map
 of symbols/imports under `.memophant/code/` (gitignored) for sub-second structural queries.
-**Prefer `memophant code <verb>` over `grep` for any structural question** — it's deterministic,
-cheap, and saves context. Fall back to `grep` only when the index is stale (see `status`), the
-language isn't yet supported (Phase 1 indexes Swift only), or you need a verb that's still Phase 2
-(refs / callers / callees).
+**Prefer the code index over `grep` for any structural question** — it's deterministic, cheap,
+and saves context. The fastest "where is `<symbol>`?" is the **`search_code` MCP tool** (it's in
+your tool list → file:line · kind · name, FTS5/BM25-ranked); the `memophant code <verb>` CLI
+covers the rest (outline / imports / status / Phase-2 refs). Fall back to `grep` only when the
+index is stale (see `status`), the language isn't yet supported (Phase 1 indexes Swift only), or
+`search_code` reports the index is missing.
 - **Invocation:** Memophant installs a project-local shim at `./.memophant/code/memophant`. Use
   `memophant code <verb>` if it's on your PATH, otherwise `./.memophant/code/memophant code <verb>`
   from the repo root. (One-time PATH install: `ln -s "$(pwd)/.memophant/code/memophant" ~/.local/bin/memophant`.)
@@ -87,7 +95,8 @@ language isn't yet supported (Phase 1 indexes Swift only), or you need a verb th
 - Find references: `memophant code refs <SymbolName>` → every call/use site.
 - File outline: `memophant code outline <path>` → the symbol tree inside a file.
 - Imports: `memophant code imports <path>` → what a file imports + what imports a file.
-- Semantic / curated search: `memophant code search "<intent>"` → FTS over symbols + curated notes.
+- Symbol search: `search_code(query: "<symbol or fragment>")` MCP tool (preferred), or the
+  `memophant code search "<intent>"` CLI fallback → FTS over symbols.
 - Index health: `memophant code status` → `clean | n files stale | rebuilding`, plus HEAD drift.
 - Curated overviews: `search_memories(query: "<text>", project: "scarf-code")` via MCP, or
   `grep -rn "<query>" code/`. Authored as markdown like wiki/design pages — module purposes,
@@ -131,10 +140,12 @@ type, login_url, signup_url, username, keychain_ref, account_email, monthly_cost
 and a free-form `## Notes` body. Tracks the services this project depends on — payments,
 hosting, email, dns, monitoring, analytics, anything billed or credentialed.
 - **Credentials live in the iCloud-synced Keychain via the Memophant app, NEVER in the
-  vendor file.** The frontmatter's `keychain_ref` field is the NAME of the Keychain item
-  (the vendor slug), not the secret. The writer HARD-blocks any save whose serialized form
-  contains anything that looks like an API key, JWT, or long-base64 secret — no soft
-  warning, no override.
+  vendor file.** The credential itself is a SEPARATE password field that only ever goes to
+  the Keychain; the frontmatter's `keychain_ref` field is the NAME of the Keychain item
+  (the vendor slug), not the secret. On save, the writer scans the serialized record and
+  blocks it if anything looks like an API key, JWT, or token — but the block is overridable
+  PER HIT: when a match is an EXAMPLE key in your setup notes (a false positive — the real
+  secret lives in the Keychain, never the file), verify each hit and "Save anyway".
 - **Need the actual credential? Call `get_vendor_credential(vendor: "<slug>", project:
   "scarf", reason: "<one-line why>")`** instead of asking the user to paste it.
   Memophant pops an in-app consent modal and, on approval, returns the secret in the tool
@@ -142,12 +153,16 @@ hosting, email, dns, monitoring, analytics, anything billed or credentialed.
   immediately. Treat it as ONE-SHOT: write it to a `mktemp` file and reference the path in
   later commands — don't echo, log, or persist it. Requires the Memophant app to be running
   (headless/cron sessions time out — use a runtime secret store for those).
-- **Created a credential yourself** (minted an API key, got a token from CLI output)? Call
-  `set_vendor_credential(vendor: "<slug>", credential: "<secret>", project:
-  "scarf", reason: "<why>")` to stash it in the Keychain instead of leaving it in
-  chat. Memophant asks for approval, creates the vendors/<slug>.md record if it's missing,
-  and stores the secret (Keychain only — never the file). Fetch it back later with
-  `get_vendor_credential`.
+- **Encountered OR created a credential? Store it as a vendor — don't leave it loose.** Any
+  time you read a real secret for a service this project uses (from a `.env`/config file, an
+  env var, CLI output, or a user paste) OR mint one yourself (a new API key, a token from CLI
+  output), stash it with `set_vendor_credential(vendor: "<slug>", credential: "<secret>",
+  project: "scarf", reason: "<why>")` rather than leaving it in chat, a scratch
+  file, or only in the shell. Memophant asks for approval, creates the `vendors/<slug>.md`
+  record if it's missing, and stores the secret in the Keychain (never the file). Fetch it
+  back later with `get_vendor_credential`. (Don't relocate a secret the project deliberately
+  keeps in a gitignored `.env` it already loads — the point is to capture credentials that
+  would otherwise be lost to the chat transcript or scattered across the shell.)
 - Search via `search_memories(query: "<text>", project: "scarf-vendors")` — the
   tier registers its own engine index, so hybrid search ("which vendor handles
   email?") returns the right hit even when the term lives in notes, not the typed
@@ -193,8 +208,10 @@ its own codebase.
   PLACEHOLDER guidance (`{{ PADDLE_API_TOKEN }}`, `<your-key-here>`) in its
   Variables section. Reference files are verbatim source — they SHOULD NOT
   contain real credentials because the original source didn't either (credentials
-  live in Vendors/Keychain). Concrete-looking credentials are HARD-blocked by the
-  writer in BOTH manifest and reference paths. When a template needs a credential,
+  live in Vendors/Keychain). On save, the writer secret-scans the manifest and blocks
+  a key/JWT/token match — overridable PER HIT for placeholder/example values (verify
+  each hit and "Save anyway"). Reference files stay a HARD block with no override. When
+  a template needs a credential,
   it points at a Vendor record via `vendor_refs:` in the manifest frontmatter —
   the Vendor owns the Keychain item; the template just references it.
 - **Creating a template** from an existing project: in the Memophant app, click
