@@ -45,6 +45,9 @@ final class ProjectCockpitViewModel {
     var templateVersion: String?
     /// Discovered mini-apps for the Mini-apps panel.
     var miniApps: [MiniAppManifest] = []
+    /// Whether the project still needs the deterministic upgrade pass —
+    /// drives the cockpit's "Upgrade available" banner.
+    var needsUpgrade = false
     var isLoading = false
 
     @ObservationIgnored private var hasLoaded = false
@@ -113,6 +116,7 @@ final class ProjectCockpitViewModel {
             // cockpit panel (the cockpit is the single project pane). `nil`
             // when the project ships no dashboard — the panel is hidden.
             let dashboard = ProjectDashboardService(context: context).loadDashboard(for: project)
+            let needsUpgrade = ProjectUpgradeService(context: context).needsUpgrade(project)
 
             return Loaded(
                 project: sp,
@@ -122,7 +126,8 @@ final class ProjectCockpitViewModel {
                 templateID: tmpl?.id,
                 templateVersion: tmpl?.version,
                 miniApps: miniApps,
-                dashboard: dashboard
+                dashboard: dashboard,
+                needsUpgrade: needsUpgrade
             )
         }.value
 
@@ -134,6 +139,7 @@ final class ProjectCockpitViewModel {
         templateVersion = result.templateVersion
         miniApps = result.miniApps
         dashboard = result.dashboard
+        needsUpgrade = result.needsUpgrade
         isLoading = false
 
         // Resolve the bound preset's display name (actor hop), if any.
@@ -184,5 +190,6 @@ final class ProjectCockpitViewModel {
         let templateVersion: String?
         let miniApps: [MiniAppManifest]
         let dashboard: ProjectDashboard?
+        let needsUpgrade: Bool
     }
 }

@@ -1,7 +1,7 @@
 ---
 name: scarf-template-author
-description: Scaffold a new Scarf project — dashboard, optional configuration schema, optional cron job, and AGENTS.md — from a short conversational interview with the user. Output is immediately usable locally and cleanly exportable as a .scarftemplate bundle.
-version: 1.2.0
+description: Scaffold a new Scarf project OR enrich an existing one after a Scarf "Upgrade Project" — dashboard, optional configuration schema, optional cron job, AGENTS.md, and (via the scarf-miniapp-author skill) a starter mini-app — from a short conversational interview. Output is immediately usable locally and cleanly exportable as a .scarftemplate bundle.
+version: 1.3.0
 author: Alan Wizemann
 license: MIT
 platforms: [macos]
@@ -26,10 +26,23 @@ Activate when the user says things like:
 - *"Set up a project that runs a daily check on …"*
 - *"Help me author a Scarf template."*
 - *"Build me a Scarf project to monitor …"*
+- *"Upgrade this project to use Scarf's full feature set."* (the **upgrade/enrichment** path — see below)
 
 Do **not** activate for pure reference questions like *"what widget types does Scarf support?"* or *"how does Scarf handle secrets?"* — answer those inline from the reference sections below.
 
-Also do not activate when the user explicitly wants to edit an existing project's dashboard — that's a plain file edit, not a scaffold.
+Also do not activate for a one-off "tweak this one widget" edit — that's a plain file edit, not a scaffold.
+
+## Upgrading / enriching an EXISTING project
+
+Scarf hands off here right after a one-click **"Upgrade Project"** runs its deterministic structure pass on an existing project. By the time you're invoked, Scarf has already ensured: the stable id (`.scarf/project.json`), the AGENTS.md managed block, a Kanban tenant (if the host has Kanban), and a **placeholder** `.scarf/dashboard.json`. Your job is to **enrich it in place** — do NOT re-scaffold and do NOT clobber the user's files:
+
+1. **Read what's already there first** — README, the project's source, existing `.scarf/` files, the placeholder dashboard — so the enrichment fits THIS project.
+2. **Replace the placeholder dashboard** (the single "Configure this project" text widget) with a real `dashboard.json` tailored to the project, using the widget catalog below. If the dashboard already has real widgets, read-merge — never delete the user's widgets.
+3. Add **slash commands** (`.scarf/slash-commands/<name>.md`) and, where a recurring job fits, **cron jobs** (`hermes cron create`, created paused) — see the Cron section.
+4. **Build a starter mini-app or two** — invoke the **`scarf-miniapp-author`** skill for the bridge contract + `.scarf/miniapps/<id>/` format. A task board, an approval queue, or a status panel makes the upgrade tangible. Prefer non-sensitive bridge permissions so it runs immediately.
+5. **BOUNDED:** the structure pass already wrote the safe scaffolding (managed AGENTS.md block, identity, tenant). Only ADD or REPLACE-THE-PLACEHOLDER; never write outside managed markers or overwrite user content.
+
+Everything below (widget catalog, config schema, cron, file-writing rules) applies to both new scaffolds and upgrades.
 
 ## How a Scarf project is shaped on disk
 

@@ -8,8 +8,9 @@ struct CockpitMiniAppsPanel: View {
     let project: ScarfProject?
     let manifests: [MiniAppManifest]
     let serverContext: ServerContext
-
-    @State private var launching: MiniAppManifest?
+    /// Open a mini-app — routes up to the cockpit, which presents it in the
+    /// slide-in inspector (via `AppCoordinator.presentedMiniApp`).
+    let onOpen: (MiniAppManifest) -> Void
 
     var body: some View {
         Group {
@@ -28,11 +29,6 @@ struct CockpitMiniAppsPanel: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .sheet(item: $launching) { manifest in
-            if let project {
-                MiniAppLaunchSheet(project: project, manifest: manifest, serverContext: serverContext)
-            }
-        }
     }
 
     private func row(_ manifest: MiniAppManifest, project: ScarfProject) -> some View {
@@ -52,7 +48,7 @@ struct CockpitMiniAppsPanel: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Open") { launching = manifest }
+            Button("Open") { onOpen(manifest) }
                 .buttonStyle(ScarfSecondaryButton())
         }
         .padding(.vertical, 2)
@@ -67,14 +63,17 @@ struct CockpitMiniAppsPanel: View {
 
 // MARK: - Launch flow (permission gate → runner)
 
-/// Drives one mini-app launch: shows the permission preview when there's no
-/// prior decision, then hosts the sandboxed mini-app with the granted set.
-struct MiniAppLaunchSheet: View {
+/// Hosts one mini-app launch in the cockpit's slide-in inspector: shows the
+/// permission preview when there's no prior decision, then the sandboxed
+/// runner. The inspector isn't a sheet, so closing routes through the
+/// injected `onClose` (clears `AppCoordinator.presentedMiniApp`) rather than
+/// `@Environment(\.dismiss)`.
+struct MiniAppLaunchHost: View {
     let project: ScarfProject
     let manifest: MiniAppManifest
     let serverContext: ServerContext
+    let onClose: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @State private var phase: Phase = .loading
     @State private var granted: Set<MiniAppPermission> = []
     /// Seeds the preview's checkboxes on RE-review (nil = first decision →
@@ -90,10 +89,17 @@ struct MiniAppLaunchSheet: View {
             case .loading:
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             case .incompatible:
-                CockpitEmptyState(
-                    icon: "exclamationmark.triangle",
-                    text: "“\(manifest.name)” needs a newer mini-app bridge (requires \(manifest.minBridgeVersion); this Scarf provides \(miniAppBridgeVersion)). Update Scarf to run it."
-                )
+                // The runner + review phases carry their own close; the
+                // incompatible empty state needs one so the inspector is
+                // always dismissable.
+                VStack(spacing: 16) {
+                    CockpitEmptyState(
+                        icon: "exclamationmark.triangle",
+                        text: "“\(manifest.name)” needs a newer mini-app bridge (requires \(manifest.minBridgeVersion); this Scarf provides \(miniAppBridgeVersion)). Update Scarf to run it."
+                    )
+                    Button("Close") { onClose() }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .review:
                 MiniAppPermissionPreview(
                     manifest: manifest,
@@ -103,7 +109,7 @@ struct MiniAppLaunchSheet: View {
                         granted = approved
                         phase = .run
                     },
-                    onCancel: { dismiss() }
+                    onCancel: { onClose() }
                 )
             case .run:
                 MiniAppRunner(
@@ -112,11 +118,11 @@ struct MiniAppLaunchSheet: View {
                     serverContext: serverContext,
                     granted: granted,
                     onReviewPermissions: { reviewSeed = granted; phase = .review },
-                    onClose: { dismiss() }
+                    onClose: { onClose() }
                 )
             }
         }
-        .frame(minWidth: 560, minHeight: 520)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: manifest.id) {
             // Version gate first: refuse a mini-app built against a newer
             // bridge contract rather than silently half-running it.

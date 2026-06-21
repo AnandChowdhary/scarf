@@ -364,6 +364,10 @@ struct ProjectsView: View {
             canConfigureProject: { isConfigurable($0) },
             isTemplateInstalled: { uninstaller.isTemplateInstalled(project: $0) },
             onConfigure: { configEditorProject = $0 },
+            onUpgrade: { project in
+                let hasKanban = capabilitiesStore?.capabilities.hasKanban ?? false
+                Task { await coordinator.upgradeProject(project, context: serverContext, hasKanban: hasKanban) }
+            },
             onUninstallTemplate: { project in
                 uninstallerViewModel.begin(project: project)
                 showingUninstallSheet = true

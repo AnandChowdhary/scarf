@@ -26,6 +26,7 @@ struct ProjectsSidebar: View {
     // (install, uninstall, rename, move-to-folder, remove-from-list
     // confirmation dialog) — this view just routes user intent.
     let onConfigure: (ProjectEntry) -> Void
+    let onUpgrade: (ProjectEntry) -> Void
     let onUninstallTemplate: (ProjectEntry) -> Void
     let onRemoveFromList: (ProjectEntry) -> Void
     let onRename: (ProjectEntry) -> Void
@@ -174,6 +175,11 @@ struct ProjectsSidebar: View {
 
     @ViewBuilder
     private func projectContextMenu(_ project: ProjectEntry) -> some View {
+        Button("Upgrade Project…", systemImage: "sparkles") {
+            onUpgrade(project)
+        }
+        .accessibilityIdentifier("projects.contextMenu.upgrade")
+        Divider()
         if canConfigureProject(project) {
             Button("Configuration…", systemImage: "slider.horizontal.3") {
                 onConfigure(project)

@@ -1,4 +1,5 @@
 import Foundation
+import ScarfCore
 
 enum SidebarSection: String, CaseIterable, Identifiable {
     // Monitor
@@ -145,6 +146,90 @@ final class AppCoordinator {
     /// "All project tasks" toggle). Cleared after consumption so a sidebar
     /// return to the same Kanban surface doesn't re-apply a stale scope.
     var pendingKanbanHandoff: KanbanHandoff?
+
+    // MARK: - Project upgrade (one-click → chat enrichment)
+
+    /// Run the deterministic "Upgrade Project" structure pass on an existing
+    /// project, then hand off to chat where the agent enriches it (a real
+    /// dashboard, slash commands, cron, a starter mini-app) via the
+    /// scarf-template-author + scarf-miniapp-author skills. Mirrors the New
+    /// Project wizard's scaffold → chat hand-off. The structure pass + skill
+    /// bootstrap run off-main; a hard failure there aborts the hand-off (the
+    /// service logs it). Idempotent — safe to invoke on an already-upgraded
+    /// project (re-enriches).
+    /// Project paths with an upgrade in flight — guards against a
+    /// double-tap (banner + context menu) kicking off two structure passes
+    /// and two chat hand-offs for the same project. Observable so the
+    /// banner can disable its button while running.
+    private(set) var upgradingProjectPaths: Set<String> = []
+
+    /// Whether an upgrade is currently running for `path`.
+    func isUpgrading(_ path: String) -> Bool { upgradingProjectPaths.contains(path) }
+
+    @MainActor
+    func upgradeProject(_ project: ProjectEntry, context: ServerContext, hasKanban: Bool) async {
+        guard !upgradingProjectPaths.contains(project.path) else { return }
+        upgradingProjectPaths.insert(project.path)
+        defer { upgradingProjectPaths.remove(project.path) }
+
+        let outcome = await Task.detached(priority: .userInitiated) { () -> ProjectUpgradeService.Outcome? in
+            // Ensure the agent will recognize the authoring skills on its
+            // next session/new (no-op when already installed + current).
+            try? SkillBootstrapService(context: context).ensureBundledSkillsInstalled()
+            return try? ProjectUpgradeService(context: context).upgrade(project, hasKanban: hasKanban)
+        }.value
+        // A nil outcome means the foundational identity write failed (rare:
+        // read-only dir, full disk, dead transport). We don't hand off; the
+        // cockpit banner stays (provenance wasn't stamped → needsUpgrade
+        // remains true), so the user can retry. The service logged the cause.
+        guard let outcome else { return }
+
+        pendingProjectChat = project.path
+        pendingInitialPrompt = Self.upgradeEnrichmentPrompt(project: project, board: outcome.board)
+        selectedSection = .chat
+    }
+
+    /// Structured kickoff prompt that drops the agent straight into the
+    /// `scarf-template-author` skill in ENRICH mode — same `SKILL:`
+    /// invocation convention as the New Project prompt so the agent treats
+    /// it as the next action, not a suggestion.
+    nonisolated static func upgradeEnrichmentPrompt(project: ProjectEntry, board: String?) -> String {
+        let boardLine = board.map { "It now has the Kanban board `\($0)`. " } ?? ""
+        return """
+        SKILL: scarf-template-author
+        PROJECT_PATH: \(project.path)
+        PROJECT_NAME: \(project.name)
+
+        This is an EXISTING Scarf project that Scarf just upgraded to the first-class structure — stable id, a managed AGENTS.md block, and a placeholder dashboard. \(boardLine)Run the scarf-template-author skill in ENRICH mode (do NOT re-scaffold, do NOT clobber my files):
+
+        1. Read the project first (README, source, existing .scarf/ files, the placeholder dashboard) to understand what it is.
+        2. Replace the placeholder dashboard.json with a real dashboard tailored to this project (widget catalog in the skill). Keep any real widgets I already had.
+        3. Add useful slash commands and any helpful cron jobs (created paused).
+        4. Build a starter mini-app or two — use the scarf-miniapp-author skill for the bridge contract and the .scarf/miniapps/<id>/ format. Prefer non-sensitive permissions so it runs immediately.
+
+        Enrich in place; only add or replace the placeholder. Start now.
+
+        SKILL: scarf-template-author
+        """
+    }
+
+    // MARK: - Mini-app presentation
+
+    /// The mini-app currently shown in the cockpit's slide-in **inspector**
+    /// (window-level, so it spans the app chrome). Set by the cockpit
+    /// Mini-apps panel's "Open" button; `ContentView` binds `.inspector` to
+    /// it. **One at a time** — each open mini-app spins up its own dedicated
+    /// `hermes acp` process, so single-presentation avoids process
+    /// proliferation. ("Open in a separate window" for multiples is a future
+    /// additive affordance.)
+    var presentedMiniApp: PresentedMiniApp?
+
+    /// A mini-app + the project it belongs to, for the inspector host.
+    struct PresentedMiniApp: Identifiable {
+        let project: ScarfProject
+        let manifest: MiniAppManifest
+        var id: String { project.id.uuidString + ":" + manifest.id }
+    }
 
     // MARK: - Feature view-model cache (t-aud24)
 

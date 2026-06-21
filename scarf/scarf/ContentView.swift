@@ -44,6 +44,25 @@ struct ContentView: View {
                 }
                 .onDisappear { connectionStatus.stopMonitoring() }
         }
+        // Mini-apps present in a trailing OVERLAY, not SwiftUI `.inspector`:
+        // an inspector is a layout column that grows the window under
+        // `.windowResizability(.contentMinSize)` (it "slid wider"). The
+        // overlay keeps the window's size and covers the right ~74% of the
+        // chrome; the left stays interactive. See MiniAppInspectorSurface.
+        .overlay {
+            if let presented = coordinator.presentedMiniApp {
+                MiniAppInspectorSurface {
+                    MiniAppLaunchHost(
+                        project: presented.project,
+                        manifest: presented.manifest,
+                        serverContext: serverContext,
+                        onClose: { coordinator.presentedMiniApp = nil }
+                    )
+                }
+                .transition(.move(edge: .trailing))
+            }
+        }
+        .animation(.easeInOut(duration: 0.22), value: coordinator.presentedMiniApp?.id)
     }
 
     @ViewBuilder

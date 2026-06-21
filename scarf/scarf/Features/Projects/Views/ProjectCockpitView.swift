@@ -25,6 +25,7 @@ struct ProjectCockpitView: View {
     @Environment(\.hermesCapabilities) private var capabilitiesStore
     @Environment(HermesFileWatcher.self) private var fileWatcher
     @Environment(ServerRegistry.self) private var serverRegistry
+    @Environment(AppCoordinator.self) private var coordinator
 
     @State private var viewModel: ProjectCockpitViewModel?
     @State private var selectedPanel: CockpitPanel = .sessions
@@ -35,6 +36,11 @@ struct ProjectCockpitView: View {
                 .padding(.horizontal)
                 .padding(.top)
                 .padding(.bottom, 10)
+            if viewModel?.needsUpgrade == true {
+                upgradeBanner
+                    .padding(.horizontal)
+                    .padding(.bottom, 10)
+            }
             Divider()
             panelBar
                 .padding(.horizontal)
@@ -154,6 +160,39 @@ struct ProjectCockpitView: View {
         return String(serverId.prefix(8))
     }
 
+    // MARK: - Upgrade banner
+
+    /// Shown on a project that hasn't had the first-class upgrade pass.
+    /// One click runs the deterministic structure pass, then hands off to
+    /// chat where the agent enriches the project (dashboard, slash, cron,
+    /// a starter mini-app).
+    private var upgradeBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(ScarfColor.accentActive)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Upgrade this project")
+                    .font(.callout.weight(.medium))
+                Text("Get a tailored dashboard, a board, and a starter mini-app — built for this project in chat.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button(coordinator.isUpgrading(project.path) ? "Upgrading…" : "Upgrade") {
+                let hasKanban = capabilitiesStore?.capabilities.hasKanban ?? false
+                Task { await coordinator.upgradeProject(project, context: serverContext, hasKanban: hasKanban) }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(coordinator.isUpgrading(project.path))
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ScarfColor.accentTint)
+        .clipShape(RoundedRectangle(cornerRadius: ScarfRadius.md))
+    }
+
     // MARK: - Panel bar
 
     /// First webview widget across the dashboard's sections, if any — the
@@ -253,7 +292,12 @@ struct ProjectCockpitView: View {
             CockpitMiniAppsPanel(
                 project: viewModel?.scarfProject,
                 manifests: viewModel?.miniApps ?? [],
-                serverContext: serverContext
+                serverContext: serverContext,
+                onOpen: { manifest in
+                    if let scarfProject = viewModel?.scarfProject {
+                        coordinator.presentedMiniApp = .init(project: scarfProject, manifest: manifest)
+                    }
+                }
             )
         case .fleet:
             CockpitFleetPanel(
