@@ -11,8 +11,8 @@ import ScarfCore
 /// that contract.
 ///
 /// No disk or Hermes dependency — we work entirely with in-memory
-/// `Data`, so the `TestRegistryLock` from `ProjectTemplateTests` isn't
-/// needed. Safe to run in parallel with every other test suite.
+/// `Data`, so there's nothing to isolate. Safe to run in parallel with
+/// every other test suite.
 @Suite struct ProjectRegistryMigrationTests {
 
     @Test func decodesV22RegistryWithoutNewFields() throws {

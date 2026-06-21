@@ -5,20 +5,20 @@ import ScarfCore
 
 /// Exercises the catalog browser's view model. Most coverage is on
 /// the filtering / sorting / install-state classification logic — the
-/// load lifecycle is exercised by `CatalogServiceTests`. Serialized
-/// because the underlying `loadCatalog` walks `SCARF_HERMES_HOME`
-/// state.
+/// load lifecycle is exercised by `CatalogServiceTests`.
+///
+/// These tests seed the VM directly via `_seedForTesting` and never load
+/// from disk, so each needs only an isolated `ServerContext.local(home:)`
+/// to sandbox the VM's construction-time path resolution away from the
+/// real `~/.hermes`. No global `SCARF_HERMES_HOME` env, no cross-suite
+/// lock, no shared mutable state — so the suite runs in parallel safely.
 @MainActor
-@Suite(.serialized)
 struct CatalogViewModelTests {
 
-    private static let envKey = "SCARF_HERMES_HOME"
-
     @Test func displayedEntriesAppliesSearchFilter() async throws {
-        let fixture = try makeTmpHome()
-        defer { teardown(fixture) }
+        let (vm, home) = try makeViewModel()
+        defer { home.cleanup() }
 
-        let vm = CatalogViewModel()
         vm._seedForTesting(entries: Self.fixtureEntries)
         vm.searchText = "digest"
 
@@ -28,10 +28,9 @@ struct CatalogViewModelTests {
     }
 
     @Test func displayedEntriesAppliesCategoryFilter() async throws {
-        let fixture = try makeTmpHome()
-        defer { teardown(fixture) }
+        let (vm, home) = try makeViewModel()
+        defer { home.cleanup() }
 
-        let vm = CatalogViewModel()
         vm._seedForTesting(entries: Self.fixtureEntries)
         vm.selectedCategory = "monitoring"
 
@@ -41,10 +40,9 @@ struct CatalogViewModelTests {
     }
 
     @Test func sortPutsOfficialAwizemannFirst() async throws {
-        let fixture = try makeTmpHome()
-        defer { teardown(fixture) }
+        let (vm, home) = try makeViewModel()
+        defer { home.cleanup() }
 
-        let vm = CatalogViewModel()
         // `community/zzzz` is alphabetically first by name; awizemann
         // entries should still rank above it because of the official
         // prefix.
@@ -62,10 +60,9 @@ struct CatalogViewModelTests {
     }
 
     @Test func availableCategoriesDeduplicatesAndSorts() async throws {
-        let fixture = try makeTmpHome()
-        defer { teardown(fixture) }
+        let (vm, home) = try makeViewModel()
+        defer { home.cleanup() }
 
-        let vm = CatalogViewModel()
         vm._seedForTesting(entries: [
             Self.makeEntry(id: "x/a", name: "A", category: "news"),
             Self.makeEntry(id: "x/b", name: "B", category: "monitoring"),
@@ -77,10 +74,9 @@ struct CatalogViewModelTests {
     }
 
     @Test func installStateReportsNotInstalledForUnknown() async throws {
-        let fixture = try makeTmpHome()
-        defer { teardown(fixture) }
+        let (vm, home) = try makeViewModel()
+        defer { home.cleanup() }
 
-        let vm = CatalogViewModel()
         vm._seedForTesting(entries: Self.fixtureEntries)
         // installedIndex stays empty.
         let state = vm.installState(for: Self.fixtureEntries[0])
@@ -88,43 +84,26 @@ struct CatalogViewModelTests {
     }
 
     @Test func installURLPassesThroughHTTPS() async throws {
-        let fixture = try makeTmpHome()
-        defer { teardown(fixture) }
+        let (vm, home) = try makeViewModel()
+        defer { home.cleanup() }
 
-        let vm = CatalogViewModel()
         let url = vm.installURL(for: Self.fixtureEntries[0])
         #expect(url?.scheme == "https")
     }
 
     // MARK: - Helpers
 
-    /// Cross-suite serialization. See `CatalogServiceTests` for rationale.
-    private struct HomeFixture {
-        let homeURL: URL
-        let registrySnapshot: Data?
-    }
-
-    private func makeTmpHome() throws -> HomeFixture {
-        let registrySnapshot = TestRegistryLock.acquireAndSnapshot()
-        let base = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        let path = base.appendingPathComponent("scarf-vm-test-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(
-            atPath: path.path + "/scarf",
-            withIntermediateDirectories: true
+    /// Build a `CatalogViewModel` whose catalog + install-index services
+    /// are pinned to an isolated temp home, so nothing it does on init
+    /// touches the developer's real `~/.hermes`. Caller owns the returned
+    /// `TempHermesHome` and must `defer { home.cleanup() }`.
+    private func makeViewModel() throws -> (vm: CatalogViewModel, home: TempHermesHome) {
+        let home = try TempHermesHome()
+        let vm = CatalogViewModel(
+            catalogService: CatalogService(context: home.context),
+            indexService: InstalledTemplatesIndex(context: home.context)
         )
-        // Sentinel marker — see CatalogServiceTests for rationale.
-        try Data().write(to: path.appendingPathComponent(HermesProfileResolver.testHomeMarkerFilename))
-        setenv(Self.envKey, path.path, 1)
-        HermesProfileResolver.invalidateCache()
-        return HomeFixture(homeURL: path, registrySnapshot: registrySnapshot)
-    }
-
-    private func teardown(_ fixture: HomeFixture) {
-        unsetenv(Self.envKey)
-        HermesProfileResolver.invalidateCache()
-        try? FileManager.default.removeItem(at: fixture.homeURL)
-        TestRegistryLock.restore(fixture.registrySnapshot)
+        return (vm, home)
     }
 
     private static let fixtureEntries: [CatalogEntry] = [

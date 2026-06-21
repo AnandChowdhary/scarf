@@ -3,42 +3,6 @@ import Foundation
 import ScarfCore
 @testable import scarf
 
-/// Cross-suite serialization lock for tests that touch the real
-/// `~/.hermes/scarf/projects.json`. Swift Testing's `.serialized` trait
-/// only serializes tests WITHIN a suite — multiple suites still run in
-/// parallel. Three suites in this file write to the same file and
-/// previously raced each other silently (saveRegistry used to swallow
-/// write failures); now that saveRegistry throws, the race surfaces.
-///
-/// The lock is acquired by `acquireAndSnapshot()` at the top of each
-/// registry-touching test and released by `restore(_:)` via the test's
-/// `defer`. Asymmetric acquire-in-one-fn / release-in-another looks
-/// unusual but the snapshot/restore pairing is so tight (every test
-/// defers the restore) that it's reliable in practice.
-final class TestRegistryLock: @unchecked Sendable {
-    static let shared = TestRegistryLock()
-    private let lock = NSLock()
-
-    /// Acquire the cross-suite lock and snapshot the registry. Pair
-    /// every call with a `defer { TestRegistryLock.restore(snapshot) }`.
-    static func acquireAndSnapshot() -> Data? {
-        shared.lock.lock()
-        let path = ServerContext.local.paths.projectsRegistry
-        return try? Data(contentsOf: URL(fileURLWithPath: path))
-    }
-
-    /// Restore the registry from snapshot and release the lock.
-    static func restore(_ snapshot: Data?) {
-        defer { shared.lock.unlock() }
-        let path = ServerContext.local.paths.projectsRegistry
-        if let snapshot {
-            try? snapshot.write(to: URL(fileURLWithPath: path))
-        } else {
-            try? FileManager.default.removeItem(atPath: path)
-        }
-    }
-}
-
 /// Exercises the service's ability to unpack, parse, and validate bundles.
 /// Doesn't touch the installer — see `ProjectTemplateInstallerTests` — so
 /// these don't need write access to ~/.hermes.
@@ -291,9 +255,17 @@ final class TestRegistryLock: @unchecked Sendable {
 /// are exhaustively tested; global-state side effects (skills namespace,
 /// cron CLI, memory append) are covered by manual verification per the
 /// plan's step 7.
-@Suite(.serialized) struct ProjectTemplateInstallerTests {
+///
+/// Each test injects an isolated `ServerContext.local(home:)`, so the
+/// registry write lands in a per-instance temp home, never the real
+/// `~/.hermes`. That replaces the old snapshot/restore-the-real-registry
+/// dance (and the cross-suite `TestRegistryLock` it relied on), so the
+/// suite needs no `.serialized` and runs in parallel safely.
+struct ProjectTemplateInstallerTests {
 
     @Test func installsMinimalBundleAndWritesLockFile() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
         let parentDir = scratch + "/parent"
@@ -305,15 +277,12 @@ final class TestRegistryLock: @unchecked Sendable {
             "dashboard.json": ProjectTemplateServiceTests.sampleDashboardJSON
         ])
 
-        let service = ProjectTemplateService(context: .local)
+        let service = ProjectTemplateService(context: home.context)
         let inspection = try service.inspect(zipPath: bundle)
         defer { service.cleanupTempDir(inspection.unpackedDir) }
         let plan = try service.buildPlan(inspection: inspection, parentDir: parentDir)
 
-        let registryBefore = Self.snapshotRegistry()
-        defer { Self.restoreRegistry(registryBefore) }
-
-        let installer = ProjectTemplateInstaller(context: .local)
+        let installer = ProjectTemplateInstaller(context: home.context)
         let entry = try installer.install(plan: plan)
 
         #expect(FileManager.default.fileExists(atPath: plan.projectDir))
@@ -345,6 +314,8 @@ final class TestRegistryLock: @unchecked Sendable {
     }
 
     @Test func preflightRejectsExistingProjectDir() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
         let parentDir = scratch + "/parent"
@@ -356,7 +327,7 @@ final class TestRegistryLock: @unchecked Sendable {
             "dashboard.json": ProjectTemplateServiceTests.sampleDashboardJSON
         ])
 
-        let service = ProjectTemplateService(context: .local)
+        let service = ProjectTemplateService(context: home.context)
         let inspection = try service.inspect(zipPath: bundle)
         defer { service.cleanupTempDir(inspection.unpackedDir) }
         let plan = try service.buildPlan(inspection: inspection, parentDir: parentDir)
@@ -364,13 +335,15 @@ final class TestRegistryLock: @unchecked Sendable {
         // Simulate a concurrent creation between buildPlan and install.
         try FileManager.default.createDirectory(atPath: plan.projectDir, withIntermediateDirectories: true)
 
-        let installer = ProjectTemplateInstaller(context: .local)
+        let installer = ProjectTemplateInstaller(context: home.context)
         #expect(throws: ProjectTemplateError.self) {
             try installer.install(plan: plan)
         }
     }
 
     @Test func buildPlanRefusesDuplicateProjectDir() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
         let parentDir = scratch + "/parent"
@@ -382,7 +355,7 @@ final class TestRegistryLock: @unchecked Sendable {
             "dashboard.json": ProjectTemplateServiceTests.sampleDashboardJSON
         ])
 
-        let service = ProjectTemplateService(context: .local)
+        let service = ProjectTemplateService(context: home.context)
         let inspection = try service.inspect(zipPath: bundle)
         defer { service.cleanupTempDir(inspection.unpackedDir) }
 
@@ -441,34 +414,22 @@ final class TestRegistryLock: @unchecked Sendable {
         let count = resolved.components(separatedBy: plan.projectDir).count - 1
         #expect(count == 2)
     }
-
-    // MARK: - Registry snapshot helpers
-
-    /// Read the raw bytes of the current projects.json so we can restore
-    /// it byte-for-byte after the test. `nil` means the file didn't exist
-    /// — restore by deleting whatever got created.
-    // Delegates to TestRegistryLock so tests across this suite + the
-    // two other registry-touching suites share one lock. Every
-    // `snapshotRegistry()` call acquires; the paired
-    // `restoreRegistry(_:)` defer releases. Without this, parallel
-    // test runs race on `~/.hermes/scarf/projects.json` writes and
-    // the saveRegistry throw surfaces the collision as a test failure.
-    nonisolated private static func snapshotRegistry() -> Data? {
-        TestRegistryLock.acquireAndSnapshot()
-    }
-
-    nonisolated private static func restoreRegistry(_ snapshot: Data?) {
-        TestRegistryLock.restore(snapshot)
-    }
 }
 
 /// End-to-end install + uninstall test: install a minimal bundle, uninstall
 /// it, verify every tracked file is gone, the registry is restored to its
 /// pre-install state, and user-added files (if any) are preserved. Scoped
 /// to bundles with no skills/cron/memory so no global state is touched.
-@Suite(.serialized) struct ProjectTemplateUninstallerTests {
+///
+/// Each test injects an isolated `ServerContext.local(home:)` so the
+/// install/uninstall registry writes land in a per-instance temp home,
+/// never the real `~/.hermes` — replacing the old snapshot/restore +
+/// cross-suite `TestRegistryLock`. No shared state, no `.serialized`.
+struct ProjectTemplateUninstallerTests {
 
     @Test func roundTripsInstallThenUninstall() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
         let parentDir = scratch + "/parent"
@@ -480,19 +441,16 @@ final class TestRegistryLock: @unchecked Sendable {
             "dashboard.json": ProjectTemplateServiceTests.sampleDashboardJSON
         ])
 
-        let service = ProjectTemplateService(context: .local)
+        let service = ProjectTemplateService(context: home.context)
         let inspection = try service.inspect(zipPath: bundle)
         defer { service.cleanupTempDir(inspection.unpackedDir) }
         let plan = try service.buildPlan(inspection: inspection, parentDir: parentDir)
 
-        let registryBefore = Self.snapshotRegistry()
-        defer { Self.restoreRegistry(registryBefore) }
-
-        let installer = ProjectTemplateInstaller(context: .local)
+        let installer = ProjectTemplateInstaller(context: home.context)
         let entry = try installer.install(plan: plan)
         #expect(FileManager.default.fileExists(atPath: plan.projectDir))
 
-        let uninstaller = ProjectTemplateUninstaller(context: .local)
+        let uninstaller = ProjectTemplateUninstaller(context: home.context)
         #expect(uninstaller.isTemplateInstalled(project: entry))
         let uninstallPlan = try uninstaller.loadUninstallPlan(for: entry)
         #expect(uninstallPlan.projectFilesToRemove.count == 4) // README, AGENTS, dashboard.json, lock
@@ -505,13 +463,15 @@ final class TestRegistryLock: @unchecked Sendable {
         try uninstaller.uninstall(plan: uninstallPlan)
 
         #expect(FileManager.default.fileExists(atPath: plan.projectDir) == false)
-        // Registry entry gone — length matches pre-install snapshot.
-        let service2 = ProjectDashboardService(context: .local)
+        // Registry entry gone — reload from the temp home and confirm.
+        let service2 = ProjectDashboardService(context: home.context)
         let registryAfter = service2.loadRegistry()
         #expect(registryAfter.projects.contains(where: { $0.path == entry.path }) == false)
     }
 
     @Test func preservesUserAddedFiles() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
         let parentDir = scratch + "/parent"
@@ -523,15 +483,12 @@ final class TestRegistryLock: @unchecked Sendable {
             "dashboard.json": ProjectTemplateServiceTests.sampleDashboardJSON
         ])
 
-        let service = ProjectTemplateService(context: .local)
+        let service = ProjectTemplateService(context: home.context)
         let inspection = try service.inspect(zipPath: bundle)
         defer { service.cleanupTempDir(inspection.unpackedDir) }
         let plan = try service.buildPlan(inspection: inspection, parentDir: parentDir)
 
-        let registryBefore = Self.snapshotRegistry()
-        defer { Self.restoreRegistry(registryBefore) }
-
-        let installer = ProjectTemplateInstaller(context: .local)
+        let installer = ProjectTemplateInstaller(context: home.context)
         let entry = try installer.install(plan: plan)
 
         // Simulate the user / agent creating files post-install.
@@ -539,7 +496,7 @@ final class TestRegistryLock: @unchecked Sendable {
         try "https://example.com\n".data(using: .utf8)!
             .write(to: URL(fileURLWithPath: userFile))
 
-        let uninstaller = ProjectTemplateUninstaller(context: .local)
+        let uninstaller = ProjectTemplateUninstaller(context: home.context)
         let uninstallPlan = try uninstaller.loadUninstallPlan(for: entry)
         #expect(uninstallPlan.extraProjectEntries.contains(userFile))
         #expect(uninstallPlan.projectDirBecomesEmpty == false)
@@ -556,34 +513,18 @@ final class TestRegistryLock: @unchecked Sendable {
     }
 
     @Test func loadUninstallPlanRejectsProjectWithoutLock() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
         try FileManager.default.createDirectory(atPath: scratch + "/bare", withIntermediateDirectories: true)
         let entry = ProjectEntry(name: "Bare", path: scratch + "/bare")
 
-        let uninstaller = ProjectTemplateUninstaller(context: .local)
+        let uninstaller = ProjectTemplateUninstaller(context: home.context)
         #expect(uninstaller.isTemplateInstalled(project: entry) == false)
         #expect(throws: ProjectTemplateError.self) {
             try uninstaller.loadUninstallPlan(for: entry)
         }
-    }
-
-    // MARK: - Registry snapshot helpers (dup'd intentionally from
-    // ProjectTemplateInstallerTests — small helper, not worth a shared
-    // fixture file for one more suite).
-
-    // Delegates to TestRegistryLock so tests across this suite + the
-    // two other registry-touching suites share one lock. Every
-    // `snapshotRegistry()` call acquires; the paired
-    // `restoreRegistry(_:)` defer releases. Without this, parallel
-    // test runs race on `~/.hermes/scarf/projects.json` writes and
-    // the saveRegistry throw surfaces the collision as a test failure.
-    nonisolated private static func snapshotRegistry() -> Data? {
-        TestRegistryLock.acquireAndSnapshot()
-    }
-
-    nonisolated private static func restoreRegistry(_ snapshot: Data?) {
-        TestRegistryLock.restore(snapshot)
     }
 }
 
@@ -592,7 +533,12 @@ final class TestRegistryLock: @unchecked Sendable {
 /// against a synthesized schemaful bundle. Uses an isolated Keychain
 /// service suffix so no leftover login-Keychain items remain after the
 /// test — every secret we write is deleted on teardown.
-@Suite(.serialized) struct ProjectTemplateConfigInstallTests {
+///
+/// Install-path tests inject an isolated `ServerContext.local(home:)`, so
+/// the registry + `.env` mirror land in a per-instance temp home, never
+/// the real `~/.hermes` — replacing the old snapshot/restore +
+/// cross-suite `TestRegistryLock`. No shared state, no `.serialized`.
+struct ProjectTemplateConfigInstallTests {
 
     /// Minimal schemaful manifest with one non-secret field + one
     /// secret field. Written into the synthesized `.scarftemplate`
@@ -621,6 +567,8 @@ final class TestRegistryLock: @unchecked Sendable {
     }
 
     @Test func inspectAcceptsSchemaV2Bundle() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
 
@@ -635,7 +583,7 @@ final class TestRegistryLock: @unchecked Sendable {
             "dashboard.json": ProjectTemplateServiceTests.sampleDashboardJSON
         ], includeManifest: false)
 
-        let service = ProjectTemplateService(context: .local)
+        let service = ProjectTemplateService(context: home.context)
         let inspection = try service.inspect(zipPath: bundle)
         defer { service.cleanupTempDir(inspection.unpackedDir) }
 
@@ -644,6 +592,8 @@ final class TestRegistryLock: @unchecked Sendable {
     }
 
     @Test func buildPlanSurfacesSchemaAndQueuesConfigFiles() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
 
@@ -655,7 +605,7 @@ final class TestRegistryLock: @unchecked Sendable {
             "dashboard.json": ProjectTemplateServiceTests.sampleDashboardJSON
         ], includeManifest: false)
 
-        let service = ProjectTemplateService(context: .local)
+        let service = ProjectTemplateService(context: home.context)
         let inspection = try service.inspect(zipPath: bundle)
         defer { service.cleanupTempDir(inspection.unpackedDir) }
         let plan = try service.buildPlan(inspection: inspection, parentDir: scratch)
@@ -670,6 +620,8 @@ final class TestRegistryLock: @unchecked Sendable {
     }
 
     @Test func verifyClaimsRejectsConfigCountMismatch() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
 
@@ -698,13 +650,15 @@ final class TestRegistryLock: @unchecked Sendable {
             "dashboard.json": ProjectTemplateServiceTests.sampleDashboardJSON
         ], includeManifest: false)
 
-        let service = ProjectTemplateService(context: .local)
+        let service = ProjectTemplateService(context: home.context)
         #expect(throws: ProjectTemplateError.self) {
             try service.inspect(zipPath: bundle)
         }
     }
 
     @Test func installWritesConfigJsonAndManifestCache() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
         let parentDir = scratch + "/parent"
@@ -718,7 +672,7 @@ final class TestRegistryLock: @unchecked Sendable {
             "dashboard.json": ProjectTemplateServiceTests.sampleDashboardJSON
         ], includeManifest: false)
 
-        let service = ProjectTemplateService(context: .local)
+        let service = ProjectTemplateService(context: home.context)
         let inspection = try service.inspect(zipPath: bundle)
         defer { service.cleanupTempDir(inspection.unpackedDir) }
         var plan = try service.buildPlan(inspection: inspection, parentDir: parentDir)
@@ -742,10 +696,7 @@ final class TestRegistryLock: @unchecked Sendable {
             "api_token": secretRef
         ]
 
-        let registryBefore = Self.snapshotRegistry()
-        defer { Self.restoreRegistry(registryBefore) }
-
-        let installer = ProjectTemplateInstaller(context: .local)
+        let installer = ProjectTemplateInstaller(context: home.context)
         _ = try installer.install(plan: plan)
 
         // config.json landed with non-secret values + keychain ref.
@@ -790,6 +741,8 @@ final class TestRegistryLock: @unchecked Sendable {
     }
 
     @Test func uninstallDeletesKeychainItemsViaLock() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
         let scratch = try ProjectTemplateServiceTests.makeTempDir()
         defer { try? FileManager.default.removeItem(atPath: scratch) }
         let parentDir = scratch + "/parent"
@@ -803,7 +756,7 @@ final class TestRegistryLock: @unchecked Sendable {
             "dashboard.json": ProjectTemplateServiceTests.sampleDashboardJSON
         ], includeManifest: false)
 
-        let service = ProjectTemplateService(context: .local)
+        let service = ProjectTemplateService(context: home.context)
         let inspection = try service.inspect(zipPath: bundle)
         defer { service.cleanupTempDir(inspection.unpackedDir) }
         var plan = try service.buildPlan(inspection: inspection, parentDir: parentDir)
@@ -825,10 +778,7 @@ final class TestRegistryLock: @unchecked Sendable {
             "api_token": secretRef
         ]
 
-        let registryBefore = Self.snapshotRegistry()
-        defer { Self.restoreRegistry(registryBefore) }
-
-        let installer = ProjectTemplateInstaller(context: .local)
+        let installer = ProjectTemplateInstaller(context: home.context)
         let entry = try installer.install(plan: plan)
 
         // Verify the secret is there before uninstall.
@@ -840,27 +790,11 @@ final class TestRegistryLock: @unchecked Sendable {
         #expect((try ProjectConfigKeychain().get(ref: ref)) == Data("delete-me".utf8))
 
         // Uninstall → secret should be gone.
-        let uninstaller = ProjectTemplateUninstaller(context: .local)
+        let uninstaller = ProjectTemplateUninstaller(context: home.context)
         let uninstallPlan = try uninstaller.loadUninstallPlan(for: entry)
         try uninstaller.uninstall(plan: uninstallPlan)
 
         #expect((try ProjectConfigKeychain().get(ref: ref)) == nil)
-    }
-
-    // MARK: - Registry snapshot helpers (dup'd from ProjectTemplateInstallerTests)
-
-    // Delegates to TestRegistryLock so tests across this suite + the
-    // two other registry-touching suites share one lock. Every
-    // `snapshotRegistry()` call acquires; the paired
-    // `restoreRegistry(_:)` defer releases. Without this, parallel
-    // test runs race on `~/.hermes/scarf/projects.json` writes and
-    // the saveRegistry throw surfaces the collision as a test failure.
-    nonisolated private static func snapshotRegistry() -> Data? {
-        TestRegistryLock.acquireAndSnapshot()
-    }
-
-    nonisolated private static func restoreRegistry(_ snapshot: Data?) {
-        TestRegistryLock.restore(snapshot)
     }
 }
 

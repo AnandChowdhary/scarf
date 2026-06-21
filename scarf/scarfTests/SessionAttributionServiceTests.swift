@@ -3,22 +3,18 @@ import Foundation
 import ScarfCore
 @testable import scarf
 
-/// Exercises the v2.3 sidecar at `~/.hermes/scarf/session_project_map.json`
-/// via the real `ServerContext.local`. Each test snapshots + restores
-/// the file through `TestRegistryLock` (reused — the sidecar lives
-/// in the same scarf/ dir as projects.json, so serialising on one
-/// lock prevents both cross-suite races).
-///
-/// We scope the shared lock to this file's registry helper so tests
-/// here don't step on the real registry either.
-@Suite(.serialized) struct SessionAttributionServiceTests {
+/// Exercises the v2.3 sidecar at `<home>/scarf/session_project_map.json`.
+/// Each test injects an isolated `ServerContext.local(home:)`, so the
+/// sidecar lives in a per-instance temp dir — never the developer's real
+/// `~/.hermes`. No global env, no cross-suite lock, no shared mutable
+/// state, so the suite runs in parallel safely.
+struct SessionAttributionServiceTests {
 
     @Test func loadOnMissingFileReturnsEmptyMap() throws {
-        let snapshot = Self.snapshot()
-        defer { Self.restore(snapshot) }
-        Self.deleteSidecar()
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
 
-        let svc = SessionAttributionService(context: .local)
+        let svc = SessionAttributionService(context: home.context)
         let map = svc.load()
         #expect(map.mappings.isEmpty)
         #expect(svc.projectPath(for: "anything") == nil)
@@ -26,16 +22,15 @@ import ScarfCore
     }
 
     @Test func attributeWritesMappingAndPersists() throws {
-        let snapshot = Self.snapshot()
-        defer { Self.restore(snapshot) }
-        Self.deleteSidecar()
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
 
-        let svc = SessionAttributionService(context: .local)
+        let svc = SessionAttributionService(context: home.context)
         svc.attribute(sessionID: "sess-1", toProjectPath: "/proj/a")
 
         // Read back via a fresh service instance — confirms the
         // write actually landed on disk, not just the in-memory map.
-        let fresh = SessionAttributionService(context: .local)
+        let fresh = SessionAttributionService(context: home.context)
         #expect(fresh.projectPath(for: "sess-1") == "/proj/a")
 
         // updatedAt populated on write.
@@ -45,11 +40,10 @@ import ScarfCore
     }
 
     @Test func attributeIsIdempotent() throws {
-        let snapshot = Self.snapshot()
-        defer { Self.restore(snapshot) }
-        Self.deleteSidecar()
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
 
-        let svc = SessionAttributionService(context: .local)
+        let svc = SessionAttributionService(context: home.context)
         svc.attribute(sessionID: "s", toProjectPath: "/p")
         let firstStamp = svc.load().updatedAt
         // Call again with the same pair — should short-circuit, NOT
@@ -61,11 +55,10 @@ import ScarfCore
     }
 
     @Test func reattributeChangesMapping() throws {
-        let snapshot = Self.snapshot()
-        defer { Self.restore(snapshot) }
-        Self.deleteSidecar()
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
 
-        let svc = SessionAttributionService(context: .local)
+        let svc = SessionAttributionService(context: home.context)
         svc.attribute(sessionID: "s", toProjectPath: "/a")
         svc.attribute(sessionID: "s", toProjectPath: "/b")
         #expect(svc.projectPath(for: "s") == "/b")
@@ -74,11 +67,10 @@ import ScarfCore
     }
 
     @Test func reverseLookupReturnsAllAttributedSessions() throws {
-        let snapshot = Self.snapshot()
-        defer { Self.restore(snapshot) }
-        Self.deleteSidecar()
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
 
-        let svc = SessionAttributionService(context: .local)
+        let svc = SessionAttributionService(context: home.context)
         svc.attribute(sessionID: "s1", toProjectPath: "/proj")
         svc.attribute(sessionID: "s2", toProjectPath: "/proj")
         svc.attribute(sessionID: "s3", toProjectPath: "/other")
@@ -89,11 +81,10 @@ import ScarfCore
     }
 
     @Test func forgetRemovesMapping() throws {
-        let snapshot = Self.snapshot()
-        defer { Self.restore(snapshot) }
-        Self.deleteSidecar()
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
 
-        let svc = SessionAttributionService(context: .local)
+        let svc = SessionAttributionService(context: home.context)
         svc.attribute(sessionID: "s", toProjectPath: "/p")
         #expect(svc.projectPath(for: "s") == "/p")
 
@@ -111,9 +102,10 @@ import ScarfCore
         // truncation, hostile content, or a runaway logger that
         // appended to the wrong file — must not be decoded on a
         // memory-pressured device.
-        let snapshot = Self.snapshot()
-        defer { Self.restore(snapshot) }
-        let path = ServerContext.local.paths.sessionProjectMap
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
+
+        let path = home.context.paths.sessionProjectMap
         try FileManager.default.createDirectory(
             atPath: (path as NSString).deletingLastPathComponent,
             withIntermediateDirectories: true
@@ -123,7 +115,7 @@ import ScarfCore
         let blob = Data(repeating: 0x41, count: oversize) // ASCII 'A's
         try blob.write(to: URL(fileURLWithPath: path))
 
-        let svc = SessionAttributionService(context: .local)
+        let svc = SessionAttributionService(context: home.context)
         let map = svc.load()
         #expect(map.mappings.isEmpty)
         #expect(svc.projectPath(for: "anything") == nil)
@@ -136,9 +128,10 @@ import ScarfCore
         // graceful path the corrupted-file test exercises). Pins the
         // boundary so a future refactor doesn't accidentally tighten
         // it to strict `>=`.
-        let snapshot = Self.snapshot()
-        defer { Self.restore(snapshot) }
-        let path = ServerContext.local.paths.sessionProjectMap
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
+
+        let path = home.context.paths.sessionProjectMap
         try FileManager.default.createDirectory(
             atPath: (path as NSString).deletingLastPathComponent,
             withIntermediateDirectories: true
@@ -146,57 +139,28 @@ import ScarfCore
         let atCap = Data(repeating: 0x41, count: SessionAttributionService.maxSidecarBytes)
         try atCap.write(to: URL(fileURLWithPath: path))
 
-        let svc = SessionAttributionService(context: .local)
+        let svc = SessionAttributionService(context: home.context)
         let map = svc.load()
         // Decode fails → empty map (same as corrupted-file path).
         #expect(map.mappings.isEmpty)
     }
 
     @Test func corruptedFileReturnsEmptyMap() throws {
-        let snapshot = Self.snapshot()
-        defer { Self.restore(snapshot) }
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
+
         // Write garbage to the sidecar path and confirm the service
         // treats it as "no attributions" rather than crashing. Users
         // hand-editing the JSON shouldn't soft-brick the Sessions tab.
-        let path = ServerContext.local.paths.sessionProjectMap
+        let path = home.context.paths.sessionProjectMap
         try FileManager.default.createDirectory(
             atPath: (path as NSString).deletingLastPathComponent,
             withIntermediateDirectories: true
         )
         try "not json at all".data(using: .utf8)!.write(to: URL(fileURLWithPath: path))
 
-        let svc = SessionAttributionService(context: .local)
+        let svc = SessionAttributionService(context: home.context)
         let map = svc.load()
         #expect(map.mappings.isEmpty)
-    }
-
-    // MARK: - Helpers
-
-    /// Snapshot + restore the sidecar file (and delete if missing).
-    /// Uses the shared TestRegistryLock so this suite serialises
-    /// with any other registry-writing suite — both touch scarfDir.
-    static func snapshot() -> (lockToken: Any, data: Data?) {
-        // Re-use the ProjectTemplateTests lock implementation —
-        // same NSLock gates all scarfDir writes across suites.
-        let projectSnapshot = TestRegistryLock.acquireAndSnapshot()
-        let path = ServerContext.local.paths.sessionProjectMap
-        let sidecarData = try? Data(contentsOf: URL(fileURLWithPath: path))
-        return (lockToken: projectSnapshot as Any, data: sidecarData)
-    }
-
-    static func restore(_ snapshot: (lockToken: Any, data: Data?)) {
-        let path = ServerContext.local.paths.sessionProjectMap
-        if let data = snapshot.data {
-            try? data.write(to: URL(fileURLWithPath: path))
-        } else {
-            try? FileManager.default.removeItem(atPath: path)
-        }
-        // Release the shared lock via the existing helper.
-        TestRegistryLock.restore(snapshot.lockToken as? Data)
-    }
-
-    static func deleteSidecar() {
-        let path = ServerContext.local.paths.sessionProjectMap
-        try? FileManager.default.removeItem(atPath: path)
     }
 }

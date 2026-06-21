@@ -147,18 +147,21 @@ import ScarfCore
 /// integration point. The unit-level resolver tests live in
 /// `HermesProfileResolverOverrideTests`; this exercises the same seam from
 /// the surface every Scarf service actually reads — `ServerContext.paths`.
+///
+/// This is the ONE suite that legitimately mutates the process-global
+/// `SCARF_HERMES_HOME` env — its whole point is proving that override
+/// steers `ServerContext.local.paths`. `.serialized` keeps its own two
+/// env-mutating tests from overlapping; every other suite now isolates via
+/// per-instance `ServerContext.local(home:)` (which bypasses the env
+/// entirely), so this no longer needs the old cross-suite `TestRegistryLock`.
 @Suite(.serialized)
 struct ScarfHermesHomeOverrideE2ETests {
 
     private static let envKey = "SCARF_HERMES_HOME"
 
     @Test func overrideSteersServerContextPaths() throws {
-        let snapshot = TestRegistryLock.acquireAndSnapshot()
         let saved = ProcessInfo.processInfo.environment[Self.envKey]
-        defer {
-            restore(saved)
-            TestRegistryLock.restore(snapshot)
-        }
+        defer { restore(saved) }
 
         let tmp = NSTemporaryDirectory().appending("scarf-e2e-home-\(UUID().uuidString)")
         try FileManager.default.createDirectory(atPath: tmp, withIntermediateDirectories: true)
@@ -183,12 +186,8 @@ struct ScarfHermesHomeOverrideE2ETests {
     }
 
     @Test func overrideUnsetReturnsToProductionHome() {
-        let snapshot = TestRegistryLock.acquireAndSnapshot()
         let saved = ProcessInfo.processInfo.environment[Self.envKey]
-        defer {
-            restore(saved)
-            TestRegistryLock.restore(snapshot)
-        }
+        defer { restore(saved) }
 
         unsetenv(Self.envKey)
         HermesProfileResolver.invalidateCache()

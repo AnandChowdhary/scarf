@@ -8,13 +8,12 @@ import ScarfCore
 /// catalog-schema drift between the Python validator
 /// (`tools/build-catalog.py`) and the Swift `Catalog` decoder.
 ///
-/// All tests run against an isolated `SCARF_HERMES_HOME` tmpdir so the
-/// user's real `~/.hermes/scarf/catalog_cache.json` is never touched.
-/// Serialized because we mutate process-wide env.
-@Suite(.serialized)
+/// Each cache-touching test runs against an isolated
+/// `ServerContext.local(home:)` tmpdir so the user's real
+/// `~/.hermes/scarf/catalog_cache.json` is never touched. The home is
+/// per-instance — no global `SCARF_HERMES_HOME` env, no cross-suite lock,
+/// no shared mutable state — so the suite runs in parallel safely.
 struct CatalogServiceTests {
-
-    private static let envKey = "SCARF_HERMES_HOME"
 
     // MARK: - Snapshot
 
@@ -37,10 +36,10 @@ struct CatalogServiceTests {
     // MARK: - Cache lifecycle
 
     @Test func freshCacheIsServedWithoutNetwork() async throws {
-        let fixture = try makeTmpHome()
-        defer { teardown(fixture) }
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
 
-        let context = ServerContext.local
+        let context = home.context
         let service = CatalogService(context: context)
         let now = Date()
         // Seed a fresh cache.
@@ -59,10 +58,10 @@ struct CatalogServiceTests {
     }
 
     @Test func corruptCacheIsIgnored() throws {
-        let fixture = try makeTmpHome()
-        defer { teardown(fixture) }
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
 
-        let context = ServerContext.local
+        let context = home.context
         let cachePath = context.paths.catalogCache
         let parent = (cachePath as NSString).deletingLastPathComponent
         try FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
@@ -81,10 +80,10 @@ struct CatalogServiceTests {
     }
 
     @Test func cacheSchemaVersionMismatchIsIgnored() throws {
-        let fixture = try makeTmpHome()
-        defer { teardown(fixture) }
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
 
-        let context = ServerContext.local
+        let context = home.context
         let cachePath = context.paths.catalogCache
         let parent = (cachePath as NSString).deletingLastPathComponent
         try FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
@@ -99,10 +98,10 @@ struct CatalogServiceTests {
     // MARK: - Staleness
 
     @Test func isCacheStaleHonorsTTL() throws {
-        let fixture = try makeTmpHome()
-        defer { teardown(fixture) }
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
 
-        let service = CatalogService(context: .local)
+        let service = CatalogService(context: home.context)
         let twentyThreeHoursAgo = Date().addingTimeInterval(-23 * 60 * 60)
         let twentyFiveHoursAgo = Date().addingTimeInterval(-25 * 60 * 60)
         let fresh = CatalogCache(fetchedAt: twentyThreeHoursAgo, catalog: Self.minimalCatalog)
@@ -168,44 +167,6 @@ struct CatalogServiceTests {
     }
 
     // MARK: - Helpers
-
-    /// Bundle returned by `makeTmpHome()` so each `@Test` func can
-    /// capture both the tmpdir and the registry-lock snapshot in a
-    /// `let` without `mutating` (Swift Testing's `@Test` macros
-    /// disallow mutating instance methods on `@Suite struct`s).
-    /// `TestRegistryLock` serializes us against
-    /// `SessionAttributionServiceTests`, `ProjectsViewModelTests`, and
-    /// every other suite that mutates `ServerContext.local.paths` —
-    /// without it, Swift Testing's parallel-suite scheduler lets one
-    /// suite's `setenv("SCARF_HERMES_HOME", ...)` leak into another
-    /// suite's reads and cause non-deterministic failures.
-    private struct HomeFixture {
-        let homeURL: URL
-        let registrySnapshot: Data?
-    }
-
-    private func makeTmpHome() throws -> HomeFixture {
-        let registrySnapshot = TestRegistryLock.acquireAndSnapshot()
-        let base = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        let path = base.appendingPathComponent("scarf-catalog-test-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
-        // Drop the sentinel marker BEFORE setenv. Without the marker,
-        // `HermesProfileResolver.scarfHermesHomeOverride()` ignores
-        // the env var and falls through to the real `~/.hermes/` —
-        // protecting the user's real home from any test that crashes
-        // mid-teardown or leaks the env var to another process.
-        try Data().write(to: path.appendingPathComponent(HermesProfileResolver.testHomeMarkerFilename))
-        setenv(Self.envKey, path.path, 1)
-        HermesProfileResolver.invalidateCache()
-        return HomeFixture(homeURL: path, registrySnapshot: registrySnapshot)
-    }
-
-    private func teardown(_ fixture: HomeFixture) {
-        unsetenv(Self.envKey)
-        HermesProfileResolver.invalidateCache()
-        try? FileManager.default.removeItem(at: fixture.homeURL)
-        TestRegistryLock.restore(fixture.registrySnapshot)
-    }
 
     private func writeCacheFixture(at path: String, fetchedAt: Date) throws {
         let parent = (path as NSString).deletingLastPathComponent
