@@ -40,6 +40,25 @@ struct KanbanTenantResolver: Sendable {
         readManifest(for: project)?.kanbanTenant
     }
 
+    /// Set the project's Kanban tenant to an **explicit** slug, rather
+    /// than deriving one from the name. Used by fleet apply-to-policy: a
+    /// source project's board slug is copied verbatim onto a target host
+    /// so the fleet shares one logical board name.
+    ///
+    /// Idempotent (a no-op when already set to `tenant`), and mints a
+    /// sentinel manifest when the target is bare — same write path as
+    /// `resolveOrMint`. The caller owns the **additive** decision: this
+    /// will overwrite an existing tenant if asked, which orphans the
+    /// target's existing board tasks, so apply-to-fleet only calls it for
+    /// targets that have no tenant yet (see `FleetApplyPlan.disposition`).
+    nonisolated func setTenant(_ tenant: String, for project: ProjectEntry) throws {
+        let trimmed = tenant.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        if self.tenant(for: project) == trimmed { return }  // no-op; avoid churn
+        try persist(tenant: trimmed, for: project)
+        Self.logger.info("set kanban tenant '\(trimmed, privacy: .public)' for project '\(project.name, privacy: .public)' (fleet apply)")
+    }
+
     /// Returns the existing tenant or mints a new one if absent. Writes
     /// the new tenant back to the project's manifest.json. Idempotent —
     /// calling twice on a fresh project returns the same value.
