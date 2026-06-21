@@ -2,97 +2,98 @@ import AppKit
 import SwiftUI
 
 /// Persist a SwiftUI `WindowGroup` window's frame (size + position) across
-/// app launches by hooking into AppKit's `NSWindow.setFrameAutosaveName`.
+/// launches with **manual** UserDefaults persistence + `setFrame` —
+/// deliberately NOT AppKit's `setFrameAutosaveName`.
 ///
-/// **Why this exists.** SwiftUI's `WindowGroup` exposes `.defaultSize`,
-/// `.windowResizability`, and (on macOS Sonoma+) various scene modifiers
-/// — but not a "remember this window's size between launches" affordance.
-/// Apple's documented escape hatch is AppKit's `setFrameAutosaveName(_:)`,
-/// which writes the window's frame to UserDefaults on resize/move and
-/// reads it back on next `makeKey`. We bridge into it from SwiftUI via an
-/// invisible `NSViewRepresentable` that finds the hosting `NSWindow`
-/// and stamps the autosave name once it appears.
+/// **Why manual (the previous fix didn't work).** `WindowGroup` assigns the
+/// window its OWN derived `frameAutosaveName`
+/// (`SwiftUI.PresentedWindowContent<…>-AppWindow-1`) and keeps re-asserting
+/// it, so a custom `setFrameAutosaveName(_:)` never sticks — and SwiftUI's
+/// own autosave SAVES the frame but never re-applies it on close/reopen (the
+/// window comes back at `.defaultSize`). Verified against the app's
+/// `UserDefaults`: only the SwiftUI-derived `NSWindow Frame …AppWindow-1`
+/// key is ever written, never ours. So instead of fighting the autosave
+/// name, we own the whole loop: read our own key and `setFrame` once the
+/// window appears (overriding `.defaultSize`), and write the frame back on
+/// every user resize/move.
 ///
-/// **Usage.**
-///     ContentView()
-///         .windowFrameAutosave("Scarf.\(context.id)")
+/// **Usage.** `ContentView().windowFrameAutosave("Scarf.Window.\(context.id)")`
+/// — pass a stable per-window key (keying off `ServerID` gives each server
+/// window its own remembered frame).
 ///
-/// Pass a stable identifier per logical window. Different identifiers per
-/// window are required by AppKit ("no two windows can be associated with
-/// the same name simultaneously" — `NSWindow.setFrameAutosaveName(_:)`
-/// docs). For Scarf's multi-window-per-server model, keying off
-/// `ServerID` gives each server window its own remembered frame.
+/// **First launch.** No saved frame → restore is a no-op → the window uses
+/// SwiftUI's `.defaultSize`. After the first resize it's remembered.
 ///
-/// **First-launch behaviour.** No saved frame exists → AppKit leaves the
-/// window at whatever frame SwiftUI's `.defaultSize` produced. After the
-/// first user resize, AppKit autosaves and subsequent opens restore the
-/// new frame.
-///
-/// **What it doesn't do.** Doesn't capture/restore fullscreen state
-/// (AppKit handles that separately and reasonably). Doesn't try to
-/// override window state restoration when the user has the system-level
-/// "Close windows when quitting an application" setting OFF — that
-/// pathway runs first and we just ride alongside.
+/// **What it doesn't do.** Doesn't capture/restore fullscreen state (AppKit
+/// handles that). With one window per server (Scarf's norm) the per-key
+/// model is exact; two simultaneous windows of the same server would share
+/// a key (last-writer-wins), which is acceptable.
 struct WindowFrameAutosave: NSViewRepresentable {
-    let name: String
+    let key: String
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        // The hosting NSWindow isn't attached to this view yet at
-        // makeNSView time — SwiftUI mounts the AppKit view hierarchy
-        // before the window assignment propagates. Defer one runloop
-        // iteration so `view.window` is non-nil when we bind.
-        DispatchQueue.main.async { [weak view] in
-            guard let window = view?.window else { return }
-            Self.bind(window, to: name)
-        }
+        let view = FrameTrackerView()
+        view.persistenceKey = "ScarfWindowFrame.\(key)"
+        // The hosting NSWindow isn't attached at makeNSView time — defer a
+        // runloop so `view.window` is non-nil (and SwiftUI has finished its
+        // initial sizing, which the restore below then overrides).
+        DispatchQueue.main.async { [weak view] in view?.attachToWindow() }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        // SwiftUI may swap the host window in rare cases (window
-        // restoration after a relaunch, scene reuse). Re-bind on update
-        // so we don't lose the autosave binding silently. `bind` is
-        // idempotent (it no-ops once the window already carries `name`),
-        // so this never re-restores over a mid-session user resize.
+        // Fallback if the window wasn't attached yet on the makeNSView pass.
+        // `attachToWindow` is guarded to run its restore + observer install
+        // exactly once, so this never re-restores over a mid-session resize.
         DispatchQueue.main.async { [weak nsView] in
-            guard let window = nsView?.window else { return }
-            Self.bind(window, to: name)
+            (nsView as? FrameTrackerView)?.attachToWindow()
         }
     }
+}
 
-    /// Restore the saved frame for `name`, then enable autosave so future
-    /// resizes/moves persist.
-    ///
-    /// **Why `setFrameUsingName` is the load-bearing call.**
-    /// `setFrameAutosaveName` only *saves* the frame on change — it does
-    /// NOT reliably re-apply a previously-saved frame once SwiftUI's
-    /// `.defaultSize` has already positioned and shown the window (which
-    /// happens before this deferred bind runs). `setFrameUsingName`
-    /// explicitly reads the saved frame out of `UserDefaults` and applies
-    /// it, overriding `.defaultSize`. Without it the window saved its size
-    /// but always reopened at the default — the long-standing "window
-    /// doesn't remember its size" bug.
-    ///
-    /// Order matters: restore FIRST, then set the autosave name. Setting
-    /// the name first would persist the just-shown `.defaultSize` frame
-    /// over the saved one before we get a chance to restore it.
-    ///
-    /// Guarded on `frameAutosaveName == name` so it binds exactly once per
-    /// window: re-running on every `updateNSView` would yank the window
-    /// back to the saved frame mid-resize.
-    private static func bind(_ window: NSWindow, to name: String) {
-        guard window.frameAutosaveName != name else { return }
-        window.setFrameUsingName(name)      // restore saved frame (overrides .defaultSize); no-op on first launch
-        window.setFrameAutosaveName(name)   // enable ongoing persistence
+/// Invisible view that restores its window's saved frame once, then writes
+/// the frame back on every user resize/move.
+private final class FrameTrackerView: NSView {
+    var persistenceKey = ""
+    private var attached = false
+    private var observers: [NSObjectProtocol] = []
+
+    func attachToWindow() {
+        guard !attached, let window = self.window, !persistenceKey.isEmpty else { return }
+        attached = true
+
+        // 1. Restore the saved frame, overriding SwiftUI's `.defaultSize`.
+        if let saved = UserDefaults.standard.string(forKey: persistenceKey) {
+            let rect = NSRectFromString(saved)
+            if rect.width >= 200, rect.height >= 150 {   // ignore a garbage/zero rect
+                window.setFrame(rect, display: true)
+            }
+        }
+
+        // 2. Save on every user resize/move. Capture the key by value and
+        //    the window weakly so these stored closures form no retain cycle
+        //    with this view (which owns `observers`). Whatever the frame is
+        //    becomes what we restore next launch — saving the initial frame
+        //    is harmless; a later resize overwrites it.
+        let key = persistenceKey
+        let save: (Notification) -> Void = { [weak window] _ in
+            guard let window else { return }
+            UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: key)
+        }
+        let nc = NotificationCenter.default
+        observers.append(nc.addObserver(forName: NSWindow.didEndLiveResizeNotification, object: window, queue: .main, using: save))
+        observers.append(nc.addObserver(forName: NSWindow.didMoveNotification, object: window, queue: .main, using: save))
+    }
+
+    deinit {
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 }
 
 extension View {
-    /// Persist this view's hosting window's frame (size + position)
-    /// across launches under `name`. See `WindowFrameAutosave` for
-    /// details.
-    func windowFrameAutosave(_ name: String) -> some View {
-        background(WindowFrameAutosave(name: name))
+    /// Persist this view's hosting window's frame (size + position) across
+    /// launches under `key`. See `WindowFrameAutosave`.
+    func windowFrameAutosave(_ key: String) -> some View {
+        background(WindowFrameAutosave(key: key))
     }
 }
