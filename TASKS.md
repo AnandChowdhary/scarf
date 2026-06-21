@@ -7,6 +7,7 @@
 
 - [ ] Add a permission toggle for each chat, for auto or yolo (or supported Hermes verbs) to help with tool dialogs. (added: 2026-06-06)
 - [ ] New chat session from project (or working in a project) isn't linked to the project and doesn't show up in sessions for that project. Harden the project to chat logic. (added: 2026-06-06)
+- [ ] Spike: gateway-WS real-time cross-surface push (id: t-6ae517fb) (added: 2026-06-21) (priority: low)
 
 ## Todo
 
@@ -41,6 +42,8 @@
 - [ ] **[todo/misc]** iOS NotificationRouter: build the one-shot ACPClient pipe + mirror the APPROVE_PERMISSION response: `Scarf iOS/Notifications/NotificationRouter.swift:100,106`. (id: t-todo-notif) (added: 2026-06-13, source: t-aud16)
 - [ ] **[todo/misc, pending Hermes]** APNS Hermes-side sender (POST deviceToken/serverID) — blocked on upstream Hermes work: `Scarf iOS/Notifications/APNSTokenStore.swift:46`. (id: t-todo-apns) (added: 2026-06-13, source: t-aud16)
 - [ ] **[todo/misc]** Ed25519KeyGenerator: resolve the FIXME re Citadel auth method expectations: `Packages/ScarfIOS/Sources/ScarfIOS/Ed25519KeyGenerator.swift:31`. (id: t-todo-ed25519) (added: 2026-06-13, source: t-aud16)
+- [ ] Project tool/skill scoping (blocked on hermes-agent#45958) (id: t-93517390) (added: 2026-06-21)
+- [ ] Mini-app kanban writes (kanban:write, behind permission) (id: t-934207cd) (added: 2026-06-21) (priority: low)
 
 ## Doing
 
