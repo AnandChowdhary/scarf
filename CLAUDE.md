@@ -13,3 +13,8 @@ xcodebuild -project scarf/scarf.xcodeproj -scheme scarf -configuration Debug bui
 > `code/`, `TASKS.md`) and a native MCP server (`memophant-mcp`) for read/write. Substance lives
 > in those files, not here.
 <!-- memophant:end -->
+## Build & run a local copy
+
+`./scripts/build-detached.sh` — no arguments. Builds into isolated DerivedData and launches a
+decoupled, visually-distinct **dev copy** you can see; each run quits only the copy it launched
+before (never other copies running elsewhere). Replaces the old `run-detached.sh`.
