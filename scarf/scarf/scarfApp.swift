@@ -367,11 +367,13 @@ private struct ContextBoundRoot: View {
             // title gives macOS Mission Control / ⌘` cycling a meaningful
             // label so users can pick the right window without focusing it.
             .navigationTitle("Scarf — \(context.displayName)")
-            // Persist this window's frame (size + position) across
-            // launches via AppKit's NSWindow.frameAutosaveName. The
-            // autosave name is per-server so each open server window
-            // remembers its own geometry; new servers fall back to
-            // WindowGroup's `.defaultSize` until first resize.
+            // Persist this window's frame (size + position) across launches
+            // with MANUAL UserDefaults + setFrame (NOT NSWindow's
+            // frameAutosaveName — SwiftUI owns its own derived autosave name
+            // and never re-applies it; see WindowFrameAutosave). The key is
+            // per-server so each open server window remembers its own
+            // geometry; new servers fall back to WindowGroup's `.defaultSize`
+            // until first resize.
             .windowFrameAutosave("Scarf.Window.\(context.id)")
             .onAppear { fileWatcher.startWatching() }
             .onDisappear { fileWatcher.stopWatching() }

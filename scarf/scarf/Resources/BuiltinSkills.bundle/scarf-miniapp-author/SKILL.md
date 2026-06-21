@@ -69,13 +69,13 @@ Do **not** invoke for: editing the project's `dashboard.json` (that's the Dashbo
 | `scarf.ui.resize(w, h)` | — | — | layout hint |
 | `scarf.ui.requestClose()` | — | — | asks the host to close the app |
 | `scarf.store.get(key)` / `scarf.store.set(key, value)` | `store` | no | per-(project, mini-app) persisted KV (JSON values); `get` → value or `null`, `set` → `true` |
-| `scarf.query(kind, params?)` | `query:<kind>` | no | rows for `kind`. Implemented: `"kanban.tasks"`. Others reply `not_implemented`. |
+| `scarf.query(kind)` | `query:<kind>` | no | rows for `kind` as a JSON array. Implemented: `"kanban.tasks"`; any other kind replies `not_implemented`. (A 2nd `params` argument is accepted but **reserved — ignored in v1**.) |
 | `scarf.kanban.read()` | `query:kanban.tasks` | no | array of the project's Kanban tasks (tenant-scoped); `[]` if none |
 | `scarf.file.read(path)` | `file:read` | no | UTF-8 contents of a project file (path is **relative to the project root**, read-only, ≤4 MB, contained — no escaping the project) |
 | `scarf.prompt(text, opts?)` | `prompt` | **yes** | sends a prompt to the project's bound agent session → resolves to the agent's final text (string); stream incremental output via `scarf.onEvent` |
 | `scarf.onEvent(cb)` | `events` | no | `cb(ev)` fires for streamed agent events (message chunks, tool calls, completion) — pair with `prompt` |
 
-† **Sensitive permissions** (`prompt`, `net`, `file:write`, `kanban:write`) default to **OFF** for `generated: true` apps until the user explicitly grants them in the permission sheet. Non-sensitive ones (`store`, `query:*`, `file:read`, `events`) default ON. **Prefer non-sensitive surfaces** so your app works immediately; only request `prompt` (and friends) when the app genuinely needs to drive the agent, and tell the user they'll be asked to grant it.
+† **Sensitive permissions** (`prompt`, `net`, `file:write`, `kanban:write`) default to **OFF** for `generated: true` apps until the user explicitly grants them in the permission sheet. Non-sensitive ones (`store`, `query:kanban.tasks`, `file:read`, `events`) default ON — note only the allow-listed `query:kanban.tasks` is non-sensitive (any other `query:<kind>` would be treated as sensitive, though none is implemented yet). **Prefer non-sensitive surfaces** so your app works immediately; only request `prompt` (and friends) when the app genuinely needs to drive the agent, and tell the user they'll be asked to grant it.
 
 `net`, `file:write`, and `kanban:write` (move/create) are **not wired in this build** — don't rely on them. There is no external network: CSP blocks it and there's no `net` surface, so **bundle everything locally** (inline CSS/JS or local files; no CDNs, no `fetch()` to the internet).
 
@@ -124,8 +124,14 @@ Needs only the non-sensitive `query:kanban.tasks` permission, so it runs immedia
         for (const t of tasks) {
           const el = document.createElement("div");
           el.className = "task";
-          el.innerHTML = '<div>' + (t.title || "(untitled)") +
-                         '</div><div class="status">' + (t.status || "") + '</div>';
+          // textContent (not innerHTML) for task data — titles can come from
+          // other users sharing the tenant; never render them as HTML.
+          const title = document.createElement("div");
+          title.textContent = t.title || "(untitled)";
+          const status = document.createElement("div");
+          status.className = "status";
+          status.textContent = t.status || "";
+          el.append(title, status);
           list.appendChild(el);
         }
       } catch (e) {

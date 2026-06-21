@@ -77,17 +77,29 @@ public enum MiniAppPermission: Codable, Sendable, Hashable {
         return nil
     }
 
+    /// Query kinds low-risk enough to stay non-sensitive (default-ON for
+    /// agent-generated apps). Everything else — `sessions`, `messages`,
+    /// `insights.*`, `cron.*`, or any unknown kind — is treated as sensitive
+    /// so a privacy-relevant kind can never be granted-by-default to
+    /// untrusted web the moment it's wired host-side. Today only
+    /// `kanban.tasks` is implemented, and it's read-only board data.
+    public static let nonSensitiveQueryKinds: Set<String> = ["kanban.tasks"]
+
     /// Surfaces that touch the world beyond read-only, in-project data:
-    /// outbound network, filesystem writes, and kanban mutation. The
-    /// preview sheet highlights these; agent-generated mini-apps get them
-    /// denied by default until the user explicitly elevates.
+    /// outbound network, filesystem writes, kanban mutation, and any
+    /// non-allowlisted query kind. The preview sheet highlights these;
+    /// agent-generated mini-apps get them denied by default until the user
+    /// explicitly elevates.
     public var isSensitive: Bool {
         switch self {
         // `prompt` drives a tool-enabled agent with web-supplied text — the
         // biggest escalation, so agent-generated apps don't get it by default.
         case .prompt, .net, .fileWrite, .kanbanWrite: return true
         case .unknown: return true  // unrecognized → treat as sensitive (deny-by-default)
-        case .events, .query, .fileRead, .store: return false
+        // A query is non-sensitive only for an allow-listed read-only kind;
+        // any other (or future privacy-relevant) kind defaults to sensitive.
+        case .query(let kind): return !Self.nonSensitiveQueryKinds.contains(kind)
+        case .events, .fileRead, .store: return false
         }
     }
 

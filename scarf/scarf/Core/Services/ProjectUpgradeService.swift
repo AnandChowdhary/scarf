@@ -96,7 +96,16 @@ struct ProjectUpgradeService: Sendable {
         let store = ProjectStore(context: context)
         var record = store.load(projectPath: project.path) ?? store.derive(from: project)
         if let board, record.board != board { record.board = board }
-        try store.save(record)
+        do {
+            try store.save(record)
+        } catch {
+            // The ONLY fatal step — log the cause before propagating so the
+            // `try?` at the call site (AppCoordinator.upgradeProject) isn't
+            // undebuggable. The cockpit banner persists (provenance was never
+            // stamped → `needsUpgrade` stays true) and the user can retry.
+            Self.logger.error("upgrade: identity write failed for \(project.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
         let projectID = record.id
 
         // The downstream writers key on path but want the stable uuid in the

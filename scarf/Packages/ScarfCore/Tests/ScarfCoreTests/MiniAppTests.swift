@@ -44,7 +44,8 @@ import Foundation
         #expect(MiniAppPermission.kanbanWrite.isSensitive)
         #expect(MiniAppPermission.unknown("x").isSensitive)  // deny-by-default
         #expect(MiniAppPermission.prompt.isSensitive)         // drives a tool-enabled agent
-        #expect(!MiniAppPermission.query("sessions").isSensitive)
+        #expect(!MiniAppPermission.query("kanban.tasks").isSensitive)  // allow-listed read-only kind
+        #expect(MiniAppPermission.query("sessions").isSensitive)       // non-allowlisted kind → sensitive (default-off for generated)
         #expect(!MiniAppPermission.fileRead.isSensitive)
         #expect(!MiniAppPermission.store.isSensitive)
     }
@@ -157,6 +158,25 @@ import Foundation
         let decoded = try JSONDecoder().decode(ScarfProject.self, from: JSONEncoder().encode(p))
         #expect(decoded.miniApps.map(\.id) == ["a", "b"])
         #expect(decoded.miniApps.first { $0.id == "b" }?.generated == true)
+    }
+
+    /// A `miniApps` entry written by an older Scarf WITHOUT the `generated`
+    /// key must decode to `generated == false` — the conservative trust
+    /// default the permission sheet keys off. Pins the custom `MiniAppRef`
+    /// decoder so a future change can't silently flip the default.
+    @Test func miniAppRefDefaultsGeneratedFalseWhenKeyAbsent() throws {
+        let json = """
+        {
+          "id": "AAAAAAAA-1111-2222-3333-444444444444",
+          "name": "Legacy",
+          "rootPath": "/tmp/legacy",
+          "miniApps": [{ "id": "old-app" }]
+        }
+        """
+        let decoded = try JSONDecoder().decode(ScarfProject.self, from: Data(json.utf8))
+        let ref = try #require(decoded.miniApps.first)
+        #expect(ref.id == "old-app")
+        #expect(ref.generated == false)
     }
 
     // MARK: - Helpers

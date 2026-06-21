@@ -166,6 +166,35 @@ import ScarfCore
         #expect(record.board == KanbanTenantReader(context: home.context).tenant(forProjectPath: entry.path))
     }
 
+    // MARK: - Legacy record (board predates the tenant) gets the board reflected, not re-derived
+
+    /// An EXISTING first-class record that predates any Kanban tenant
+    /// (`board == nil`) must have the minted tenant REFLECTED into
+    /// `project.json` WITHOUT a full re-derive — which would reset
+    /// `createdAt`/`hostBindings`. Pins the `record.board = board` branch
+    /// (the legacy project.json/manifest sync path), distinct from the
+    /// bare-derive path that `upgradeWritesBoardIntoRecord` covers.
+    @Test func upgradeReflectsBoardIntoExistingRecordPreservingCreatedAt() throws {
+        let home = try TempHermesHome()
+        defer { home.cleanup() }
+        let entry = try Self.makeRegisteredProject(home, name: "Legacy", slug: "legacy")
+        let knownID = UUID()
+        let createdAt = Date(timeIntervalSince1970: 1_600_000_000)
+        try ProjectStore(context: home.context).save(
+            ScarfProject(id: knownID, name: "Legacy", rootPath: entry.path, createdAt: createdAt, board: nil)
+        )
+
+        let outcome = try ProjectUpgradeService(context: home.context).upgrade(entry, hasKanban: true)
+
+        let record = try #require(ProjectStore(context: home.context).load(projectPath: entry.path))
+        #expect(record.id == knownID)                  // stable id preserved (no re-derive)
+        #expect(outcome.board != nil)
+        #expect(record.board == outcome.board)         // minted tenant reflected into project.json
+        #expect(record.board == KanbanTenantReader(context: home.context).tenant(forProjectPath: entry.path))
+        // A full re-derive would reset createdAt; the targeted reflection must not.
+        #expect(abs(record.createdAt.timeIntervalSince(createdAt)) < 1)
+    }
+
     // MARK: - Provenance version-bump
 
     @Test func needsUpgradeTrueForOlderProvenanceVersion() throws {

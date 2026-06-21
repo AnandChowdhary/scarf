@@ -54,6 +54,24 @@ import ScarfCore
         #expect(await fake.sentCount == 0)
     }
 
+    /// `events.subscribe` is the second sensitive agent surface
+    /// (`scarf.onEvent`). Without the `.events` grant, `preflight` must deny
+    /// it BEFORE the handler registers an event sink — the symmetric
+    /// guarantee to the `prompt` case above.
+    @Test func eventsSubscribeDeniedWithoutGrantNeverRegistersSink() async throws {
+        let fake = MiniAppAgentSessionTests.FakeACPChannel()
+        let session = makeSession(fake)
+        // No `.events` grant.
+        let bridge = makeBridge(projectPath: "/tmp/scarf-events-deny", granted: [], agentSession: session)
+
+        let (result, error) = try await callDispatch(bridge, .eventsSubscribe)
+
+        #expect(result == nil)
+        #expect(error == "permission_denied: Permission 'events' is not granted to this mini-app.")
+        // Gate fired before the handler — no sink registered, no ACP activity.
+        #expect(await fake.sentCount == 0)
+    }
+
     // MARK: - Per-surface gating (store)
 
     /// With `.store` granted, `store.set` then `store.get` round-trips the

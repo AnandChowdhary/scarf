@@ -274,7 +274,14 @@ private struct MiniAppRunner: View {
                 project: project,
                 manifest: manifest,
                 serverContext: serverContext,
-                grantedPermissions: granted
+                grantedPermissions: granted,
+                onUIAction: { action in
+                    // Honor the mini-app's own "done" affordance
+                    // (`scarf.ui.requestClose()`) — close the slide-in surface,
+                    // same as the chrome Close button. (toast/setTitle/resize
+                    // stay host-logged only for now.)
+                    if case .requestClose = action { onClose() }
+                }
             )
             // Recreate the web host (fresh dispatcher) whenever the granted
             // set changes — so re-reviewing to a NARROWER set actually

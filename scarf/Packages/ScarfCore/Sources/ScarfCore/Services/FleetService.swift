@@ -1,4 +1,5 @@
 import Foundation
+import Dispatch
 #if canImport(os)
 import os
 #endif
@@ -38,15 +39,37 @@ public struct FleetService: Sendable {
     /// Disk/SFTP I/O — call off-main. A host whose registry can't be read
     /// contributes an empty list rather than failing the whole gather
     /// (NON-FATAL: one unreachable remote never blanks the fleet view).
+    /// Multiple hosts are gathered CONCURRENTLY (see below).
     public nonisolated func portfolio() -> ProjectPortfolio {
-        let hosts: [ProjectPortfolio.HostProjects] = contexts.map { ctx in
-            ProjectPortfolio.HostProjects(
-                serverId: ctx.id.uuidString,
-                serverDisplayName: ctx.displayName,
-                projects: stablyIdentifiedProjects(on: ctx)
-            )
+        // The per-host walks are independent — each builds its own registry +
+        // transport and shares no mutable state — so for multiple servers we
+        // run them concurrently. Serially the cost is the SUM of per-host
+        // latency (and for remotes each host is a batch of blocking SFTP
+        // reads); concurrent gather collapses it toward the slowest single
+        // host. `portfolio()` is call-off-main, so blocking GCD worker
+        // threads is fine, and `build(from:)` is a pure, order-independent
+        // grouper (it re-sorts for display).
+        let contexts = self.contexts
+        let hosts: [ProjectPortfolio.HostProjects]
+        if contexts.count <= 1 {
+            hosts = contexts.map(gather)          // single host (the norm) — no fan-out
+        } else {
+            let collector = HostCollector(count: contexts.count)
+            DispatchQueue.concurrentPerform(iterations: contexts.count) { i in
+                collector.set(i, gather(contexts[i]))
+            }
+            hosts = collector.ordered()
         }
         return ProjectPortfolio.build(from: hosts)
+    }
+
+    /// Gather one host's stably-identified projects into a `HostProjects`.
+    private nonisolated func gather(_ ctx: ServerContext) -> ProjectPortfolio.HostProjects {
+        ProjectPortfolio.HostProjects(
+            serverId: ctx.id.uuidString,
+            serverDisplayName: ctx.displayName,
+            projects: stablyIdentifiedProjects(on: ctx)
+        )
     }
 
     /// Every project on `ctx` that carries a **stable** id — the canonical
@@ -80,5 +103,23 @@ public struct FleetService: Sendable {
     /// Disk/SFTP I/O — call off-main.
     public nonisolated func fleetProject(id: UUID) -> FleetProject? {
         portfolio().project(id: id)
+    }
+}
+
+/// Lock-guarded, index-addressed sink for the concurrent per-host gather in
+/// `FleetService.portfolio()`: each `concurrentPerform` iteration writes its
+/// own slot, then `ordered()` returns them in context order (dropping any that
+/// somehow stayed nil). `@unchecked Sendable` — the only mutable state is
+/// behind the lock.
+private final class HostCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var slots: [ProjectPortfolio.HostProjects?]
+    init(count: Int) { slots = Array(repeating: nil, count: count) }
+    func set(_ index: Int, _ value: ProjectPortfolio.HostProjects) {
+        lock.lock(); slots[index] = value; lock.unlock()
+    }
+    func ordered() -> [ProjectPortfolio.HostProjects] {
+        lock.lock(); defer { lock.unlock() }
+        return slots.compactMap { $0 }
     }
 }
