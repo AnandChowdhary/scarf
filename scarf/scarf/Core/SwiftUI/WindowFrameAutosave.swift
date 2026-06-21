@@ -41,25 +41,50 @@ struct WindowFrameAutosave: NSViewRepresentable {
         // The hosting NSWindow isn't attached to this view yet at
         // makeNSView time — SwiftUI mounts the AppKit view hierarchy
         // before the window assignment propagates. Defer one runloop
-        // iteration so `view.window` is non-nil when we stamp.
+        // iteration so `view.window` is non-nil when we bind.
         DispatchQueue.main.async { [weak view] in
-            view?.window?.setFrameAutosaveName(name)
+            guard let window = view?.window else { return }
+            Self.bind(window, to: name)
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         // SwiftUI may swap the host window in rare cases (window
-        // restoration after a relaunch, scene reuse). Re-stamp on
-        // update so we don't lose the autosave binding silently.
-        // setFrameAutosaveName is idempotent for the same name on
-        // the same window; assigning the same name twice is a no-op.
+        // restoration after a relaunch, scene reuse). Re-bind on update
+        // so we don't lose the autosave binding silently. `bind` is
+        // idempotent (it no-ops once the window already carries `name`),
+        // so this never re-restores over a mid-session user resize.
         DispatchQueue.main.async { [weak nsView] in
             guard let window = nsView?.window else { return }
-            if window.frameAutosaveName != name {
-                window.setFrameAutosaveName(name)
-            }
+            Self.bind(window, to: name)
         }
+    }
+
+    /// Restore the saved frame for `name`, then enable autosave so future
+    /// resizes/moves persist.
+    ///
+    /// **Why `setFrameUsingName` is the load-bearing call.**
+    /// `setFrameAutosaveName` only *saves* the frame on change — it does
+    /// NOT reliably re-apply a previously-saved frame once SwiftUI's
+    /// `.defaultSize` has already positioned and shown the window (which
+    /// happens before this deferred bind runs). `setFrameUsingName`
+    /// explicitly reads the saved frame out of `UserDefaults` and applies
+    /// it, overriding `.defaultSize`. Without it the window saved its size
+    /// but always reopened at the default — the long-standing "window
+    /// doesn't remember its size" bug.
+    ///
+    /// Order matters: restore FIRST, then set the autosave name. Setting
+    /// the name first would persist the just-shown `.defaultSize` frame
+    /// over the saved one before we get a chance to restore it.
+    ///
+    /// Guarded on `frameAutosaveName == name` so it binds exactly once per
+    /// window: re-running on every `updateNSView` would yank the window
+    /// back to the saved frame mid-resize.
+    private static func bind(_ window: NSWindow, to name: String) {
+        guard window.frameAutosaveName != name else { return }
+        window.setFrameUsingName(name)      // restore saved frame (overrides .defaultSize); no-op on first launch
+        window.setFrameAutosaveName(name)   // enable ongoing persistence
     }
 }
 

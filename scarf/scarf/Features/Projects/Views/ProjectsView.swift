@@ -3,37 +3,6 @@ import ScarfCore
 import ScarfDesign
 import UniformTypeIdentifiers
 
-private enum DashboardTab: String, CaseIterable {
-    case dashboard = "Dashboard"
-    case cockpit = "Cockpit"
-    case site = "Site"
-    case sessions = "Sessions"
-    case kanban = "Kanban"
-    case slashCommands = "Slash"
-
-    var displayName: LocalizedStringResource {
-        switch self {
-        case .dashboard: return "Dashboard"
-        case .cockpit: return "Cockpit"
-        case .site: return "Site"
-        case .sessions: return "Sessions"
-        case .kanban: return "Kanban"
-        case .slashCommands: return "Slash Commands"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .dashboard: return "square.grid.2x2"
-        case .cockpit: return "speedometer"
-        case .site: return "globe"
-        case .sessions: return "bubble.left.and.bubble.right"
-        case .kanban: return "rectangle.split.3x1"
-        case .slashCommands: return "slash.circle"
-        }
-    }
-}
-
 struct ProjectsView: View {
     @State private var viewModel: ProjectsViewModel
     @State private var installerViewModel: TemplateInstallerViewModel
@@ -89,8 +58,6 @@ struct ProjectsView: View {
         let path = ProjectConfigService.manifestCachePath(for: project)
         return serverContext.makeTransport().fileExists(path)
     }
-
-    @State private var selectedTab: DashboardTab = .dashboard
 
     var body: some View {
         // ScarfMon — counts each ProjectsView body evaluation. Pair with
@@ -439,86 +406,24 @@ struct ProjectsView: View {
         }
     }
 
-    // MARK: - Dashboard Area
+    // MARK: - Detail Area
 
-    /// First webview widget found across all sections, if any.
-    private var siteWidget: DashboardWidget? {
-        viewModel.dashboard?.sections
-            .flatMap(\.widgets)
-            .first { $0.type == "webview" }
-    }
-
+    /// The project detail pane is the cockpit — the single per-project
+    /// "mission control" that aggregates every facet as panels (Dashboard
+    /// widgets, Sessions, Board, Site, Context, Cron, Memory, Secrets,
+    /// Templates, Slash, Mini-apps, Fleet). It renders for EVERY selected
+    /// project, not only ones with a `.scarf/dashboard.json` — the legacy
+    /// dashboard is now the cockpit's Dashboard panel, so old projects keep
+    /// working while gaining the first-class facets (incl. Fleet).
     @ViewBuilder
     private var dashboardArea: some View {
-        if let dashboard = viewModel.dashboard {
-            VStack(spacing: 0) {
-                dashboardHeader(dashboard)
-                    .padding(.horizontal)
-                    .padding(.top)
-                    .padding(.bottom, 8)
-                // Sessions tab is always present in v2.3, so the tab
-                // bar always renders when a dashboard is loaded.
-                // Site tab filters out when there's no webview widget
-                // (existing v2.2 behavior preserved).
-                tabBar
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                switch selectedTab {
-                case .dashboard:
-                    widgetsTab(dashboard)
-                case .cockpit:
-                    if let project = viewModel.selectedProject {
-                        ProjectCockpitView(project: project)
-                    } else {
-                        ContentUnavailableView("No project selected", systemImage: "speedometer")
-                    }
-                case .site:
-                    if let widget = siteWidget {
-                        siteTab(widget)
-                    } else {
-                        widgetsTab(dashboard)
-                    }
-                case .sessions:
-                    if let project = viewModel.selectedProject {
-                        ProjectSessionsView(project: project)
-                    } else {
-                        ContentUnavailableView("No project selected", systemImage: "bubble.left.and.bubble.right")
-                    }
-                case .kanban:
-                    if let project = viewModel.selectedProject {
-                        ProjectKanbanTab(project: project)
-                    } else {
-                        ContentUnavailableView("No project selected", systemImage: "rectangle.split.3x1")
-                    }
-                case .slashCommands:
-                    if let project = viewModel.selectedProject {
-                        ProjectSlashCommandsView(project: project)
-                    } else {
-                        ContentUnavailableView("No project selected", systemImage: "slash.circle")
-                    }
-                }
-            }
-            // Clamp the container VStack to the detail column's
-            // offered space. Without it, any tab whose content is
-            // taller than the window (long Sessions list, tall
-            // README block in a dashboard's text widget, etc.) can
-            // bubble its intrinsic height up through
-            // NavigationSplitView's detail slot and push the whole
-            // window past the screen. widgetsTab's own ScrollView
-            // and siteTab's explicit maxHeight both cooperate; the
-            // sessions tab needs this as well.
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let error = viewModel.dashboardError {
-            ContentUnavailableView {
-                Label("No Dashboard", systemImage: "square.grid.2x2")
-            } description: {
-                Text(error)
-            }
+        if let project = viewModel.selectedProject {
+            ProjectCockpitView(project: project)
         } else if viewModel.projects.isEmpty {
             ContentUnavailableView {
                 Label("No Projects", systemImage: "square.grid.2x2")
             } description: {
-                Text("Add a project folder to get started. Create a .scarf/dashboard.json file in your project to define widgets.")
+                Text("Add a project folder to get started.")
             } actions: {
                 Button("Add Project") { showingAddSheet = true }
             }
@@ -526,126 +431,9 @@ struct ProjectsView: View {
             ContentUnavailableView {
                 Label("Select a Project", systemImage: "square.grid.2x2")
             } description: {
-                Text("Choose a project from the sidebar to view its dashboard.")
+                Text("Choose a project from the sidebar to view its cockpit.")
             }
         }
-    }
-
-    /// Tabs that should appear for the current project. `.site` is
-    /// gated on the dashboard actually containing a webview widget,
-    /// per v2.2 behavior — the Site tab is meaningless without one.
-    /// `.kanban` is gated on `HermesCapabilities.hasKanban` so
-    /// pre-v0.12 hosts don't see a broken destination.
-    private var visibleTabs: [DashboardTab] {
-        let caps = capabilitiesStore?.capabilities
-        return DashboardTab.allCases.filter { tab in
-            switch tab {
-            case .site:    return siteWidget != nil
-            case .kanban:  return caps?.hasKanban ?? false
-            default:       return true
-            }
-        }
-    }
-
-    private var tabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(visibleTabs, id: \.self) { tab in
-                Button {
-                    selectedTab = tab
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: tab.systemImage)
-                            .font(.caption)
-                        Text(tab.displayName)
-                            .font(.subheadline)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(selectedTab == tab ? ScarfColor.accentTint : Color.clear)
-                    .foregroundStyle(selectedTab == tab ? ScarfColor.accentActive : ScarfColor.foregroundMuted)
-                    .clipShape(RoundedRectangle(cornerRadius: ScarfRadius.md))
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
-        }
-    }
-
-    private func widgetsTab(_ dashboard: ProjectDashboard) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ForEach(dashboard.sections) { section in
-                    DashboardSectionView(section: section)
-                }
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        // v2.7: file-reading widgets (markdown_file, log_tail, image-local)
-        // resolve their `path` field against this root via WidgetPathResolver.
-        .environment(\.selectedProjectRoot, viewModel.selectedProject?.path)
-    }
-
-    private func siteTab(_ widget: DashboardWidget) -> some View {
-        WebviewWidgetView(widget: widget, fullCanvas: true)
-            .padding(16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func dashboardHeader(_ dashboard: ProjectDashboard) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(dashboard.title)
-                    .font(.title2.bold())
-                if let desc = dashboard.description {
-                    Text(desc)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if let updated = dashboard.updatedAt {
-                Text("Updated: \(updated)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Button(action: { viewModel.refreshDashboard() }) {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.borderless)
-            if let project = viewModel.selectedProject {
-                Button(action: { openInFinder(project.path) }) {
-                    Image(systemName: "folder")
-                }
-                .buttonStyle(.borderless)
-                if isConfigurable(project) {
-                    Button {
-                        configEditorProject = project
-                    } label: {
-                        Image(systemName: "slider.horizontal.3")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Edit configuration")
-                }
-                if uninstaller.isTemplateInstalled(project: project) {
-                    Button {
-                        uninstallerViewModel.begin(project: project)
-                        showingUninstallSheet = true
-                    } label: {
-                        Image(systemName: "shippingbox.and.arrow.backward")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Uninstall template")
-                }
-            }
-        }
-    }
-
-    private func openInFinder(_ path: String) {
-        // Project paths come from the registry on the active server. For
-        // remote, the path is on that machine's filesystem and can't be
-        // shown in this Mac's Finder — no-op via the helper.
-        viewModel.context.openInLocalEditor(path)
     }
 }
 

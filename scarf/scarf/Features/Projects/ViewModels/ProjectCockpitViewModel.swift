@@ -25,6 +25,11 @@ final class ProjectCockpitViewModel {
     /// The canonical (or freshly-derived) record — source of truth for
     /// the header + Secrets/Templates panels.
     var scarfProject: ScarfProject?
+    /// The project's `dashboard.json` widgets, when present — rendered in
+    /// the Dashboard panel. `nil` for a project without a dashboard (the
+    /// panel is then hidden). Loaded alongside the other facets so the
+    /// cockpit is a self-contained project pane.
+    var dashboard: ProjectDashboard?
     /// Resolved display name of the bound model preset, or `nil` when
     /// none is bound / it no longer resolves.
     var modelPresetName: String?
@@ -104,6 +109,11 @@ final class ProjectCockpitViewModel {
 
             let miniApps = MiniAppService(context: context).discover(projectPath: project.path)
 
+            // Dashboard: the legacy `.scarf/dashboard.json` widgets, now a
+            // cockpit panel (the cockpit is the single project pane). `nil`
+            // when the project ships no dashboard — the panel is hidden.
+            let dashboard = ProjectDashboardService(context: context).loadDashboard(for: project)
+
             return Loaded(
                 project: sp,
                 block: block,
@@ -111,7 +121,8 @@ final class ProjectCockpitViewModel {
                 memory: memory,
                 templateID: tmpl?.id,
                 templateVersion: tmpl?.version,
-                miniApps: miniApps
+                miniApps: miniApps,
+                dashboard: dashboard
             )
         }.value
 
@@ -122,6 +133,7 @@ final class ProjectCockpitViewModel {
         templateID = result.templateID
         templateVersion = result.templateVersion
         miniApps = result.miniApps
+        dashboard = result.dashboard
         isLoading = false
 
         // Resolve the bound preset's display name (actor hop), if any.
@@ -171,5 +183,6 @@ final class ProjectCockpitViewModel {
         let templateID: String?
         let templateVersion: String?
         let miniApps: [MiniAppManifest]
+        let dashboard: ProjectDashboard?
     }
 }

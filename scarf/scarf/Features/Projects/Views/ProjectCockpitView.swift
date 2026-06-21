@@ -13,14 +13,18 @@ import ScarfDesign
 /// (AGENTS.md block), Cron (`[proj:]`/`[tmpl:]` jobs), Memory (MEMORY.md
 /// block), Secrets (ref NAMES only — SECRET-SAFE), Templates.
 ///
-/// Mini-apps are Milestone 2. Tool/skill scoping is deferred (upstream
-/// hermes-agent#45958), so there is deliberately no Scope panel yet.
+/// Mini-apps are Milestone 2; **Fleet** (Milestone 3 — the
+/// fleet/portfolio dimension: where the project is materialized across
+/// servers + per-host config drift + apply-to-fleet) is the last panel.
+/// Tool/skill scoping is deferred (upstream hermes-agent#45958), so there
+/// is deliberately no Scope panel yet.
 struct ProjectCockpitView: View {
     let project: ProjectEntry
 
     @Environment(\.serverContext) private var serverContext
     @Environment(\.hermesCapabilities) private var capabilitiesStore
     @Environment(HermesFileWatcher.self) private var fileWatcher
+    @Environment(ServerRegistry.self) private var serverRegistry
 
     @State private var viewModel: ProjectCockpitViewModel?
     @State private var selectedPanel: CockpitPanel = .sessions
@@ -37,15 +41,26 @@ struct ProjectCockpitView: View {
                 .padding(.vertical, 8)
             Divider()
             panelContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Cap the reported IDEAL height so no panel's intrinsic
+                // content (e.g. the Mini-apps list, or a tall empty state)
+                // bubbles up through `.windowResizability(.contentMinSize)`
+                // and grows the window on panel switch. `maxHeight: .infinity`
+                // still fills the actual window; `minHeight: 0` allows it to
+                // shrink. Mirrors the cap in ProjectSessionsView / RichChatView.
+                .frame(maxWidth: .infinity, minHeight: 0, idealHeight: 400, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: project.id) {
             // Rebuild the VM when the selected project changes so stale
-            // facet data doesn't bleed across projects.
+            // facet data doesn't bleed across projects. Land on a safe
+            // panel while loading, then prefer Dashboard once we know the
+            // project has one (familiar landing for legacy dashboard
+            // projects); otherwise stay on Sessions.
+            selectedPanel = .sessions
             let vm = ProjectCockpitViewModel(context: serverContext, project: project)
             viewModel = vm
             await vm.load()
+            if vm.dashboard != nil { selectedPanel = .dashboard }
         }
         .onChange(of: fileWatcher.lastChangeDate) {
             Task { await viewModel?.load(force: true) }
@@ -72,6 +87,32 @@ struct ProjectCockpitView: View {
                 .padding(.top, 2)
             }
             Spacer()
+            headerActions
+        }
+    }
+
+    /// Per-project actions promoted from the old dashboard header. Refresh
+    /// reloads every facet (incl. the dashboard widgets); the folder button
+    /// reveals the project on the local host (no-op for remote paths).
+    /// Configure / Uninstall stay on the sidebar context menu.
+    private var headerActions: some View {
+        HStack(spacing: 6) {
+            Button {
+                Task { await viewModel?.load(force: true) }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .help("Refresh this project")
+
+            Button {
+                serverContext.openInLocalEditor(project.path)
+            } label: {
+                Image(systemName: "folder")
+            }
+            .buttonStyle(.borderless)
+            .help("Reveal in Finder")
+            .disabled(serverContext.isRemote)
         }
     }
 
@@ -115,12 +156,22 @@ struct ProjectCockpitView: View {
 
     // MARK: - Panel bar
 
+    /// First webview widget across the dashboard's sections, if any — the
+    /// Site panel renders it full-canvas (matches the old Site tab).
+    private var siteWidget: DashboardWidget? {
+        viewModel?.dashboard?.sections.flatMap(\.widgets).first { $0.type == "webview" }
+    }
+
     private var visiblePanels: [CockpitPanel] {
         let hasKanban = capabilitiesStore?.capabilities.hasKanban ?? false
+        let hasDashboard = viewModel?.dashboard != nil
+        let hasSite = siteWidget != nil
         return CockpitPanel.allCases.filter { panel in
             switch panel {
-            case .board: return hasKanban
-            default:     return true
+            case .dashboard: return hasDashboard   // hidden for dashboard-less projects
+            case .board:     return hasKanban
+            case .site:      return hasSite        // hidden without a webview widget
+            default:         return true
             }
         }
     }
@@ -154,12 +205,30 @@ struct ProjectCockpitView: View {
     @ViewBuilder
     private var panelContent: some View {
         switch selectedPanel {
+        case .dashboard:
+            // The legacy `.scarf/dashboard.json` widgets — now a panel so
+            // the cockpit is the single project pane (gated above on the
+            // project actually having a dashboard).
+            CockpitDashboardPanel(
+                dashboard: viewModel?.dashboard,
+                projectRoot: project.path,
+                isLoading: viewModel?.isLoading ?? true
+            )
         case .sessions:
             // Reuse the existing per-project Sessions view verbatim.
             ProjectSessionsView(project: project)
         case .board:
             // Reuse the existing per-project Kanban tab (gated above).
             ProjectKanbanTab(project: project)
+        case .site:
+            // Full-canvas webview widget (matches the old Site tab).
+            if let widget = siteWidget {
+                WebviewWidgetView(widget: widget, fullCanvas: true)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                CockpitEmptyState(icon: "globe", text: "No site widget in this project's dashboard.")
+            }
         case .context:
             CockpitContextPanel(block: viewModel?.contextBlock, isLoading: viewModel?.isLoading ?? true)
         case .cron:
@@ -177,11 +246,20 @@ struct ProjectCockpitView: View {
                 templateVersion: viewModel?.templateVersion,
                 lockRef: viewModel?.scarfProject?.templateLockRef
             )
+        case .slash:
+            // Retained from the old tab bar — reuse the existing view.
+            ProjectSlashCommandsView(project: project)
         case .miniapps:
             CockpitMiniAppsPanel(
                 project: viewModel?.scarfProject,
                 manifests: viewModel?.miniApps ?? [],
                 serverContext: serverContext
+            )
+        case .fleet:
+            CockpitFleetPanel(
+                sourceProject: viewModel?.scarfProject,
+                currentContext: serverContext,
+                contexts: serverRegistry.allContexts
             )
         }
     }
@@ -190,36 +268,79 @@ struct ProjectCockpitView: View {
 // MARK: - Panel identity
 
 private enum CockpitPanel: String, CaseIterable {
-    case sessions, board, context, cron, memory, secrets, templates, miniapps
+    case dashboard, sessions, board, site, context, cron, memory, secrets, templates, slash, miniapps, fleet
 
     var title: String {
         switch self {
+        case .dashboard: return "Dashboard"
         case .sessions:  return "Sessions"
         case .board:     return "Board"
+        case .site:      return "Site"
         case .context:   return "Context"
         case .cron:      return "Cron"
         case .memory:    return "Memory"
         case .secrets:   return "Secrets"
         case .templates: return "Templates"
+        case .slash:     return "Slash"
         case .miniapps:  return "Mini-apps"
+        case .fleet:     return "Fleet"
         }
     }
 
     var systemImage: String {
         switch self {
+        case .dashboard: return "square.grid.2x2"
         case .sessions:  return "bubble.left.and.bubble.right"
         case .board:     return "rectangle.split.3x1"
+        case .site:      return "globe"
         case .context:   return "doc.text"
         case .cron:      return "clock"
         case .memory:    return "brain"
         case .secrets:   return "key"
         case .templates: return "shippingbox"
-        case .miniapps:  return "square.grid.2x2"
+        case .slash:     return "slash.circle"
+        case .miniapps:  return "macwindow"
+        case .fleet:     return "square.stack.3d.up"
         }
     }
 }
 
 // MARK: - Lightweight panels
+
+/// The project's `dashboard.json` widgets — the legacy dashboard, now a
+/// cockpit panel so the cockpit is the single project pane. Renders the
+/// same `DashboardSectionView`s the old Dashboard tab did, with the
+/// project root in scope for file-reading widgets (markdown_file, etc.).
+private struct CockpitDashboardPanel: View {
+    let dashboard: ProjectDashboard?
+    let projectRoot: String
+    let isLoading: Bool
+
+    var body: some View {
+        Group {
+            if let dashboard {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        ForEach(dashboard.sections) { section in
+                            DashboardSectionView(section: section)
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+                .environment(\.selectedProjectRoot, projectRoot)
+            } else if isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                CockpitEmptyState(
+                    icon: "square.grid.2x2",
+                    text: "This project has no dashboard. Add a .scarf/dashboard.json to define widgets."
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
 
 /// Read-only preview of the Scarf-managed AGENTS.md block — the
 /// projection of the `ScarfProject` the agent actually sees.
