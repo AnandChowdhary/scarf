@@ -43,7 +43,6 @@
 - [ ] MCP per-server keepalive_interval editor field (v0.17) (id: t-07a9baa4) (added: 2026-06-21) (priority: low)
 - [ ] Photon / iMessage gateway platform support (v0.17) — decide support level (id: t-5ab57e6f) (added: 2026-06-21) (priority: low)
 - [ ] Gateway allowlist: google-chat is a no-op + wrong platform id (v0.17 = google_chat) (id: t-2d6888ea) (added: 2026-06-21)
-- [ ] Cut v2.12.0 — Hermes v0.17 catch-up + #119 perf fix (id: t-b2b590c6) (added: 2026-06-21) (priority: high)
 
 ## Doing
 
@@ -51,6 +50,7 @@
 
 ## Done
 
+- [x] Cut v2.12.0 — Hermes v0.17 catch-up + #119 perf fix (id: t-b2b590c6) (added: 2026-06-21) (priority: high)
 - [x] Hermes v0.17 — Tier 1: fix 5 pre-existing CLI/allowlist bugs + surface config-set failures (id: t-1938bab5) (added: 2026-06-21) (priority: high)
 - [x] **[release · HIGH]** Cut **v2.10.3** — ships three fixes that are on `main` but missed the v2.10.2 cut (tagged 2026-06-05, before they landed): gh#102 100% CPU `720c805`, gh#112 Failure-1 stderr-surfacing `3401cc7`, gh#105 10s menu-bar flash `c7f42a6`. **Publicly promised on gh#102/#112/#105 (2026-06-13)** — users were told "fixed/next build" but no release contains these yet (this was gh#102 reporter aseelye's exact complaint). Until v2.10.3 ships, gh#102/#112(F1)/#105(flash) can't be closed. (id: t-rel-2103) (added: 2026-06-13, source: gh issue triage)
 - [x] Remote chat typing-lag: refreshCredentialPreflight does synchronous SSH on main per watcher tick (gh#102) (id: t-7b47ba93) (added: 2026-06-21) (priority: high)
