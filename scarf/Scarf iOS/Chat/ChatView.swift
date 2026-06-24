@@ -146,23 +146,6 @@ struct ChatView: View {
                 }
                 .disabled(controller.state == .connecting)
             }
-            // Keyboard accessory dismiss button. Previously chained
-            // onto the TextField's `.toolbar` modifier deep in the
-            // composer subtree; iOS 26.5 stopped surfacing it from
-            // that nested placement (gh#107 — "no button displayed
-            // to hide the keyboard"). Hoisting it to the body-root
-            // toolbar collection keeps the same intent (dismiss the
-            // active editor) and is the placement Apple's own apps
-            // (Mail, Notes, Messages) use on iOS 26.
-            ToolbarItemGroup(placement: .keyboard) {
-                Button {
-                    composerFocused = false
-                } label: {
-                    Image(systemName: "keyboard.chevron.compact.down")
-                }
-                .accessibilityLabel("Hide keyboard")
-                Spacer()
-            }
         }
         .sheet(isPresented: $showProjectPicker) {
             ProjectPickerSheet(
@@ -723,6 +706,33 @@ struct ChatView: View {
                 .disabled(attachDisabled)
                 .accessibilityLabel("Attach image")
             }
+            // Inline keyboard-dismiss affordance, shown only while the
+            // composer is focused. It lives here — a plain button in the
+            // composer row — rather than in a `.toolbar(placement:
+            // .keyboard)` accessory bar. That accessory sits directly
+            // above the keyboard, but so does this composer (last child
+            // of the body VStack, lifted by keyboard avoidance), so the
+            // two collided: iOS 26.5 drew the accessory's chevron on top
+            // of the paperclip and the paperclip stole its taps (the
+            // gh#107 regression). A normal sibling button can't overlap
+            // and always receives its own tap. Swipe-down still works on
+            // a scrollable transcript via `.scrollDismissesKeyboard`;
+            // this button covers the empty / resumed-empty state where
+            // there's nothing to scroll.
+            if composerFocused {
+                Button {
+                    composerFocused = false
+                } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundStyle(ScarfColor.foregroundMuted)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Hide keyboard")
+                .transition(.opacity)
+            }
             TextField(
                 "Message…",
                 text: $controller.draft,
@@ -753,13 +763,6 @@ struct ChatView: View {
             .onChange(of: controller.draft) { _, _ in
                 controller.scheduleDraftSave()
             }
-            // Explicit dismiss-keyboard affordance (chevron) is
-            // declared on the body-root `.toolbar` collection (see
-            // `body` above), not here — iOS 26.5 stopped surfacing
-            // `.toolbar(.keyboard)` placements declared deep in a
-            // composer subtree (gh#107). The body-root placement is
-            // also what Apple's own apps (Mail, Notes, Messages)
-            // use on iOS 26.
 
             // Big circular send button. Filled with the brand accent when
             // ready, swapped to a flat gray when disabled — opacity dims
@@ -788,6 +791,10 @@ struct ChatView: View {
             .disabled(!canSendComposer)
             .accessibilityLabel("Send message")
         }
+        // Fade the dismiss button in/out as focus changes so the
+        // TextField's width shift rides the keyboard slide instead of
+        // popping.
+        .animation(ScarfAnimation.fast, value: composerFocused)
     }
 
     /// Send is enabled when ready AND we have either text or at least
