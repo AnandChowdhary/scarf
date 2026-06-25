@@ -69,7 +69,13 @@ public extension ACPClient {
         // stdin/stdout) is preserved because `exec` replaces the shell
         // process — no intermediate layer buffers the bytes.
         let hermesCmd = context.paths.hermesBinary + " acp"
-        let command = "PATH=\"$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.hermes/bin:$PATH\" exec \(hermesCmd)"
+        // Scope the chat session to the selected profile's HERMES_HOME
+        // (#120, Design B), so chat reads/writes the same profile the rest
+        // of the app shows. Empty for a default/root home → unchanged
+        // `exec hermes acp`. `context.paths.home` already carries the
+        // profile-resolved remoteHome from ScarfGoTabRoot's effectiveConfig.
+        let hermesHome = HermesProfileScope.hermesHomeShellAssignment(forHome: context.paths.home)
+        let command = "PATH=\"$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.hermes/bin:$PATH\" \(hermesHome)exec \(hermesCmd)"
 
         return try await SSHExecACPChannel(
             client: client,

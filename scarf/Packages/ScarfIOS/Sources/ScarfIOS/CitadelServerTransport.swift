@@ -464,7 +464,19 @@ public final class CitadelServerTransport: ServerTransport, @unchecked Sendable 
         // sshd handles this transparently; Citadel does not. We extend
         // PATH inline so bare `hermes` resolves AND any subprocess it
         // spawns can still find its tools.
+        // Scope the selected profile's HERMES_HOME (#120, Design B) as a
+        // process-env assignment. Set unconditionally (not just when the
+        // executable is hermes) because several callers run hermes INSIDE a
+        // `/bin/sh -c "… hermes …"` script — the env propagates to the
+        // child hermes there too. It's empty for a default/root home, so
+        // legacy active_profile behavior is preserved and pre-profile hosts
+        // are unaffected; and it's harmless for the lone non-hermes caller
+        // (`echo $HOME`), which ignores it. Mirrors the file layer, which
+        // scopes via this same `config.remoteHome`.
+        let hermesHome = HermesProfileScope.hermesHomeShellAssignment(
+            forHome: config.remoteHome ?? HermesPathSet.defaultRemoteHome)
         let cmd = "PATH=\"$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\" "
+            + hermesHome
             + Self.shellJoin([executable] + args)
         // Citadel's `executeCommand` discards captured output when the
         // remote exits non-zero (it throws `CommandFailed` and the

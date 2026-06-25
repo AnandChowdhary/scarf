@@ -100,6 +100,80 @@ import Foundation
         #expect(HermesProfileScope.normalize("  gateway  ") == "gateway")
     }
 
+    // MARK: - isProfileHome
+
+    @Test func isProfileHomeDetectsNamedProfileDirs() {
+        #expect(HermesProfileScope.isProfileHome("~/.hermes/profiles/gateway"))
+        #expect(HermesProfileScope.isProfileHome("/opt/data/profiles/coder"))
+        #expect(HermesProfileScope.isProfileHome("/home/deploy/.hermes/profiles/ci/"))  // trailing slash
+    }
+
+    @Test func isProfileHomeRejectsRootHomes() {
+        #expect(!HermesProfileScope.isProfileHome("~/.hermes"))
+        #expect(!HermesProfileScope.isProfileHome("/opt/data"))
+        #expect(!HermesProfileScope.isProfileHome("/"))
+        #expect(!HermesProfileScope.isProfileHome(""))
+        // "profiles" must be the IMMEDIATE parent of a NAME, not the last
+        // component itself (a bare `<root>/profiles` has no profile name).
+        #expect(!HermesProfileScope.isProfileHome("~/profiles"))
+        #expect(!HermesProfileScope.isProfileHome("~/.hermes/profiles"))
+        // Nested below a profile is not itself a profile home.
+        #expect(!HermesProfileScope.isProfileHome("~/.hermes/profiles/gw/sub"))
+    }
+
+    // MARK: - hermesHomeShellAssignment
+
+    @Test func shellAssignmentScopesNamedProfileWithExpandableTilde() {
+        // Named profile under a tilde root → ~ rewritten to $HOME, quoted.
+        #expect(HermesProfileScope.hermesHomeShellAssignment(forHome: "~/.hermes/profiles/gateway")
+                == "HERMES_HOME=\"$HOME/.hermes/profiles/gateway\" ")
+    }
+
+    @Test func shellAssignmentScopesAbsoluteProfileHomeSingleQuoted() {
+        // Absolute paths are single-quoted → fully inert (no expansion).
+        #expect(HermesProfileScope.hermesHomeShellAssignment(forHome: "/opt/data/profiles/coder")
+                == "HERMES_HOME='/opt/data/profiles/coder' ")
+    }
+
+    /// Defense-in-depth: even though the profile-name half is regex-validated
+    /// and the base is the user's own config, a base with shell metacharacters
+    /// must be neutralized — `$HOME` still expands, nothing else does.
+    @Test func shellAssignmentNeutralizesMetacharactersInTildeBase() {
+        let out = HermesProfileScope.hermesHomeShellAssignment(forHome: "~/h$(touch x)`id`\"q\"/profiles/gw")
+        // $ , backtick and " are backslash-escaped inside the double quotes;
+        // the leading $HOME is preserved for expansion.
+        #expect(out == "HERMES_HOME=\"$HOME/h\\$(touch x)\\`id\\`\\\"q\\\"/profiles/gw\" ")
+        #expect(out.hasPrefix("HERMES_HOME=\"$HOME/"))
+        #expect(out.contains("\\$("))               // the `$` is escaped → substitution inert
+        #expect(out.contains("\\`id\\`"))           // backticks escaped
+    }
+
+    @Test func shellAssignmentSingleQuotesNeutralizeAbsoluteMetacharacters() {
+        // A single-quoted absolute path with an embedded quote stays inert
+        // via the classic '\'' close-escape-reopen idiom.
+        let out = HermesProfileScope.hermesHomeShellAssignment(forHome: "/o'pt/profiles/x")
+        #expect(out == "HERMES_HOME='/o'\\''pt/profiles/x' ")
+    }
+
+    @Test func shellAssignmentIsEmptyForDefaultRoot() {
+        // Default/root → no scoping → legacy active_profile behavior preserved.
+        #expect(HermesProfileScope.hermesHomeShellAssignment(forHome: "~/.hermes") == "")
+        #expect(HermesProfileScope.hermesHomeShellAssignment(forHome: "/opt/data") == "")
+        #expect(HermesProfileScope.hermesHomeShellAssignment(forHome: "/") == "")
+    }
+
+    /// The full round-trip the process layer relies on: resolve a selection
+    /// to a home, then derive the shell scope. Default stays unscoped; a
+    /// named profile scopes to its dir.
+    @Test func resolveThenAssignRoundTrip() {
+        let base = "~/.hermes"
+        #expect(HermesProfileScope.hermesHomeShellAssignment(
+            forHome: HermesProfileScope.resolveHome(baseHome: base, profile: nil)) == "")
+        #expect(HermesProfileScope.hermesHomeShellAssignment(
+            forHome: HermesProfileScope.resolveHome(baseHome: base, profile: "gateway"))
+                == "HERMES_HOME=\"$HOME/.hermes/profiles/gateway\" ")
+    }
+
     // MARK: - InMemoryProfileSelectionStore
 
     @Test func inMemoryStoreRoundTripAndIsolation() {

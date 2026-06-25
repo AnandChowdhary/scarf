@@ -76,6 +76,57 @@ public enum HermesProfileScope {
         return base + separator + "profiles/" + name
     }
 
+    /// Whether `home` is a named-profile home (`<root>/profiles/<name>`)
+    /// rather than a root/default home. Mirrors Hermes' own check
+    /// (`hermes_constants.get_default_hermes_root`): the immediate parent
+    /// directory is named `profiles`. Used to decide whether a hermes
+    /// invocation needs an explicit `HERMES_HOME` scope.
+    public static func isProfileHome(_ home: String) -> Bool {
+        let comps = trimmedBase(home).split(separator: "/", omittingEmptySubsequences: true)
+        guard comps.count >= 2 else { return false }
+        return comps[comps.count - 2] == "profiles"
+    }
+
+    /// A shell `HERMES_HOME=... ` assignment (note the trailing space) that
+    /// scopes a `hermes` invocation to a named profile, or `""` for a
+    /// default/root home — leaving legacy `active_profile` resolution
+    /// untouched (and avoiding any behavior change for users who don't use
+    /// profiles). This is Hermes' own per-invocation home mechanism; for a
+    /// `<root>/profiles/<name>` value the CLI trusts it and never consults
+    /// `active_profile` (verified against Hermes 0.16, hermes_cli/main.py).
+    ///
+    /// The home is quoted for the remote shell exactly like
+    /// `RemoteSQLiteBackend.quoteForRemoteShell`: a leading `~` becomes a
+    /// `$HOME` prefix so the shell expands it, with the remainder escaped so
+    /// `$HOME` still expands but nothing else does; any other (absolute)
+    /// path is single-quoted and fully inert. Profile names are already
+    /// regex-validated, so the only free-form interpolated value is the
+    /// user's own configured home — but we escape it regardless.
+    public static func hermesHomeShellAssignment(forHome home: String) -> String {
+        guard isProfileHome(home) else { return "" }
+        return "HERMES_HOME=\(shellQuoteHome(home)) "
+    }
+
+    /// Quote a home path for safe interpolation into a double-quoted-free
+    /// remote shell command. Mirrors `RemoteSQLiteBackend`'s fallback path.
+    private static func shellQuoteHome(_ home: String) -> String {
+        if home == "~" {
+            return "\"$HOME\""
+        }
+        if home.hasPrefix("~/") {
+            // Escape backslash FIRST, then the rest, so `$HOME` still
+            // expands but injected `$()`/backtick/quote are inert.
+            let rest = String(home.dropFirst(2))
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "$", with: "\\$")
+                .replacingOccurrences(of: "`", with: "\\`")
+            return "\"$HOME/\(rest)\""
+        }
+        // Absolute (or other) path → single-quote; no expansion at all.
+        return "'" + home.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
     /// Trim trailing slashes from a base home, preserving a lone `"/"`.
     private static func trimmedBase(_ s: String) -> String {
         var base = s.trimmingCharacters(in: .whitespacesAndNewlines)
