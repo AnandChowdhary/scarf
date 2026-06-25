@@ -86,6 +86,13 @@ final class ScarfGoCoordinator {
     func setScenePhase(_ phase: ScenePhase) {
         if phase == .background, scenePhase != .background {
             lastBackgroundedAt = Date()
+            // Close this server's pooled SSH connection on background. iOS
+            // suspends the socket regardless; evicting guarantees a clean
+            // warm reconnect on return instead of racing a half-dead
+            // session. The ACP chat channel manages its own scene-phase
+            // lifecycle separately and is unaffected.
+            let id = serverID
+            Task { await CitadelTransportPool.shared.evict(id) }
         }
         scenePhase = phase
         scenePhaseTick &+= 1

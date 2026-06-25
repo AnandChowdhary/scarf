@@ -28,31 +28,42 @@ struct ScarfIOSApp: App {
         // Mac-only `SSHTransport` which shells out to `/usr/bin/ssh`
         // — not present on iOS.
         //
-        // Each call builds a fresh `CitadelServerTransport`. The
-        // transport itself lazily opens + caches a single long-lived
-        // SSH connection internally, so the per-call overhead is
-        // just the factory invocation, not a new SSH handshake.
+        // `makeTransport()` returns a fresh value per call, so we pool the
+        // Citadel transport per `(ServerID, SSHConfig)` via
+        // `CitadelTransportPool`: the first call for a server opens one
+        // long-lived SSH connection and every later read / exec reuses it.
+        // Without the pool each call paid a new `SSHClient.connect()`
+        // handshake, and a Settings load or chat pre-flight churned enough
+        // short-lived connections that `connect()` itself began to fail —
+        // surfaced as "Transport refused the command" on writes and silent
+        // "empty" on reads (gh#112). A #120 profile switch changes
+        // `config.remoteHome`, which the pool treats as a new connection.
+        // The Mac app gets equivalent reuse for free via `/usr/bin/ssh`
+        // ControlMaster. Eviction happens on disconnect / forget / sign-out
+        // (RootModel) and on app background (ScarfGoCoordinator).
         ServerContext.sshTransportFactory = { id, config, displayName in
-            CitadelServerTransport(
-                contextID: id,
-                config: config,
-                displayName: displayName,
-                keyProvider: {
-                    // The transport needs the SSH key every time it
-                    // (re)opens an SSH session. We re-read from the
-                    // Keychain each time rather than caching in memory
-                    // so Keychain-level access controls (After First
-                    // Unlock) are honoured.
-                    let store = KeychainSSHKeyStore()
-                    guard let key = try await store.load() else {
-                        throw SSHKeyStoreError.backendFailure(
-                            message: "No SSH key in Keychain — re-run onboarding.",
-                            osStatus: nil
-                        )
+            CitadelTransportPool.shared.transport(for: id, config: config) {
+                CitadelServerTransport(
+                    contextID: id,
+                    config: config,
+                    displayName: displayName,
+                    keyProvider: {
+                        // The transport needs the SSH key every time it
+                        // (re)opens an SSH session. We re-read from the
+                        // Keychain each time rather than caching in memory
+                        // so Keychain-level access controls (After First
+                        // Unlock) are honoured.
+                        let store = KeychainSSHKeyStore()
+                        guard let key = try await store.load() else {
+                            throw SSHKeyStoreError.backendFailure(
+                                message: "No SSH key in Keychain — re-run onboarding.",
+                                osStatus: nil
+                            )
+                        }
+                        return key
                     }
-                    return key
-                }
-            )
+                )
+            }
         }
     }
 
@@ -284,6 +295,9 @@ final class RootModel {
     func softDisconnect() async {
         if case .connected(let id, _, _) = state {
             await ServerContext.invalidateCachedHome(forServerID: id)
+            // Close the pooled SSH connection for the server we're leaving so
+            // it doesn't linger; the next connect re-opens it warm.
+            await CitadelTransportPool.shared.evict(id)
         }
         state = .serverList
     }
@@ -293,6 +307,9 @@ final class RootModel {
     /// Per-store failures are captured in `lastError` so a partial
     /// forget surfaces a banner instead of silently leaving orphans.
     func forget(id: ServerID) async {
+        // Drop the pooled SSH connection before wiping credentials so we
+        // don't hold a live session to a server we're forgetting.
+        await CitadelTransportPool.shared.evict(id)
         var failures: [String] = []
         do {
             try await keyStore.delete(for: id)
@@ -327,6 +344,8 @@ final class RootModel {
     /// be any after 3.5 lands, but the protocol still supports it).
     /// Same partial-failure semantics as `forget(id:)`.
     func disconnect() async {
+        // Close every pooled SSH connection on full sign-out.
+        await CitadelTransportPool.shared.evictAll()
         var failures: [String] = []
         do {
             try await keyStore.delete()

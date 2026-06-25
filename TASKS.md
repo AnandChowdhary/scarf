@@ -47,6 +47,7 @@
 ## Doing
 
 - [ ] Hermes v0.17 — Tier 2: capability gates + tests + new platforms + config surfaces, bump target to v0.17 (id: t-8f0f7ac0) (added: 2026-06-21)
+- [ ] iOS: pool CitadelServerTransport per server (fix gh#112 chat-init churn) (id: t-1fef0a83) (added: 2026-06-25) (priority: high)
 
 ## Done
 

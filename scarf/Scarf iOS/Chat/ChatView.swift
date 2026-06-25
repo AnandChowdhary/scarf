@@ -1352,26 +1352,19 @@ final class ChatController {
             PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.hermes/bin:$PATH" \
             \(hermes) config set 'model.provider' '\(Self.escapeShellArg(trimmedProvider))'
             """
-            let providerResult: ProcessResult? = try? ctx.makeTransport().runProcess(
-                executable: "/bin/sh",
-                args: ["-c", providerScript],
-                stdin: nil,
-                timeout: 15
-            )
-            let providerOK = providerResult?.exitCode == 0
+            let provider = Self.runConfigSet(ctx, script: providerScript)
+            let providerOK = provider.result?.exitCode == 0
             var modelResult: ProcessResult? = nil
+            var modelError: String? = nil
             var modelOK = true
             if providerOK, !trimmedModel.isEmpty {
                 let modelScript = """
                 PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.hermes/bin:$PATH" \
                 \(hermes) config set 'model.default' '\(Self.escapeShellArg(trimmedModel))'
                 """
-                modelResult = try? ctx.makeTransport().runProcess(
-                    executable: "/bin/sh",
-                    args: ["-c", modelScript],
-                    stdin: nil,
-                    timeout: 15
-                )
+                let model = Self.runConfigSet(ctx, script: modelScript)
+                modelResult = model.result
+                modelError = model.error
                 modelOK = modelResult?.exitCode == 0
             }
 
@@ -1385,9 +1378,11 @@ final class ChatController {
             let failureMessage = Self.preflightFailureMessage(
                 hermes: hermes,
                 providerOK: providerOK,
-                providerResult: providerResult,
+                providerResult: provider.result,
+                providerError: provider.error,
                 modelOK: modelOK,
-                modelResult: modelResult
+                modelResult: modelResult,
+                modelError: modelError
             )
 
             // Capture `modelOK` by value (it's a `var` finalized above) so the
@@ -1413,23 +1408,48 @@ final class ChatController {
         }
     }
 
+    /// Run one `hermes config set` over the (pooled) transport, capturing
+    /// EITHER the process result — the command ran, even if it exited
+    /// non-zero — OR the transport error string, which means the SSH session
+    /// itself threw before the command could run (a genuine connection
+    /// failure). The failure banner distinguishes the two so the user sees
+    /// the real reason rather than a generic line.
+    nonisolated private static func runConfigSet(
+        _ ctx: ServerContext,
+        script: String
+    ) -> (result: ProcessResult?, error: String?) {
+        do {
+            let result = try ctx.makeTransport().runProcess(
+                executable: "/bin/sh",
+                args: ["-c", script],
+                stdin: nil,
+                timeout: 15
+            )
+            return (result, nil)
+        } catch {
+            return (nil, error.localizedDescription)
+        }
+    }
+
     /// Compose a self-diagnostic error message for the preflight save
     /// failure path. Includes which command failed, the hermes binary
     /// that was invoked (so a misconfigured `hermesBinaryHint` is
-    /// visible), exit code, and the first line of stderr. gh#112.
+    /// visible), and either the exit code + stderr (the command ran) or
+    /// the transport error (the SSH session couldn't be opened). gh#112.
     nonisolated private static func preflightFailureMessage(
         hermes: String,
         providerOK: Bool,
         providerResult: ProcessResult?,
+        providerError: String?,
         modelOK: Bool,
-        modelResult: ProcessResult?
+        modelResult: ProcessResult?,
+        modelError: String?
     ) -> String {
-        let failed: (String, ProcessResult?) = !providerOK
-            ? ("model.provider", providerResult)
-            : ("model.default", modelResult)
-        let (key, result) = failed
-        var lines = ["Couldn't save \(key) to config.yaml via `\(hermes) config set`."]
-        if let result {
+        let failed: (key: String, result: ProcessResult?, error: String?) = !providerOK
+            ? ("model.provider", providerResult, providerError)
+            : ("model.default", modelResult, modelError)
+        var lines = ["Couldn't save \(failed.key) to config.yaml via `\(hermes) config set`."]
+        if let result = failed.result {
             let stderr = result.stderrString.trimmingCharacters(in: .whitespacesAndNewlines)
             let stdout = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
             let payload = [stderr, stdout].filter { !$0.isEmpty }.joined(separator: "\n")
@@ -1441,8 +1461,10 @@ final class ChatController {
                 let trimmed = payload.count > 400 ? String(payload.prefix(400)) + "…" : payload
                 lines.append(trimmed)
             }
+        } else if let error = failed.error, !error.isEmpty {
+            lines.append("Couldn't open an SSH session to the server: \(error)")
         } else {
-            lines.append("Transport refused the command — check that the SSH server is reachable.")
+            lines.append("Couldn't open an SSH session to the server — check that it's reachable and your key is still authorized.")
         }
         return lines.joined(separator: "\n")
     }
