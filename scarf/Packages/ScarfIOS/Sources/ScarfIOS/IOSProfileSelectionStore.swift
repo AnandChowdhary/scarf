@@ -12,6 +12,12 @@ import ScarfCore
 /// `com.scarf.ios.profile-selections.v1`. An absent key, an absent entry,
 /// or an entry that fails normalization all read back as `nil` (default
 /// profile). Writing `nil`/`"default"`/an invalid name removes the entry.
+///
+/// **Threading.** `setSelectedProfile` is a read-modify-write over a single
+/// JSON blob, which is NOT atomic across concurrent writers. Production
+/// drives this only through the `@MainActor` `ScarfGoCoordinator`, so writes
+/// are serialized; if a future caller writes off the main actor, add
+/// synchronization here.
 public struct UserDefaultsProfileSelectionStore: IOSProfileSelectionStore {
     public static let defaultDefaultsKey = "com.scarf.ios.profile-selections.v1"
 

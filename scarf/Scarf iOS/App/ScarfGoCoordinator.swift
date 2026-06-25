@@ -1,5 +1,6 @@
 import SwiftUI
 import ScarfCore
+import ScarfIOS
 
 /// Cross-tab signalling for ScarfGo. Mirrors the Mac app's
 /// `AppCoordinator` pattern: an `@Observable` carrier injected via
@@ -18,6 +19,43 @@ final class ScarfGoCoordinator {
     /// anywhere in the tree re-selects the tab. Bound as `selection:`
     /// on the root TabView.
     var selectedTab: Tab = .chat
+
+    /// The server whose profile selection this coordinator owns. Used
+    /// to key the per-server selection store.
+    private let serverID: ServerID
+
+    /// Persistence for the selected profile (issue #120, Design B).
+    /// Injected so tests can substitute `InMemoryProfileSelectionStore`.
+    private let selectionStore: any IOSProfileSelectionStore
+
+    /// Selected Hermes profile to scope this session's reads/writes/CLI
+    /// (issue #120, Design B). `nil` = the default (root) profile.
+    /// ScarfGoTabRoot derives the effective `HERMES_HOME` from this and
+    /// rebuilds the tab subtree when it changes — the iOS analogue of
+    /// the Mac app's relaunch-to-flush-state, but WITHOUT mutating the
+    /// host's `active_profile`. Set via `setSelectedProfile(_:)`.
+    private(set) var selectedProfile: String?
+
+    init(
+        serverID: ServerID,
+        selectionStore: any IOSProfileSelectionStore = UserDefaultsProfileSelectionStore()
+    ) {
+        self.serverID = serverID
+        self.selectionStore = selectionStore
+        self.selectedProfile = selectionStore.selectedProfile(for: serverID)
+    }
+
+    /// Set and persist the selected profile, scoping every subsequent
+    /// read/write/CLI for this session to it. Pass `nil`/`"default"`/an
+    /// invalid name to return to the root profile. A no-op when the
+    /// (normalized) value is unchanged, so callers can wire it directly
+    /// to a picker without churning the view tree.
+    func setSelectedProfile(_ name: String?) {
+        let normalized = HermesProfileScope.normalize(name)
+        guard normalized != selectedProfile else { return }
+        selectionStore.setSelectedProfile(normalized, for: serverID)
+        selectedProfile = normalized
+    }
 
     /// If non-nil, ChatController should resume this session on next
     /// appear instead of starting a fresh one. Consumed (cleared) by

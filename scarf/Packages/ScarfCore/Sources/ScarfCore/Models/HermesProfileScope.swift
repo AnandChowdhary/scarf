@@ -70,7 +70,10 @@ public enum HermesProfileScope {
     public static func resolveHome(baseHome: String, profile: String?) -> String {
         let base = trimmedBase(baseHome)
         guard let name = normalize(profile) else { return base }
-        return base + "/profiles/" + name
+        // `trimmedBase` strips trailing slashes except a lone "/", so guard
+        // against a double slash for the degenerate `baseHome == "/"` case.
+        let separator = base.hasSuffix("/") ? "" : "/"
+        return base + separator + "profiles/" + name
     }
 
     /// Trim trailing slashes from a base home, preserving a lone `"/"`.

@@ -36,8 +36,10 @@ import Foundation
         #expect(HermesProfileScope.resolveHome(baseHome: "~/.hermes/", profile: "gateway")
                 == "~/.hermes/profiles/gateway")
         #expect(HermesProfileScope.resolveHome(baseHome: "~/.hermes///", profile: nil) == "~/.hermes")
-        // A lone slash is preserved (degenerate but must not crash / become empty).
+        // A lone slash is preserved (degenerate but must not crash / become empty)
+        // and must not produce a double slash when a profile is appended.
         #expect(HermesProfileScope.resolveHome(baseHome: "/", profile: nil) == "/")
+        #expect(HermesProfileScope.resolveHome(baseHome: "/", profile: "x") == "/profiles/x")
     }
 
     @Test func whitespaceAroundNameTrimmed() {
@@ -126,5 +128,44 @@ import Foundation
         #expect(store.selectedProfile(for: id) == nil)
         store.setSelectedProfile("  gateway ", for: id)        // trimmed
         #expect(store.selectedProfile(for: id) == "gateway")
+        store.setSelectedProfile("../escape", for: id)         // invalid while active → clears
+        #expect(store.selectedProfile(for: id) == nil)
+    }
+
+    // MARK: - End-to-end: profile-scoped remoteHome drives every path (B1)
+
+    /// The mechanism ScarfGo's TabRoot relies on (#120 Phase B1): setting a
+    /// server context's `remoteHome` to the resolved profile home makes
+    /// EVERY derived `HermesPathSet` path (state.db, memories, sessions,
+    /// cron, gateway_state, scarf/) follow the profile — which is what
+    /// re-scopes the dashboard, memory, cron, sessions, and gateway
+    /// surfaces. Exercised with the real `ServerContext`/`HermesPathSet`.
+    @Test func profileScopedRemoteHomeDrivesAllDerivedPaths() {
+        let scoped = HermesProfileScope.resolveHome(baseHome: "~/.hermes", profile: "gateway")
+        let ctx = ServerContext(
+            id: ServerID(),
+            displayName: "Test",
+            kind: .ssh(SSHConfig(host: "example", remoteHome: scoped))
+        )
+        let p = ctx.paths
+        #expect(p.home == "~/.hermes/profiles/gateway")
+        #expect(p.stateDB == "~/.hermes/profiles/gateway/state.db")
+        #expect(p.memoriesDir == "~/.hermes/profiles/gateway/memories")
+        #expect(p.sessionsDir == "~/.hermes/profiles/gateway/sessions")
+        #expect(p.cronJobsJSON == "~/.hermes/profiles/gateway/cron/jobs.json")
+        #expect(p.gatewayStateJSON == "~/.hermes/profiles/gateway/gateway_state.json")
+        #expect(p.scarfDir == "~/.hermes/profiles/gateway/scarf")
+    }
+
+    @Test func defaultProfileLeavesContextPathsAtRoot() {
+        let scoped = HermesProfileScope.resolveHome(baseHome: "~/.hermes", profile: nil)
+        let ctx = ServerContext(
+            id: ServerID(),
+            displayName: "Test",
+            kind: .ssh(SSHConfig(host: "example", remoteHome: scoped))
+        )
+        #expect(ctx.paths.home == "~/.hermes")
+        #expect(ctx.paths.stateDB == "~/.hermes/state.db")
+        #expect(ctx.paths.memoriesDir == "~/.hermes/memories")
     }
 }

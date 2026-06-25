@@ -41,8 +41,8 @@ struct ScarfGoTabRoot: View {
     /// One coordinator per server-connected session. Cross-tab
     /// signalling (Dashboard row → Chat tab resume, Project Detail
     /// → in-project chat handoff, notification deep-link → Chat) flows
-    /// through here.
-    @State private var coordinator = ScarfGoCoordinator()
+    /// through here. Also owns the selected Hermes profile (#120).
+    @State private var coordinator: ScarfGoCoordinator
 
     /// Hermes version + capability flags for this remote. Drives the
     /// iOS version banner (v0.11 hosts get a yellow "update for new
@@ -63,8 +63,27 @@ struct ScarfGoTabRoot: View {
         self.key = key
         self.onSoftDisconnect = onSoftDisconnect
         self.onForget = onForget
+        // Capability detection is host-level (Hermes version), so it runs
+        // against the base context regardless of the selected profile.
         let ctx = config.toServerContext(id: serverID)
         _capabilities = State(initialValue: HermesCapabilitiesStore(context: ctx))
+        // Coordinator owns the per-server profile selection (#120); it
+        // loads any persisted choice from the store on construction.
+        _coordinator = State(initialValue: ScarfGoCoordinator(serverID: serverID))
+    }
+
+    /// `config` with `remoteHome` re-pointed at the selected profile's
+    /// directory (#120, Design B). Default selection leaves the base home
+    /// untouched. Threaded to every feature view so all direct-file/DB
+    /// reads and writes follow the profile through `HermesPathSet` —
+    /// without mutating the host's `active_profile`.
+    private var effectiveConfig: IOSServerConfig {
+        var resolved = config
+        resolved.remoteHome = HermesProfileScope.resolveHome(
+            baseHome: config.remoteHome ?? HermesPathSet.defaultRemoteHome,
+            profile: coordinator.selectedProfile
+        )
+        return resolved
     }
 
     /// SwiftUI's `.onChange(of: ScenePhase)` modifier on a non-active
@@ -74,17 +93,41 @@ struct ScarfGoTabRoot: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
+        profileScopedTabs
+            .onAppear {
+                // Give the notification router a handle to this session's
+                // coordinator so notification-taps can route across tabs.
+                // Weak ref — coordinator owns its own lifetime, router
+                // just observes.
+                NotificationRouter.shared.coordinator = coordinator
+            }
+            // Funnel scene-phase transitions through the coordinator so
+            // tab view-models (notably ChatController) can react even
+            // when their tab isn't currently on-screen.
+            .onChange(of: scenePhase) { _, newPhase in
+                coordinator.setScenePhase(newPhase)
+            }
+    }
+
+    /// The 5-tab tree, re-identified by the selected profile so a switch
+    /// fully rebuilds it (and every feature view-model) against the new
+    /// profile's HERMES_HOME (#120) — the scoped, no-relaunch analogue of
+    /// the Mac app's switch-and-relaunch. `body` wraps this with
+    /// `.onAppear`/`.onChange` from the stable outer position, so those
+    /// don't re-fire on a switch.
+    private var profileScopedTabs: some View {
         // The transport factory is keyed by ServerID, so the correct
         // Keychain slot + config is picked automatically. Reuses the
         // server's own id as the context id so the CitadelServerTransport
         // pool caches per-server (instead of the singleton we had
         // pre-M9). Two active servers → two connection holders, no
         // SSH channel contention.
-        let ctx = config.toServerContext(id: serverID)
-        TabView(selection: $coordinator.selectedTab) {
+        let cfg = effectiveConfig
+        let ctx = cfg.toServerContext(id: serverID)
+        return TabView(selection: $coordinator.selectedTab) {
             // 1 — Dashboard: stats + recent sessions.
             NavigationStack {
-                DashboardView(config: config, key: key, onSoftDisconnect: onSoftDisconnect)
+                DashboardView(config: cfg, key: key, onSoftDisconnect: onSoftDisconnect)
             }
             .tabItem {
                 Label("Dashboard", systemImage: "gauge.with.needle")
@@ -96,7 +139,7 @@ struct ScarfGoTabRoot: View {
             // site, and sessions. Read-only registry on iOS — add /
             // rename / archive happens in the Mac app.
             NavigationStack {
-                ProjectsListView(config: config)
+                ProjectsListView(config: cfg)
             }
             .tabItem {
                 Label("Projects", systemImage: "square.grid.2x2")
@@ -107,7 +150,7 @@ struct ScarfGoTabRoot: View {
             // 3 — Chat: the reason the app is on your phone. Centered
             // among the 5 tabs for thumb reach + visual prominence.
             NavigationStack {
-                ChatView(config: config, key: key)
+                ChatView(config: cfg, key: key)
             }
             .tabItem {
                 Label("Chat", systemImage: "bubble.left.and.bubble.right.fill")
@@ -118,7 +161,7 @@ struct ScarfGoTabRoot: View {
             // 4 — Skills: Installed | Browse Hub | Updates, mirroring
             // the Mac app's 3-tab skills surface.
             NavigationStack {
-                SkillsView(config: config)
+                SkillsView(config: cfg)
             }
             .tabItem {
                 Label("Skills", systemImage: "lightbulb")
@@ -133,7 +176,7 @@ struct ScarfGoTabRoot: View {
             // matter here because we never overflow.
             NavigationStack {
                 SystemTab(
-                    config: config,
+                    config: cfg,
                     onSoftDisconnect: onSoftDisconnect,
                     onForget: onForget
                 )
@@ -144,6 +187,11 @@ struct ScarfGoTabRoot: View {
             .tag(ScarfGoCoordinator.Tab.system)
             .accessibilityLabel("System tab")
         }
+        // Rebuild the whole tab subtree when the selected profile changes
+        // so every feature view (and its view-model) reconstructs against
+        // the new profile's HERMES_HOME (#120). This is the scoped,
+        // no-relaunch analogue of the Mac app's switch-and-relaunch.
+        .id(coordinator.selectedProfile ?? HermesProfileScope.defaultProfileName)
         // Pulls the sidebar-on-iPad affordance into the same code path
         // as the bottom-bar-on-iPhone one. No-op on iPhone today.
         .tabViewStyle(.sidebarAdaptable)
@@ -151,19 +199,6 @@ struct ScarfGoTabRoot: View {
         .environment(\.scarfGoCoordinator, coordinator)
         .environment(capabilities)
         .hermesCapabilities(capabilities)
-        .onAppear {
-            // Give the notification router a handle to this session's
-            // coordinator so notification-taps can route across tabs.
-            // Weak ref — coordinator owns its own lifetime, router
-            // just observes.
-            NotificationRouter.shared.coordinator = coordinator
-        }
-        // Funnel scene-phase transitions through the coordinator so
-        // tab view-models (notably ChatController) can react even
-        // when their tab isn't currently on-screen.
-        .onChange(of: scenePhase) { _, newPhase in
-            coordinator.setScenePhase(newPhase)
-        }
     }
 }
 
@@ -231,6 +266,11 @@ private struct SystemTab: View {
                 .listRowBackground(ScarfColor.backgroundSecondary)
                 if capabilitiesStore?.capabilities.hasCurator ?? false {
                     NavigationLink {
+                        // `config` here is the profile-scoped effectiveConfig, so
+                        // Curator's profile scoping rides on `paths` (remoteHome) —
+                        // NOT on this fixed context id, which only keys the shared
+                        // connection/home cache. Keep it that way: never branch
+                        // Curator behavior on the context id (#120).
                         CuratorView(context: config.toServerContext(id: ScarfGoTabRoot.systemTabContextID))
                     } label: {
                         Label("Curator", systemImage: "sparkles")
