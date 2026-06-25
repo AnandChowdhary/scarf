@@ -43,7 +43,6 @@
 - [ ] MCP per-server keepalive_interval editor field (v0.17) (id: t-07a9baa4) (added: 2026-06-21) (priority: low)
 - [ ] Photon / iMessage gateway platform support (v0.17) — decide support level (id: t-5ab57e6f) (added: 2026-06-21) (priority: low)
 - [ ] Gateway allowlist: google-chat is a no-op + wrong platform id (v0.17 = google_chat) (id: t-2d6888ea) (added: 2026-06-21)
-- [ ] B3: profile switcher UI in ScarfGo ProfilesView (id: t-9d970045) (added: 2026-06-25) (priority: high)
 - [ ] B4: docs/wiki/memory sync + fresh-eyes integration audit for #120 (id: t-dfc8c0e0) (added: 2026-06-25)
 
 ## Doing
@@ -53,6 +52,7 @@
 
 ## Done
 
+- [x] B3: profile switcher UI in ScarfGo ProfilesView (id: t-9d970045) (added: 2026-06-25) (priority: high)
 - [x] B2: profile-scope chat ACP + scoped CLI invocations via -p flag (id: t-62132e80) (added: 2026-06-25) (priority: high)
 - [x] B1: wire selected profile into ServerContext; rebuild tab subtree on change (id: t-fdf7da17) (added: 2026-06-25) (priority: high)
 - [x] B0: iOS profile resolution helper + per-server selection persistence (id: t-8f39f27d) (added: 2026-06-25) (priority: high)
