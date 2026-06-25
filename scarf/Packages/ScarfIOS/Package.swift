@@ -19,10 +19,14 @@ let package = Package(
         .iOS(.v18),
         // macOS is included so that (a) Xcode's indexer is happy on a
         // Mac-only developer workstation while the iOS target compiles
-        // against the same source tree, and (b) future Mac-catalyst /
+        // against the same source tree, (b) `swift test` can run the
+        // package's unit tests on the host, and (c) future Mac-catalyst /
         // Designed-for-iPad scenarios work without surgery. Running
-        // `scarf-ios` on the Mac is not a supported product today.
-        .macOS(.v14),
+        // `scarf-ios` on the Mac is not a supported product today. v15 (not
+        // v14) because the iOS sources call macOS-15 APIs — e.g. Citadel's
+        // `withExec(_:environment:perform:)` in `SSHExecACPChannel` — that
+        // must still type-check when the tree is built for macOS.
+        .macOS(.v15),
     ],
     products: [
         .library(

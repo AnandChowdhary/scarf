@@ -167,6 +167,19 @@ public final class CitadelServerTransport: ServerTransport, @unchecked Sendable 
         AsyncThrowingStream { $0.finish() }
     }
 
+    #if !os(iOS)
+    /// macOS/Linux-only `ServerTransport` requirement. `CitadelServerTransport`
+    /// is an iOS-runtime type (the Mac app uses `SSHTransport`); this stub
+    /// exists solely so the package still *compiles* as a macOS target — the
+    /// indexer and `swift test` build the iOS sources against the macOS SDK.
+    /// It is never reached on macOS at runtime, so it traps rather than
+    /// fabricate a bogus local `Process` for an SSH transport. (Mirrors
+    /// `LocalTransport.runProcess`'s iOS-unavailable trap.)
+    public func makeProcess(executable: String, args: [String]) -> Process {
+        fatalError("CitadelServerTransport.makeProcess is unavailable — this is an iOS-only transport")
+    }
+    #endif
+
     // MARK: - ServerTransport: script streaming
 
     /// Pipe `script` to `/bin/sh -s` over Citadel's exec channel.
