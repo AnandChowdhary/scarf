@@ -47,10 +47,10 @@
 ## Doing
 
 - [ ] Hermes v0.17 — Tier 2: capability gates + tests + new platforms + config surfaces, bump target to v0.17 (id: t-8f0f7ac0) (added: 2026-06-21)
-- [ ] ScarfGo profile switching (#120) — Design B (id: t-873f7df9) (added: 2026-06-25) (priority: high)
 
 ## Done
 
+- [x] ScarfGo profile switching (#120) — Design B (id: t-873f7df9) (added: 2026-06-25) (priority: high)
 - [x] B4: docs/wiki/memory sync + fresh-eyes integration audit for #120 (id: t-dfc8c0e0) (added: 2026-06-25)
 - [x] B3: profile switcher UI in ScarfGo ProfilesView (id: t-9d970045) (added: 2026-06-25) (priority: high)
 - [x] B2: profile-scope chat ACP + scoped CLI invocations via -p flag (id: t-62132e80) (added: 2026-06-25) (priority: high)
