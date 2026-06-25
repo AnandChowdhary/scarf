@@ -623,6 +623,14 @@ private actor ConnectionHolder {
 
     private var sshClient: SSHClient?
     private var sftpClient: SFTPClient?
+    /// In-flight connect / SFTP-open tasks so a CONCURRENT cold-start burst
+    /// coalesces onto ONE handshake instead of each caller racing through the
+    /// `nil` check during the `await` and opening its own connection (actor
+    /// reentrancy). This is the other half of the gh#112 churn fix: pooling
+    /// reuses one transport across ops; this makes that transport open one
+    /// connection when Settings fires parallel reads at once.
+    private var connectTask: Task<SSHClient, Error>?
+    private var sftpTask: Task<SFTPClient, Error>?
     /// Resolved absolute `$HOME` on the remote host. Probed once per
     /// connection via `echo $HOME` over SSH exec, then memoized. Used
     /// to rewrite `~/…` SFTP paths (SFTP does NOT expand tildes — it
@@ -660,11 +668,27 @@ private actor ConnectionHolder {
         if let existing = sshClient, existing.isConnected {
             return existing
         }
-        // Replacing the SSHClient invalidates any cached SFTPClient that
-        // was bound to the previous (now-dead) connection. Drop it here
-        // so the next sftp() call re-opens against the new client; without
-        // this, every SFTP-backed call after a reconnect throws "channel
-        // closed" until the app is restarted.
+        // Coalesce: a concurrent caller is already opening — join its task.
+        if let inFlight = connectTask {
+            return try await inFlight.value
+        }
+        // Create + publish the task with NO `await` between the nil-check above
+        // and this assignment, so any caller entering during the open sees
+        // `connectTask` and joins instead of starting its own handshake.
+        let task = Task<SSHClient, Error> { [self] in try await self.openAndCache() }
+        connectTask = task
+        defer { connectTask = nil }
+        return try await task.value
+    }
+
+    /// Drop a stale SFTP client bound to a now-dead connection, open a fresh
+    /// SSH connection, and cache it. Runs inside the coalesced `connectTask`.
+    private func openAndCache() async throws -> SSHClient {
+        // Replacing the SSHClient invalidates any cached SFTPClient that was
+        // bound to the previous (now-dead) connection. Drop it here so the
+        // next sftp() call re-opens against the new client; without this,
+        // every SFTP-backed call after a reconnect throws "channel closed"
+        // until the app is restarted.
         if let oldSftp = sftpClient {
             try? await oldSftp.close()
             sftpClient = nil
@@ -681,6 +705,18 @@ private actor ConnectionHolder {
         if let existing = sftpClient {
             return existing
         }
+        // Same coalescing as `ssh()` — concurrent first-SFTP callers share one
+        // `openSFTP()` channel rather than each opening their own.
+        if let inFlight = sftpTask {
+            return try await inFlight.value
+        }
+        let task = Task<SFTPClient, Error> { [self] in try await self.openSFTPAndCache(client) }
+        sftpTask = task
+        defer { sftpTask = nil }
+        return try await task.value
+    }
+
+    private func openSFTPAndCache(_ client: SSHClient) async throws -> SFTPClient {
         let sftp = try await client.openSFTP()
         sftpClient = sftp
         return sftp

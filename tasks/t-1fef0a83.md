@@ -33,19 +33,20 @@ Out of scope (separate): F2/[[t-ios-cfg-get]] Docker read-path via `hermes confi
 
 ## Artifacts
 
-Implemented + tested + audited (not pushed).
+Implemented + live-verified + audited (not pushed). Fix is TWO parts:
 
-Code:
-- NEW scarf/Packages/ScarfIOS/Sources/ScarfIOS/CitadelTransportPool.swift — shared pool, NSLock-guarded [ServerID: (SSHConfig, CitadelServerTransport)], transport(for:config:make:)/evict/evictAll.
-- ScarfIOSApp.swift — factory routes through pool (false "not a new SSH handshake" comment corrected); evict on softDisconnect/forget, evictAll on disconnect.
-- ScarfGoCoordinator.swift — evict own server on scene-phase .background.
-- ChatView.swift — runConfigSet captures the THROWN connect error; preflightFailureMessage shows it ("Couldn't open an SSH session…") instead of the generic "Transport refused" line.
+1. CitadelTransportPool (commit 1324ed4) — one transport per (ServerID, SSHConfig) behind sshTransportFactory; evict on softDisconnect/forget/disconnect + scene-phase background.
+2. ConnectionHolder open-coalescing (follow-up commit) — `ssh()`/`sftp()` had an actor-reentrancy race: concurrent first-callers all passed the `sshClient==nil` check during `await openSSH()` and each opened a connection, so a simultaneous cold burst (Settings parallel reads) still churned even with one pooled transport. Fixed with in-flight `Task<SSHClient,Error>`/`Task<SFTPClient,Error>` coalescing. THE LIVE TEST CAUGHT THIS — pooling alone would have shipped incomplete.
 
-Test-enablement (separate commit): CitadelServerTransport #if !os(iOS) makeProcess stub + Package.swift .macOS v14→v15 so `swift test` runs on macOS.
+Plus diagnostic: chat preflight surfaces the real thrown connect error instead of generic "Transport refused".
 
-Tests: scarf/Packages/ScarfIOS/Tests/ScarfIOSTests/CitadelTransportPoolTests.swift — 6 tests (reuse, profile-switch replace, coexistence, evict, evictAll, 64-way concurrency→1 instance). Full ScarfIOS suite green (15/15). iOS app ("scarf mobile") BUILD SUCCEEDED.
+LIVE VERIFICATION (scripts/verify-ios-transport-pool.sh + CitadelTransportPoolLiveTests, ephemeral localhost sshd MaxStartups 2:80:4, throwaway HERMES_HOME):
+- gh#112 chat-init sequence (version + 2 config set + SFTP readback) PASSES through the pool, value isolated to throwaway home (real ~/.hermes untouched).
+- 24-way concurrent burst: un-pooled 20/24 connect failures → pooled+coalesced 0/24.
 
-Audit: Mac app does NOT link ScarfIOS (only "scarf mobile" does) → macOS changes have zero shipping impact. Residuals: shared SFTPClient wider concurrency (pre-existing pattern, verify on-device); bounded self-healing orphan-reconnect on profile switch (not per-op churn). See [[iOS transport must be pooled per (ServerID, SSHConfig) — un-pooled makeTransport churns SSH connections]].
+Tests: ScarfIOS suite 17/17 (15 unit + 2 gated live); iOS "scarf mobile" build SUCCEEDED. Mac app unaffected (doesn't link ScarfIOS).
 
-Fixes host-1 (native) fully + host-2 (Docker) write churn. Docker READ-path (config inside container) remains [[t-ios-cfg-get]].
+Side finding: `hermes config get` doesn't exist (v0.16) — F2 [[t-ios-cfg-get]] must use `config show`/file read, not `config get`.
+
+Remaining gate: real reporter-host / TestFlight confirmation (optional — local live test reproduces the mechanism conclusively).
 

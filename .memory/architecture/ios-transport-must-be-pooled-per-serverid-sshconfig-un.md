@@ -34,3 +34,11 @@ tags:
 - relates_to [[Multi-Server Architecture (Scarf 2.0+)]]
 - relates_to [[decision-scarfgo-profile-switching-via-per-connection]]
 - relates_to [[never-run-synchronous-transport-i/o-on-the-mainactor-from-a-file-watcher-tick-or-view-body]]
+
+
+## Verification + second-half fix (2026-06-25, live)
+
+- [critical] Pooling the transport is NECESSARY BUT NOT SUFFICIENT. `ConnectionHolder.ssh()`/`sftp()` had an actor-REENTRANCY race: concurrent first-callers all suspend at `await openSSH()` before any sets `sshClient`, so each opens its OWN connection. A simultaneous cold burst (Settings firing parallel reads) therefore still churned even with one pooled transport. Fixed by COALESCING: store the in-flight open as a `Task<SSHClient,Error>` (`connectTask` / `sftpTask`), published with NO `await` between the nil-check and the assignment, so concurrent callers join the one task instead of racing. #gotcha #fix
+- [verified] Live integration test (`CitadelTransportPoolLiveTests` + `scripts/verify-ios-transport-pool.sh`) against an ephemeral localhost sshd (`MaxStartups 2:80:4`, throwaway HERMES_HOME): the exact gh#112 chat-init sequence (version + two `config set` + SFTP readback) passes through the pool, and a 24-way concurrent burst goes from **20/24 connect failures un-pooled (fresh-per-op) to 0/24 pooled+coalesced** (one connection). The unit-test pool-dedup alone did NOT catch the holder race — the live test did. #verification
+- [hermes-fact] `hermes config get` does NOT exist (v0.16 `config` subcommands: show / edit / set / path / env-path / check / migrate). [[t-ios-cfg-get]] (F2) proposes routing Settings reads through `hermes config get` — that should be `config show` (or a direct file read). Correct F2 before implementing. #correction
+
