@@ -121,6 +121,40 @@ import Foundation
         #expect(!HermesProfileScope.isProfileHome("~/.hermes/profiles/gw/sub"))
     }
 
+    // MARK: - rootHome
+
+    @Test func rootHomeStripsProfileSuffix() {
+        #expect(HermesProfileScope.rootHome(forHome: "~/.hermes/profiles/gateway") == "~/.hermes")
+        #expect(HermesProfileScope.rootHome(forHome: "/opt/data/profiles/coder") == "/opt/data")
+        #expect(HermesProfileScope.rootHome(forHome: "~/.hermes/profiles/ci/") == "~/.hermes")
+    }
+
+    @Test func rootHomeReturnsRootHomesUnchanged() {
+        #expect(HermesProfileScope.rootHome(forHome: "~/.hermes") == "~/.hermes")
+        #expect(HermesProfileScope.rootHome(forHome: "/opt/data") == "/opt/data")
+        #expect(HermesProfileScope.rootHome(forHome: "/") == "/")
+        // Deeply nested NON-profile home passes through unchanged.
+        #expect(HermesProfileScope.rootHome(forHome: "/a/b/c/.hermes") == "/a/b/c/.hermes")
+        // A bare <root>/profiles (no name) is not a profile home → unchanged.
+        #expect(HermesProfileScope.rootHome(forHome: "~/.hermes/profiles") == "~/.hermes/profiles")
+    }
+
+    @Test func rootHomeHandlesFilesystemRootProfile() {
+        // Degenerate root "/": "/profiles/<name>" → "/" (not empty).
+        #expect(HermesProfileScope.rootHome(forHome: "/profiles/gw") == "/")
+    }
+
+    /// `resolveHome` then `rootHome` round-trips back to the base for both
+    /// named and default selections — the property the Profiles UI relies on
+    /// to read the root-only `active_profile` file while scoped to a profile.
+    @Test func resolveThenRootIsIdentity() {
+        let base = "~/.hermes"
+        #expect(HermesProfileScope.rootHome(
+            forHome: HermesProfileScope.resolveHome(baseHome: base, profile: "gateway")) == base)
+        #expect(HermesProfileScope.rootHome(
+            forHome: HermesProfileScope.resolveHome(baseHome: base, profile: nil)) == base)
+    }
+
     // MARK: - hermesHomeShellAssignment
 
     @Test func shellAssignmentScopesNamedProfileWithExpandableTilde() {

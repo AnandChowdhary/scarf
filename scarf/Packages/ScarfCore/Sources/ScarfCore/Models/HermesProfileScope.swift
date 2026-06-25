@@ -87,6 +87,21 @@ public enum HermesProfileScope {
         return comps[comps.count - 2] == "profiles"
     }
 
+    /// The root (default-profile) home for any home: strips a trailing
+    /// `/profiles/<name>` when present, else returns the home unchanged.
+    /// Mirrors `hermes_constants.get_default_hermes_root`. Used for
+    /// root-only concepts like the `active_profile` file, which always
+    /// lives at the root even when a named profile is selected.
+    public static func rootHome(forHome home: String) -> String {
+        let trimmed = trimmedBase(home)
+        guard isProfileHome(trimmed),
+              let nameSlash = trimmed.lastIndex(of: "/") else { return trimmed }
+        let withoutName = trimmed[..<nameSlash]                 // "<root>/profiles"
+        guard let profilesSlash = withoutName.lastIndex(of: "/") else { return trimmed }
+        let root = String(trimmed[..<profilesSlash])            // "<root>"
+        return root.isEmpty ? "/" : root
+    }
+
     /// A shell `HERMES_HOME=... ` assignment (note the trailing space) that
     /// scopes a `hermes` invocation to a named profile, or `""` for a
     /// default/root home — leaving legacy `active_profile` resolution

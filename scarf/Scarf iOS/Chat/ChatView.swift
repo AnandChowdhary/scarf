@@ -1707,6 +1707,25 @@ final class ChatController {
         vm.expandIfProjectScoped(text, context: context)
     }
 
+    /// Tear down the live ACP session when the controller is deallocated —
+    /// the tab root unmounts on Disconnect/Forget, or the profile switcher
+    /// rebuilds the tab subtree (#120). The event/health tasks hold the
+    /// `ACPClient` strongly and don't stop on handle release, so without
+    /// this the remote `hermes acp` process + SSH channel would linger after
+    /// the view is gone. `deinit` can't await, so cancel the tasks
+    /// synchronously and fire-and-forget the actor `stop()` — the same
+    /// pattern `CitadelServerTransport.deinit` uses. `isolated` so it runs
+    /// on the MainActor and can touch the actor-isolated task handles.
+    isolated deinit {
+        eventTask?.cancel()
+        healthMonitorTask?.cancel()
+        reconnectTask?.cancel()
+        pendingDraftSave?.cancel()
+        if let client {
+            Task { await client.stop() }
+        }
+    }
+
     /// Stop the current session + tear down the SSH exec channel.
     /// Idempotent.
     func stop() async {
