@@ -66,7 +66,13 @@ A profile is an isolated Hermes installation — separate config, sessions, memo
 - **Export** — zips the profile directory; useful for backup or moving to a new machine. _v2.5.2+:_ on remote contexts a path-input + Verify sheet captures the destination zip path on the SSH host (mirrors the Add Project sheet's pattern from #54).
 - **Import** — unzip into a new profile slot. _v2.5.2+:_ on remote contexts a path-input + Verify sheet captures the source zip path on the SSH host. Local context still uses `NSOpenPanel`. Drives `hermes profile import <zip>` over SSH; bytes are piped via `HermesFileService.runHermesWithStdin` (rather than landing on the remote disk first) when invoked from the local-file-on-Mac flow.
 
-Remote SSH contexts don't yet auto-resolve `active_profile` — `HermesPathSet.defaultRemoteHome` stays at the configured remote home. If you're using profiles on a remote, set the **Hermes data directory** field in Manage Servers to point at `~/.hermes/profiles/<name>` for that server context. Issue [#53](https://github.com/awizemann/scarf/issues/53)'s degraded-pill diagnostics will tell you when this is the cause of an empty dashboard.
+On the **Mac**, remote SSH contexts don't auto-resolve `active_profile` — `HermesPathSet.defaultRemoteHome` stays at the configured remote home. If you're using profiles on a remote, set the **Hermes data directory** field in Manage Servers to point at `~/.hermes/profiles/<name>` for that server context. Issue [#53](https://github.com/awizemann/scarf/issues/53)'s degraded-pill diagnostics will tell you when this is the cause of an empty dashboard.
+
+### ScarfGo (iOS) profile switching _(#120)_
+
+ScarfGo has a built-in **profile switcher** (System → Profiles) so you don't have to hand-edit the remote home per server. Pick a profile and the phone re-scopes everything it shows — dashboard, memory, cron, sessions, gateway, skills, and chat — to that profile.
+
+Crucially, the switch is **per-connection and view-only**: it does **not** run `hermes profile use` or touch the host's `active_profile`, so your Mac app, terminal, and the running gateway are undisturbed. It works by pointing this phone's reads at the profile's home and prepending `HERMES_HOME=<root>/profiles/<name>` to its `hermes` invocations (chat + CLI) — Hermes' own per-invocation home mechanism. The **Default** entry returns to the root profile; the switcher also shows which profile the **server itself** is on (its `active_profile`) when it differs from what you're viewing. Creating, renaming, deleting, and import/export stay on the Mac app.
 
 ## Related pages
 
