@@ -19,6 +19,16 @@
   <a href="https://www.buymeacoffee.com/awizemann"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="28"></a>
 </p>
 
+## What's New in 2.13.0
+
+ScarfGo — the iOS companion — gets **Hermes profile switching**, plus a remote-chat/Settings reliability fix that anyone running ScarfGo over SSH will feel. The shared-core pieces ride into the Mac app too.
+
+- **Switch Hermes profiles from ScarfGo** — pick a profile and ScarfGo points its chat, memory, cron, sessions, gateway, and every `hermes` call at that profile for the selected server. It uses per-connection scoping and **never runs `hermes profile use`**, so it doesn't touch the host's `active_profile` — your Mac, terminal, cron, and running gateway keep their own profile. (Create / rename / delete / import / export stay Mac-only.) ([#120](https://github.com/awizemann/scarf/issues/120))
+- **Reliable remote chat & Settings on iOS** — fixes "Couldn't save model.provider … Transport refused" and empty Settings on a valid host. ScarfGo was opening a new SSH connection per read / CLI call; under a Settings-load or chat-init burst the handshake itself failed. It now pools one connection per server and coalesces concurrent opens (verified against a live sshd: a 24-way burst went from 20/24 connection failures to 0). ([#112](https://github.com/awizemann/scarf/issues/112))
+- **Skills "What's New" tracks per profile** — the pill no longer shows bogus "new / changed" counts after a profile switch; the baseline is now keyed per (server, profile).
+
+See the full [v2.13.0 release notes](https://github.com/awizemann/scarf/releases/tag/v2.13.0).
+
 ## What's New in 2.12.0
 
 A coordinated catch-up to **Hermes v0.17.0 (2026.6.19)** — the largest Hermes release yet, though Scarf needed only a focused slice — plus a remote-chat performance fix everyone on SSH will feel. Every new v0.17 surface is capability-gated, so pre-v0.17 hosts render byte-identical to v2.11.0; all flag/config/wire shapes were verified against the live v0.17 source.
