@@ -47,10 +47,11 @@
 ## Doing
 
 - [ ] Hermes v0.17 — Tier 2: capability gates + tests + new platforms + config surfaces, bump target to v0.17 (id: t-8f0f7ac0) (added: 2026-06-21)
-- [ ] iOS: pool CitadelServerTransport per server (fix gh#112 chat-init churn) (id: t-1fef0a83) (added: 2026-06-25) (priority: high)
+- [ ] Fix Skills "What's New" pill bleeding across profiles/servers (#120 B4 follow-up) (id: t-6209f607) (added: 2026-06-25)
 
 ## Done
 
+- [x] iOS: pool CitadelServerTransport per server (fix gh#112 chat-init churn) (id: t-1fef0a83) (added: 2026-06-25) (priority: high)
 - [x] ScarfGo profile switching (#120) — Design B (id: t-873f7df9) (added: 2026-06-25) (priority: high)
 - [x] B4: docs/wiki/memory sync + fresh-eyes integration audit for #120 (id: t-dfc8c0e0) (added: 2026-06-25)
 - [x] B3: profile switcher UI in ScarfGo ProfilesView (id: t-9d970045) (added: 2026-06-25) (priority: high)
