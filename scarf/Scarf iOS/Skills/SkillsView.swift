@@ -19,11 +19,26 @@ struct SkillsView: View {
 
     @State private var vm: SkillsViewModel
     @State private var currentTab: Tab = .installed
-    /// v2.5 SkillSnapshotService diff against the per-server last-seen
-    /// snapshot. Drives the "What's New" pill at the top of the tab.
-    /// Nil before first compute or when there's nothing changed.
+    /// v2.5 SkillSnapshotService diff against the per-(server, profile)
+    /// last-seen snapshot. Drives the "What's New" pill at the top of the
+    /// tab. Nil before first compute or when there's nothing changed.
     @State private var snapshotDiff: SkillSnapshotDiff?
 
+    /// The real, profile-scoped context injected by `ScarfGoTabRoot`
+    /// (`cfg.toServerContext(id: serverID)` — the actual `serverID` plus a
+    /// `remoteHome` already re-pointed at the selected profile). The
+    /// snapshot baseline keys off THIS so it stays per-(server, profile);
+    /// the view-model below deliberately uses `sharedContextID` instead, so
+    /// don't conflate the two.
+    @Environment(\.serverContext) private var serverContext
+
+    /// Fixed context id for the Skills view-model ONLY — it keys the pooled
+    /// SSH connection + home cache so the tab reuses one connection instead
+    /// of opening a fresh channel per appearance. Profile scoping rides on
+    /// `config.remoteHome` (which `ScarfGoTabRoot` re-points), NOT on this
+    /// id, so the skills LIST is already correct per profile. The snapshot
+    /// baseline must NOT use this id — it's shared across servers/profiles
+    /// and would bleed the diff; it uses `serverContext` above instead.
     private static let sharedContextID: ServerID = ServerID(
         uuidString: "00000000-0000-0000-0000-0000000000A1"
     )!
@@ -78,12 +93,26 @@ struct SkillsView: View {
         }
     }
 
-    /// Compute the snapshot diff against the per-server last-seen
-    /// state. First load with no prior snapshot silently primes —
-    /// the pill never renders for users on day one.
+    /// Snapshot service scoped to the real server AND its selected Hermes
+    /// profile (#120), derived from the injected context's `paths.home`
+    /// (which `ScarfGoTabRoot` has already re-pointed at the profile). A
+    /// default/root home yields a nil profile → the bare per-server key.
+    /// This is what stops the pill bleeding across profiles and servers.
+    private var snapshotService: SkillSnapshotService {
+        SkillSnapshotService(
+            serverID: serverContext.id,
+            profile: HermesProfileScope.profileName(forHome: serverContext.paths.home)
+        )
+    }
+
+    /// Compute the snapshot diff against the per-(server, profile)
+    /// last-seen state. First load with no prior snapshot silently primes
+    /// — the pill never renders for users on day one. (After this fix the
+    /// key moved off the fixed `sharedContextID`, so the first post-upgrade
+    /// load re-primes silently rather than flashing a bogus pill.)
     private func recomputeSnapshotDiff() {
         let allSkills = vm.categories.flatMap(\.skills)
-        let svc = SkillSnapshotService(serverID: Self.sharedContextID)
+        let svc = snapshotService
         let diff = svc.diff(against: allSkills)
         if diff.previousSnapshotEmpty {
             svc.markSeen(allSkills)
@@ -106,8 +135,7 @@ struct SkillsView: View {
                 .foregroundStyle(.primary)
             Spacer()
             Button("Seen") {
-                SkillSnapshotService(serverID: Self.sharedContextID)
-                    .markSeen(vm.categories.flatMap(\.skills))
+                snapshotService.markSeen(vm.categories.flatMap(\.skills))
                 snapshotDiff = nil
             }
             .buttonStyle(.bordered)

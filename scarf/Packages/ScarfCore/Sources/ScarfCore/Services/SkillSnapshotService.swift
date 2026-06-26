@@ -30,10 +30,23 @@ public struct SkillSnapshotService: Sendable {
     #endif
 
     public let serverID: ServerID
+
+    /// Optional Hermes profile discriminator (issue #120). Each profile is
+    /// an independent `HERMES_HOME` with its OWN `skills/` dir, so the
+    /// last-seen baseline must be namespaced per `(server, profile)` —
+    /// otherwise switching profiles diffs the new profile's skills against
+    /// the previous profile's baseline and the "What's New" pill lies.
+    ///
+    /// Normalized through `HermesProfileScope` in `init`, so `nil` /
+    /// `"default"` / an invalid name all collapse to the bare per-server
+    /// key — byte-for-byte the pre-#120 storage key, so existing
+    /// default-profile baselines keep resolving with no migration.
+    public let profile: String?
     private let backend: SnapshotBackend
 
-    public init(serverID: ServerID) {
+    public init(serverID: ServerID, profile: String? = nil) {
         self.serverID = serverID
+        self.profile = HermesProfileScope.normalize(profile)
         #if os(macOS)
         self.backend = .file(MacSnapshotBackend())
         #else
@@ -41,11 +54,23 @@ public struct SkillSnapshotService: Sendable {
         #endif
     }
 
-    /// Public for tests. Production callers use the no-arg
+    /// Public for tests. Production callers use the backend-less
     /// init that picks the right backend per platform.
-    public init(serverID: ServerID, backend: SnapshotBackend) {
+    public init(serverID: ServerID, profile: String? = nil, backend: SnapshotBackend) {
         self.serverID = serverID
+        self.profile = HermesProfileScope.normalize(profile)
         self.backend = backend
+    }
+
+    /// Compose the persistence key for a `(server, profile)` pair. A nil /
+    /// empty profile yields the bare server UUID — identical to the pre-#120
+    /// key, so default-profile baselines survive an upgrade untouched. A
+    /// named profile gets a `.`-suffixed namespace (`<uuid>.<name>`); the
+    /// name is Hermes-regex-validated (`HermesProfileScope`), so it is a
+    /// safe filename / `UserDefaults`-key component.
+    static func storageKey(for serverID: ServerID, scope: String?) -> String {
+        guard let scope, !scope.isEmpty else { return serverID.uuidString }
+        return "\(serverID.uuidString).\(scope)"
     }
 
     // MARK: - Public API
@@ -54,7 +79,7 @@ public struct SkillSnapshotService: Sendable {
     /// last snapshot. Returns counts only — the caller renders them
     /// in a pill ("2 new, 4 updated since you last looked").
     public func diff(against current: [HermesSkill]) -> SkillSnapshotDiff {
-        let last = backend.read(for: serverID)
+        let last = backend.read(for: serverID, scope: profile)
         let currentSigs = Self.signatures(for: current)
 
         var newCount = 0
@@ -83,7 +108,7 @@ public struct SkillSnapshotService: Sendable {
     /// `previousSnapshotEmpty` is true and we don't want to show
     /// every skill as new on next launch).
     public func markSeen(_ current: [HermesSkill]) {
-        backend.write(Self.signatures(for: current), for: serverID)
+        backend.write(Self.signatures(for: current), for: serverID, scope: profile)
     }
 
     // MARK: - Private
@@ -161,19 +186,19 @@ public enum SnapshotBackend: Sendable {
     case userDefaults(IOSSnapshotBackend)
     case inMemory(InMemorySnapshotBackend)
 
-    func read(for serverID: ServerID) -> [String: SkillSignature] {
+    func read(for serverID: ServerID, scope: String? = nil) -> [String: SkillSignature] {
         switch self {
-        case .file(let b): return b.read(for: serverID)
-        case .userDefaults(let b): return b.read(for: serverID)
-        case .inMemory(let b): return b.read(for: serverID)
+        case .file(let b): return b.read(for: serverID, scope: scope)
+        case .userDefaults(let b): return b.read(for: serverID, scope: scope)
+        case .inMemory(let b): return b.read(for: serverID, scope: scope)
         }
     }
 
-    func write(_ snapshot: [String: SkillSignature], for serverID: ServerID) {
+    func write(_ snapshot: [String: SkillSignature], for serverID: ServerID, scope: String? = nil) {
         switch self {
-        case .file(let b): b.write(snapshot, for: serverID)
-        case .userDefaults(let b): b.write(snapshot, for: serverID)
-        case .inMemory(let b): b.write(snapshot, for: serverID)
+        case .file(let b): b.write(snapshot, for: serverID, scope: scope)
+        case .userDefaults(let b): b.write(snapshot, for: serverID, scope: scope)
+        case .inMemory(let b): b.write(snapshot, for: serverID, scope: scope)
         }
     }
 }
@@ -184,16 +209,16 @@ public enum SnapshotBackend: Sendable {
 public struct MacSnapshotBackend: Sendable {
     public init() {}
 
-    public func read(for serverID: ServerID) -> [String: SkillSignature] {
-        guard let url = Self.fileURL(for: serverID),
+    public func read(for serverID: ServerID, scope: String? = nil) -> [String: SkillSignature] {
+        guard let url = Self.fileURL(for: serverID, scope: scope),
               let data = try? Data(contentsOf: url),
               let map = try? JSONDecoder().decode([String: SkillSignature].self, from: data)
         else { return [:] }
         return map
     }
 
-    public func write(_ snapshot: [String: SkillSignature], for serverID: ServerID) {
-        guard let url = Self.fileURL(for: serverID) else { return }
+    public func write(_ snapshot: [String: SkillSignature], for serverID: ServerID, scope: String? = nil) {
+        guard let url = Self.fileURL(for: serverID, scope: scope) else { return }
         do {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(),
@@ -212,7 +237,7 @@ public struct MacSnapshotBackend: Sendable {
         }
     }
 
-    private static func fileURL(for serverID: ServerID) -> URL? {
+    private static func fileURL(for serverID: ServerID, scope: String?) -> URL? {
         guard let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -220,14 +245,14 @@ public struct MacSnapshotBackend: Sendable {
         return appSupport
             .appendingPathComponent("com.scarf", isDirectory: true)
             .appendingPathComponent("skill-snapshots", isDirectory: true)
-            .appendingPathComponent("\(serverID.uuidString).json")
+            .appendingPathComponent("\(SkillSnapshotService.storageKey(for: serverID, scope: scope)).json")
     }
 }
 #else
 public struct MacSnapshotBackend: Sendable {
     public init() {}
-    public func read(for serverID: ServerID) -> [String: SkillSignature] { [:] }
-    public func write(_ snapshot: [String: SkillSignature], for serverID: ServerID) {}
+    public func read(for serverID: ServerID, scope: String? = nil) -> [String: SkillSignature] { [:] }
+    public func write(_ snapshot: [String: SkillSignature], for serverID: ServerID, scope: String? = nil) {}
 }
 #endif
 
@@ -244,32 +269,34 @@ public final class IOSSnapshotBackend: @unchecked Sendable {
         self.defaults = defaults
     }
 
-    public func read(for serverID: ServerID) -> [String: SkillSignature] {
-        let key = Self.keyPrefix + serverID.uuidString
+    public func read(for serverID: ServerID, scope: String? = nil) -> [String: SkillSignature] {
+        let key = Self.keyPrefix + SkillSnapshotService.storageKey(for: serverID, scope: scope)
         guard let data = defaults.data(forKey: key),
               let map = try? JSONDecoder().decode([String: SkillSignature].self, from: data)
         else { return [:] }
         return map
     }
 
-    public func write(_ snapshot: [String: SkillSignature], for serverID: ServerID) {
-        let key = Self.keyPrefix + serverID.uuidString
+    public func write(_ snapshot: [String: SkillSignature], for serverID: ServerID, scope: String? = nil) {
+        let key = Self.keyPrefix + SkillSnapshotService.storageKey(for: serverID, scope: scope)
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults.set(data, forKey: key)
     }
 }
 
-/// In-memory backend for tests. Per-instance map; not shared.
+/// In-memory backend for tests. Per-instance map; not shared. Keyed by the
+/// composed `(server, scope)` storage key — same namespacing as the
+/// production backends — so profile-scoping behavior is exercised exactly.
 public final class InMemorySnapshotBackend: @unchecked Sendable {
-    private var store: [ServerID: [String: SkillSignature]] = [:]
+    private var store: [String: [String: SkillSignature]] = [:]
 
     public init() {}
 
-    public func read(for serverID: ServerID) -> [String: SkillSignature] {
-        store[serverID] ?? [:]
+    public func read(for serverID: ServerID, scope: String? = nil) -> [String: SkillSignature] {
+        store[SkillSnapshotService.storageKey(for: serverID, scope: scope)] ?? [:]
     }
 
-    public func write(_ snapshot: [String: SkillSignature], for serverID: ServerID) {
-        store[serverID] = snapshot
+    public func write(_ snapshot: [String: SkillSignature], for serverID: ServerID, scope: String? = nil) {
+        store[SkillSnapshotService.storageKey(for: serverID, scope: scope)] = snapshot
     }
 }

@@ -102,6 +102,23 @@ public enum HermesProfileScope {
         return root.isEmpty ? "/" : root
     }
 
+    /// The named profile encoded in `home`, or `nil` for a root/default
+    /// home. The inverse of `resolveHome`: a `<root>/profiles/<name>` home
+    /// yields `"<name>"` (re-validated through `normalize`, so a malformed
+    /// trailing component fails safe to `nil`); any root home yields `nil`.
+    /// Mirrors `isProfileHome` / `rootHome`.
+    ///
+    /// Use this to derive a per-profile discriminator from an already-scoped
+    /// `HermesPathSet.home` — e.g. the skills-snapshot baseline key, which
+    /// must distinguish each profile's `HERMES_HOME/skills` set so switching
+    /// profiles doesn't diff one profile's skills against another's baseline.
+    public static func profileName(forHome home: String) -> String? {
+        let trimmed = trimmedBase(home)
+        guard isProfileHome(trimmed),
+              let nameSlash = trimmed.lastIndex(of: "/") else { return nil }
+        return normalize(String(trimmed[trimmed.index(after: nameSlash)...]))
+    }
+
     /// A shell `HERMES_HOME=... ` assignment (note the trailing space) that
     /// scopes a `hermes` invocation to a named profile, or `""` for a
     /// default/root home — leaving legacy `active_profile` resolution

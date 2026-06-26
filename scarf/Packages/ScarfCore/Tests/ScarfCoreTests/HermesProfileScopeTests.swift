@@ -144,6 +144,49 @@ import Foundation
         #expect(HermesProfileScope.rootHome(forHome: "/profiles/gw") == "/")
     }
 
+    // MARK: - profileName
+
+    @Test func profileNameExtractsNamedProfile() {
+        #expect(HermesProfileScope.profileName(forHome: "~/.hermes/profiles/gateway") == "gateway")
+        #expect(HermesProfileScope.profileName(forHome: "/opt/data/profiles/coder") == "coder")  // Docker root
+        #expect(HermesProfileScope.profileName(forHome: "/home/deploy/.hermes/profiles/ci/") == "ci")  // trailing slash
+        #expect(HermesProfileScope.profileName(forHome: "a1_b-c") == nil)  // bare name, not a profile home
+    }
+
+    @Test func profileNameReturnsNilForRootHomes() {
+        #expect(HermesProfileScope.profileName(forHome: "~/.hermes") == nil)
+        #expect(HermesProfileScope.profileName(forHome: "/opt/data") == nil)
+        #expect(HermesProfileScope.profileName(forHome: "/") == nil)
+        #expect(HermesProfileScope.profileName(forHome: "") == nil)
+        // A bare `<root>/profiles` (no name) is not a profile home.
+        #expect(HermesProfileScope.profileName(forHome: "~/.hermes/profiles") == nil)
+        // Nested below a profile is not itself a profile home.
+        #expect(HermesProfileScope.profileName(forHome: "~/.hermes/profiles/gw/sub") == nil)
+    }
+
+    /// Defense-in-depth: a profile home whose trailing component fails
+    /// Hermes's id regex fails safe to nil (default) rather than producing
+    /// an unsafe key component — even though real profile names are always
+    /// validated upstream, the extractor must not trust the path blindly.
+    @Test func profileNameFailsSafeOnInvalidTrailingComponent() {
+        #expect(HermesProfileScope.profileName(forHome: "~/.hermes/profiles/UPPER") == nil)
+        #expect(HermesProfileScope.profileName(forHome: "~/.hermes/profiles/-leading") == nil)
+        #expect(HermesProfileScope.profileName(forHome: "~/.hermes/profiles/a.b") == nil)
+    }
+
+    /// `resolveHome` then `profileName` round-trips back to the selection —
+    /// the inverse property the skills-snapshot key relies on to derive the
+    /// active profile from an already-scoped `HermesPathSet.home`.
+    @Test func resolveThenProfileNameIsIdentity() {
+        let base = "~/.hermes"
+        #expect(HermesProfileScope.profileName(
+            forHome: HermesProfileScope.resolveHome(baseHome: base, profile: "gateway")) == "gateway")
+        #expect(HermesProfileScope.profileName(
+            forHome: HermesProfileScope.resolveHome(baseHome: base, profile: nil)) == nil)
+        #expect(HermesProfileScope.profileName(
+            forHome: HermesProfileScope.resolveHome(baseHome: "/opt/data", profile: "admin")) == "admin")
+    }
+
     /// `resolveHome` then `rootHome` round-trips back to the base for both
     /// named and default selections — the property the Profiles UI relies on
     /// to read the root-only `active_profile` file while scoped to a profile.
