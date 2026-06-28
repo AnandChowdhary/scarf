@@ -575,6 +575,12 @@ If you find Scarf useful, consider buying me a coffee.
 
 <a href="https://www.buymeacoffee.com/awizemann"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="40"></a>
 
+## FAQ
+
+Quick answers to common questions live on the **[Scarf website FAQ](https://awizemann.github.io/scarf/#faq)** — what Scarf is, the Hermes prerequisite, supported macOS/iOS versions, how ScarfGo connects over SSH, privacy and telemetry, where conversations are stored, how updates work, remote/headless hosts, and Windows/Linux support.
+
+For deeper docs, see the **[Wiki](https://github.com/awizemann/scarf/wiki)** — including [Projects & Profiles](https://github.com/awizemann/scarf/wiki/Projects-&-Profiles), [Mini-Apps](https://github.com/awizemann/scarf/wiki/Mini-Apps), [Fleet & Portfolio](https://github.com/awizemann/scarf/wiki/Fleet-&-Portfolio), and [Chat](https://github.com/awizemann/scarf/wiki/Chat). Something not covered? Open a **[GitHub issue](https://github.com/awizemann/scarf/issues)**.
+
 ## License
 
 [MIT](LICENSE)
