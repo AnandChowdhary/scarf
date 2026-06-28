@@ -2185,34 +2185,34 @@ final class ChatController {
                 self?.currentGitBranch = branch
             }
         }
-        // Synchronously load the slash command NAMES so we can list them
-        // in the AGENTS.md block (the agent needs to know what commands
-        // are available). This is a separate read from the async one
-        // above because the block has to land on disk BEFORE `hermes acp`
-        // boots — async loads might lose the race. Blocking load on a
-        // detached task to keep the MainActor responsive.
-        let slashNames: [String] = await Task.detached {
-            ProjectSlashCommandService(context: ctx)
-                .loadCommands(at: projectPath)
-                .map(\.name)
-        }.value
-        // Write the context block first. Non-fatal on failure — chat
-        // still starts, just without the managed block. We capture the
-        // failure (rather than swallowing via `try?`) so the user gets
-        // a yellow banner explaining the agent won't see project context
-        // for this session, with the underlying error in "Show details".
-        let block = ProjectContextBlock.renderMinimalBlock(
-            projectName: project.name,
-            projectPath: project.path,
-            slashCommandNames: slashNames
-        )
+        // Render + write the full Scarf-managed AGENTS.md block (cron,
+        // config fields, template, kanban, slash commands, platform
+        // reference) BEFORE `hermes acp` boots — it reads context from the
+        // process cwd at spawn. Non-fatal: a write failure surfaces a
+        // banner and the chat proceeds without the block.
+        await writeProjectContextBlock(projectPath: project.path, projectName: project.name)
+        await start(projectPath: project.path, projectName: project.name)
+    }
+
+    /// Render the full Scarf-managed block for `projectPath` and write it
+    /// over SFTP. Uses `ProjectStore.renderAgentContextBlock` so the block
+    /// is byte-identical to what the Mac writes for the same project state
+    /// (cron jobs included). MUST be called BEFORE the `hermes acp` spawn
+    /// so the block is on disk when Hermes reads context files at boot.
+    ///
+    /// Non-fatal: on failure we surface a yellow banner (so the user knows
+    /// the agent won't see project context this session) with the
+    /// underlying error in "Show details", but the chat still starts.
+    /// Shared by the new-project-chat and resume paths.
+    private func writeProjectContextBlock(projectPath: String, projectName: String) async {
+        let ctx = context
         let writeResult: Result<Void, Error> = await Task.detached {
+            let store = ProjectStore(context: ctx)
+            let scarfProject = store.load(projectPath: projectPath)
+                ?? store.derive(from: ProjectEntry(name: projectName, path: projectPath))
+            let block = store.renderAgentContextBlock(for: scarfProject)
             do {
-                try ProjectContextBlock.writeBlock(
-                    block,
-                    forProjectAt: projectPath,
-                    context: ctx
-                )
+                try ProjectContextBlock.writeBlock(block, forProjectAt: projectPath, context: ctx)
                 return .success(())
             } catch {
                 return .failure(error)
@@ -2226,7 +2226,6 @@ final class ChatController {
             vm.acpErrorHint = "Check that the SSH user can write to \(projectPath)/AGENTS.md."
             vm.acpErrorDetails = error.localizedDescription
         }
-        await start(projectPath: project.path, projectName: project.name)
     }
 
     /// Inline variant of `start()` that accepts a cwd + attribution
@@ -2365,6 +2364,14 @@ final class ChatController {
                     self?.currentGitBranch = branch
                 }
             }
+        }
+
+        // Refresh the project's AGENTS.md block before the spawn so a
+        // resumed project chat picks up cron/config changes made since the
+        // chat was created (Hermes re-reads context at every `hermes acp`
+        // boot). Project-attributed sessions only.
+        if let resumePath = resolved?.path {
+            await writeProjectContextBlock(projectPath: resumePath, projectName: resolved?.name ?? "")
         }
 
         state = .connecting
