@@ -19,5 +19,5 @@ updated: 2026-06-13
 - [history] Found across 6+ sites in the 2026-06-13 Cycle 1 audit: `HermesFileService.swift:599/659/2006`, `WebviewWidgetView.swift:111/115` (macOS), `Scarf iOS/Projects/Widgets/WebviewWidgetView.swift:117/121` (iOS); subsystem mismatch at `HermesProfileResolver.swift:37`. macOS and iOS twins must be fixed together; deferral comments do not exempt code. #history
 
 ## Relations
-- relates_to [[Core Engineering Constraints]]
+- relates_to [[Scarf Architecture Rules]]
 - relates_to [[Scarf Architecture Rules]]

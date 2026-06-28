@@ -8,6 +8,10 @@ tags:
 - ci
 created: 2026-05-29
 updated: 2026-06-06
+source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
+reviewed: 2026-06-28
+reviewed_by: audit:claude-code (audit)
+source_paths: scripts/release.sh, scripts/local-build.sh
 ---
 
 ## Observations

@@ -5,10 +5,12 @@ permalink: scarf/features/project-dashboards-feature
 tags:
 - dashboards
 - feature
-source_sha: 427321d742d63298100f9e444f96fd1524d7a46c
-source_paths: scarf/scarf/Features, README.md
+source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
+source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Models/ProjectDashboard.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ProjectDashboardService.swift, scarf/docs/DASHBOARD_SCHEMA.md
 created: 2026-05-29
 updated: 2026-05-29
+reviewed: 2026-06-28
+reviewed_by: audit:claude-code (audit)
 ---
 
 ## Observations

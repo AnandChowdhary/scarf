@@ -13,6 +13,10 @@ tags:
 - cron
 created: 2026-06-20
 updated: 2026-06-20
+source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
+reviewed: 2026-06-28
+reviewed_by: audit:claude-code (audit)
+source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/FleetService.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Models/ProjectPortfolio.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/FleetApplyPlan.swift, scarf/scarf/Features/Projects/ViewModels/FleetApplyExecutor.swift, scarf/scarf/Core/Services/KanbanTenantResolver.swift, scarf/scarf/Features/Projects/Views/CockpitFleetPanel.swift
 ---
 
 How Milestone 3 (the Fleet/Portfolio dimension — Phase-1 item #4) was built: a portfolio that groups the same project across servers by stable id, per-host config **drift**, and **apply-to-fleet** (config-as-policy). Built on `feat/projects`, incremental + tested per step, mirroring M1/M2. Read alongside the design's "Fleet dimension" section + "Decisions (locked 2026-06-14)".
@@ -49,6 +53,5 @@ How Milestone 3 (the Fleet/Portfolio dimension — Phase-1 item #4) was built: a
 ## Relations
 - relates_to [[Phase-1 Milestone 1: First-Class Project Object — implementation decisions]]
 - relates_to [[Phase-1 Milestone 2: Mini-apps — implementation decisions]]
-- relates_to [[First-Class Project Model (Phase 1)]]
 - relates_to [[Fast test-iteration commands (swift test vs xcodebuild)]]
 - relates_to [[ScarfCore tests inject a temp Hermes home via ServerContext.local(home:)]]

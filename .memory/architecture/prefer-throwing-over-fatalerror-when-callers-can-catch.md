@@ -18,4 +18,4 @@ updated: 2026-06-13
 - [history] 2026-06-13 Cycle 1: `SQLValueInliner.swift:71,82` (`fatalError` on placeholder/param-count mismatch, called from `RemoteSQLiteBackend.query()/queryBatch()` `try` paths); `MCPServerPresetPickerView.swift:126` (force-unwrap on a fallback URL literal — benign variant). #history
 
 ## Relations
-- relates_to [[Core Engineering Constraints]]
+- relates_to [[Scarf Architecture Rules]]

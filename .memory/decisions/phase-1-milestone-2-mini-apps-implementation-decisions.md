@@ -13,6 +13,10 @@ tags:
 - acp
 created: 2026-06-16
 updated: 2026-06-16
+source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
+reviewed: 2026-06-28
+reviewed_by: audit:claude-code (audit)
+source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/MiniAppBridge.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/MiniAppService.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/MiniAppGrantStore.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/MiniAppAssetResolver.swift, scarf/scarf/Features/Projects/MiniApp/ScarfMiniAppBridge.swift, scarf/scarf/Features/Projects/MiniApp/MiniAppSchemeHandler.swift
 ---
 
 How Milestone 2 (Cowork-style mini-apps) was built, the security posture, and what's deliberately deferred. All bridge surfaces are live; built trust-boundary-first. Branch `feat/projects`.
@@ -30,4 +34,3 @@ How Milestone 2 (Cowork-style mini-apps) was built, the security posture, and wh
 ## Relations
 - relates_to [[Phase-1 Milestone 1: First-Class Project Object — implementation decisions]]
 - relates_to [[Path containment for untrusted dirs must resolve symlinks, not just normalize lexically]]
-- relates_to [[Mini-App Bridge Contract (Phase 1)]]

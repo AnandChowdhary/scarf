@@ -6,10 +6,12 @@ tags:
 - templates
 - config
 - keychain
-source_sha: 8d2293330e574b9e3b4ff42f6fcd155af248ab59
+source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
 source_paths: scarf/scarf/Core/Models/TemplateConfig.swift, scarf/scarf/Core/Services/ProjectConfigKeychain.swift, scarf/scarf/Core/Services/ProjectConfigService.swift, scarf/scarf/Features/Templates/Views/TemplateConfigSheet.swift, tools/build-catalog.py
 created: 2026-05-29
 updated: 2026-05-29
+reviewed: 2026-06-28
+reviewed_by: audit:claude-code (audit)
 ---
 
 ## Observations
