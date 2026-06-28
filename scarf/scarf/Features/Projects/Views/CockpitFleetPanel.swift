@@ -258,7 +258,7 @@ struct CockpitFleetPanel: View {
         return String(id.prefix(8))
     }
 
-    static func driftLabel(_ field: FleetDrift.Field) -> String {
+    nonisolated static func driftLabel(_ field: FleetDrift.Field) -> String {
         switch field {
         case .name:            return "Name"
         case .modelPreset:     return "Model preset"

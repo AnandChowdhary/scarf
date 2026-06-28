@@ -33,7 +33,7 @@ struct ProjectUpgradeService: Sendable {
 
     /// Bump when the deterministic pass gains steps, so the cockpit can
     /// offer a re-upgrade to projects stamped with an older version.
-    static let currentUpgradeVersion = 1
+    nonisolated static let currentUpgradeVersion = 1
 
     /// What the structure pass ensured/changed — for UI feedback and the
     /// chat hand-off prompt.
@@ -167,7 +167,7 @@ struct ProjectUpgradeService: Sendable {
     /// Lightweight record of the last deterministic upgrade. Deliberately
     /// separate from `project.json` (which is the portable cross-host record)
     /// — this is per-materialization "the structure pass ran here."
-    private struct Provenance: Codable {
+    private nonisolated struct Provenance: Codable {
         var schemaVersion: Int
         var upgradeVersion: Int
         var upgradedAt: String

@@ -118,7 +118,7 @@ actor MiniAppAgentSession {
                     let result = try await client.sendPrompt(sessionId: sid, text: text)
                     await self.completeTurn(sessionId: sid, result: result)
                 } catch {
-                    await self.failPending(error)
+                    self.failPending(error)
                 }
             }
         }

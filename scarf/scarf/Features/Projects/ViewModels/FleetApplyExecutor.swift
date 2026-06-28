@@ -29,7 +29,7 @@ import os
 /// `TargetResult` with per-field status. Runs blocking CLI + SFTP — call
 /// off the main actor.
 struct FleetApplyExecutor: Sendable {
-    private static let logger = Logger(subsystem: "com.scarf", category: "FleetApplyExecutor")
+    private nonisolated static let logger = Logger(subsystem: "com.scarf", category: "FleetApplyExecutor")
 
     /// Every registered server, so a plan's `serverId` strings resolve to
     /// real `ServerContext`s (`ServerRegistry.allContexts`).
@@ -41,15 +41,15 @@ struct FleetApplyExecutor: Sendable {
 
     // MARK: - Results
 
-    struct FieldResult: Sendable, Identifiable {
+    nonisolated struct FieldResult: Sendable, Identifiable {
         let field: FleetApplyField
         let status: Status
         let message: String
         var id: String { field.rawValue }
-        enum Status: Sendable { case applied, skipped, failed }
+        nonisolated enum Status: Sendable { case applied, skipped, failed }
     }
 
-    struct TargetResult: Sendable, Identifiable {
+    nonisolated struct TargetResult: Sendable, Identifiable {
         let serverId: String
         let serverDisplayName: String?
         let fields: [FieldResult]
@@ -232,7 +232,7 @@ struct FleetApplyExecutor: Sendable {
     /// The positional schedule arg `hermes cron create` expects — prefer
     /// the cron expression, fall back to the run-at timestamp, then the
     /// human display. `nil` when the schedule carries none (can't recreate).
-    private static func scheduleArg(_ schedule: CronSchedule) -> String? {
+    private nonisolated static func scheduleArg(_ schedule: CronSchedule) -> String? {
         if let e = schedule.expression, !e.isEmpty { return e }
         if let r = schedule.runAt, !r.isEmpty { return r }
         if let d = schedule.display, !d.isEmpty { return d }

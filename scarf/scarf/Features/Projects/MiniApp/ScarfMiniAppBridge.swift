@@ -160,7 +160,10 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
             }
             Task {
                 await agentSession.setEventSink { [weak self] event in
-                    self?.emitToWeb(event)
+                    guard let self else { return }
+                    // emitToWeb is MainActor-isolated (default isolation); hop to
+                    // main from the actor's nonisolated event-sink callback.
+                    Task { @MainActor in self.emitToWeb(event) }
                 }
                 await MainActor.run { reply(nil, nil) }
             }
