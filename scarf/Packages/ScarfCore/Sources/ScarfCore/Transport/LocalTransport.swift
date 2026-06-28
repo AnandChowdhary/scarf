@@ -255,10 +255,12 @@ public struct LocalTransport: ServerTransport {
         proc.executableURL = URL(fileURLWithPath: executable)
         proc.arguments = args
         // Spawn FROM the project dir so Hermes loads its AGENTS.md (Hermes
-        // reads project context files from the process cwd). Guard on
-        // existence so a stale/missing path degrades to the default cwd
-        // instead of making `run()` throw and killing the session.
-        if let cwd, !cwd.isEmpty, FileManager.default.fileExists(atPath: cwd) {
+        // reads project context files from the process cwd). Guard on an
+        // existing DIRECTORY so a stale/missing/non-dir path degrades to the
+        // default cwd instead of making `run()` throw and killing the session.
+        var isDir: ObjCBool = false
+        if let cwd, !cwd.isEmpty,
+           FileManager.default.fileExists(atPath: cwd, isDirectory: &isDir), isDir.boolValue {
             proc.currentDirectoryURL = URL(fileURLWithPath: cwd)
         }
         return proc

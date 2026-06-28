@@ -208,6 +208,12 @@ import Foundation
         // Without a cwd, no `cd` is injected (unchanged behavior).
         let noCwd = t.makeProcess(executable: "hermes", args: ["acp"], cwd: nil)
         #expect(noCwd.arguments?.last?.contains("cd ") == false)
+        // Shell-injection safety: a path containing `$(...)` must be escaped so
+        // it can't run as remote command substitution inside the double quotes.
+        let hostile = t.makeProcess(executable: "hermes", args: ["acp"], cwd: "/srv/p$(touch x)")
+        let hcmd = hostile.arguments?.last ?? ""
+        #expect(hcmd.contains("\\$("))                  // `$` escaped → substitution inert
+        #expect(!hcmd.contains("/srv/p$(touch x)"))     // never present un-escaped
     }
 
     @Test func localMakeProcessSetsProjectCwdWhenPresent() {

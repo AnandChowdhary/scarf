@@ -243,16 +243,24 @@ public struct SSHTransport: ServerTransport {
     /// specifically need partial-expansion semantics, which is what double
     /// quotes give us.
     nonisolated private static func remotePathArg(_ path: String) -> String {
+        // Neutralize shell-active metacharacters in the (user-influenced) path
+        // FIRST — inside the double quotes below, an injected `$(…)`, backtick,
+        // or `$VAR` would otherwise expand / run as command substitution on the
+        // remote. Mirrors `HermesProfileScope.shellQuoteHome`.
         var p = path
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "$", with: "\\$")
+            .replacingOccurrences(of: "`", with: "\\`")
+        // THEN apply the `~/`→`$HOME/` rewrite, inserting an intentionally-live
+        // `$HOME` AFTER escaping so it still expands inside the double quotes
+        // (the whole reason we double-quote rather than single-quote).
         if p.hasPrefix("~/") {
             p = "$HOME/" + p.dropFirst(2)
         } else if p == "~" {
             p = "$HOME"
         }
-        let escaped = p
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
+        return "\"\(p)\""
     }
 
     /// Run a remote shell command. Wraps in `sh -c '<command>'` and uses
