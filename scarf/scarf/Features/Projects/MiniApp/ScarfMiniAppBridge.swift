@@ -160,10 +160,13 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
             }
             Task {
                 await agentSession.setEventSink { [weak self] event in
-                    guard let self else { return }
-                    // emitToWeb is MainActor-isolated (default isolation); hop to
-                    // main from the actor's nonisolated event-sink callback.
-                    Task { @MainActor in self.emitToWeb(event) }
+                    // Deliver to main in FIFO order. The actor emits events
+                    // serially in wire order; a per-event `Task { @MainActor }`
+                    // does NOT preserve that order (independent jobs race onto
+                    // the main executor) and would garble streamed output.
+                    // `DispatchQueue.main` IS FIFO; `assumeIsolated` lets us
+                    // call MainActor-isolated `emitToWeb` once we're on main.
+                    DispatchQueue.main.async { MainActor.assumeIsolated { self?.emitToWeb(event) } }
                 }
                 await MainActor.run { reply(nil, nil) }
             }
@@ -208,14 +211,13 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
 
     // MARK: - Event streaming (scarf.onEvent)
 
-    /// Push one streamed agent event into the page (main thread). Called
-    /// from the agent session's sink; a closed mini-app (weak webview)
-    /// silently drops late events.
+    /// Push one streamed agent event into the page. Always called ON the main
+    /// actor — the event sink hops via `DispatchQueue.main` + `assumeIsolated`,
+    /// which preserves FIFO order across the serial event stream. A closed
+    /// mini-app (weak webview) silently drops late events.
     private func emitToWeb(_ event: ACPEvent) {
         guard let json = Self.eventJSON(event) else { return }
-        DispatchQueue.main.async { [weak self] in
-            self?.webView?.evaluateJavaScript("window.__scarfEmit(\(json))", completionHandler: nil)
-        }
+        webView?.evaluateJavaScript("window.__scarfEmit(\(json))", completionHandler: nil)
     }
 
     /// Serialize the subset of agent events a mini-app renders into a JSON
