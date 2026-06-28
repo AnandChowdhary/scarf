@@ -92,6 +92,20 @@ import ScarfCore
             sent.contains { $0.contains(needle) }
         }
 
+        /// The `cwd` carried by the `session/new` request, if one was sent.
+        /// This is the ACP SESSION cwd (tool-dir resolution) — distinct from
+        /// the spawned `hermes acp` PROCESS cwd (AGENTS.md source), which the
+        /// injected-channel harness doesn't model.
+        func sessionNewCwd() -> String? {
+            for line in sent {
+                guard let obj = Self.decode(line),
+                      obj["method"] as? String == "session/new",
+                      let params = obj["params"] as? [String: Any] else { continue }
+                return params["cwd"] as? String
+            }
+            return nil
+        }
+
         /// Reply to the most recent `session/prompt` request, which makes
         /// `ACPClient.sendPrompt` return — the session's turn-completion
         /// signal.
@@ -242,6 +256,28 @@ import ScarfCore
 
         let reply = try await withTimeout { try await prompt.value }
         #expect(reply == "deterministic")
+    }
+
+    /// The agent session must resolve TOOL directories against the project:
+    /// it opens `session/new` with `cwd = projectRoot`. Pins the SESSION-cwd
+    /// half of the type's two-cwd contract (the half the docstring asserts
+    /// "tool dirs resolve there"). The PROCESS cwd — the AGENTS.md source —
+    /// is a separate, deliberately-not-the-project choice (t-0b850b5b) that
+    /// lives in the default `forMacApp` factory and isn't observable through
+    /// the injected in-memory channel, so it isn't asserted here.
+    @Test func sessionIsOpenedWithProjectRootAsSessionCwd() async throws {
+        let fake = FakeACPChannel()
+        let session = makeSession(fake)
+
+        let prompt = Task { try await session.prompt("hi") }
+        // session/new is part of the handshake that precedes the prompt RPC,
+        // so by the time a prompt is on the wire it has already been sent.
+        try await waitFor { await fake.promptRequestCount >= 1 }
+        await fake.replyToPrompt()
+        _ = try await withTimeout { try await prompt.value }
+
+        let cwd = await fake.sessionNewCwd()
+        #expect(cwd == "/tmp/miniapp-agent-tests")
     }
 
     /// Regression for the non-atomic busy guard (commit 350c3bd). `prompt()`

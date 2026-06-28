@@ -5,11 +5,35 @@ import os
 /// Owns a dedicated, project-scoped ACP session for one running mini-app —
 /// the backing for `scarf.prompt`.
 ///
-/// **Isolation.** The mini-app gets its OWN `hermes acp` session (cwd =
-/// project root), spawned lazily on the first prompt and torn down on
-/// `shutdown()`. It never shares a chat's session, so web content can't
-/// reach into other conversations. The session is reachable only after the
-/// user grants the (sensitive) `prompt` permission.
+/// **Isolation.** The mini-app gets its OWN `hermes acp` session, spawned
+/// lazily on the first prompt and torn down on `shutdown()`. It never
+/// shares a chat's session, so web content can't reach into other
+/// conversations. The session is reachable only after the user grants the
+/// (sensitive) `prompt` permission.
+///
+/// **Two different cwds — don't conflate them.** Hermes reads a project's
+/// context files (AGENTS.md / CLAUDE.md / .cursorrules) from the `hermes
+/// acp` PROCESS cwd, but resolves tool directories against the ACP SESSION
+/// cwd:
+/// - PROCESS cwd: the default `clientFactory` builds the client via
+///   `ACPClient.forMacApp(context:)` with NO `projectCwd`, so `hermes acp`
+///   inherits its spawner's default cwd (Scarf's own cwd locally; the
+///   remote login dir over SSH) — NOT `projectRoot`. The project's
+///   AGENTS.md/CLAUDE.md/.cursorrules are therefore **not** loaded into
+///   this agent. This is deliberate (see below), unlike chat sessions
+///   which DO spawn with `projectCwd` (t-565f8d45 / t-24594c4a).
+/// - SESSION cwd: `newSession(cwd: projectRoot)` — so the agent's TOOL
+///   directories resolve under the project root.
+///
+/// **Why no project context here (trust).** A mini-app runs untrusted /
+/// agent-generated web content that drives this agent via `scarf.prompt`,
+/// unsupervised (permission requests auto-denied, no human watching each
+/// turn). Auto-injecting a project's context files into that agent is a
+/// bigger prompt-injection surface than an interactive chat the user
+/// explicitly opened, for no benefit any mini-app needs today — so we keep
+/// the process cwd off the project. Decided in t-0b850b5b; grounded in
+/// t-42db11e9 (chats = user-chosen, trusted enough for context-file
+/// injection; mini-apps = the gated, less-trusted surface).
 ///
 /// **Request/response.** `prompt(_:)` sends the text and resolves with the
 /// agent's full reply, accumulated from the streamed `messageChunk` events
@@ -27,6 +51,13 @@ actor MiniAppAgentSession {
     /// Builds the per-mini-app `ACPClient`. Injected so tests can supply a
     /// client wired to an in-memory channel; production defaults to the
     /// `ProcessACPChannel`-backed `forMacApp` factory.
+    ///
+    /// NOTE: the default deliberately omits `projectCwd:` — do NOT add it
+    /// reflexively to "match chats." That would move the `hermes acp`
+    /// process cwd onto the project and load its AGENTS.md/.cursorrules into
+    /// this untrusted, web-driven agent (see the type doc + t-0b850b5b /
+    /// t-42db11e9). Tool dirs already resolve to the project via the
+    /// session cwd (`newSession(cwd: projectRoot)`).
     private let clientFactory: @Sendable (ServerContext) -> ACPClient
     private let rateLimiter = MiniAppRateLimiter(maxEvents: 8, windowSeconds: 60)
     private var promptHistory: [Date] = []

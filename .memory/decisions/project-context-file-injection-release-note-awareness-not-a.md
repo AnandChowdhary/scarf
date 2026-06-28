@@ -30,6 +30,14 @@ Opening a project chat spawns `hermes acp` with cwd = the project dir (shipped i
 
 ## Drafted release-note line (for the next scarf-release-prep)
 
+### Scope: chats only — does NOT need to expand to mini-apps (t-0b850b5b, 2026-06-28)
+
+The release-note line above covers **chats only**. It does **not** need to mention mini-app agent sessions, because mini-app agents deliberately do **not** load project context.
+
+`MiniAppAgentSession` (the `scarf.prompt` backing) spawns its `hermes acp` via the default factory `{ ACPClient.forMacApp(context: $0) }` — **no `projectCwd`** — so the process cwd is NOT the project and the project's AGENTS.md/CLAUDE.md/.cursorrules are not injected. (It still sets the ACP *session* cwd to `projectRoot` via `newSession(cwd:)`, so only TOOL dirs resolve under the project.) t-0b850b5b chose option (b): keep process cwd off the project as a deliberate trust-minimizing choice — a mini-app runs untrusted/agent-generated web content driving the agent unsupervised, a bigger injection surface than a user-opened chat, with no mini-app needing project context today. This note's own "categorically different from mini-apps" framing is the grounding.
+
+If a future change threads `projectCwd` into the mini-app factory (revisit only behind a mini-app context-trust affordance), THIS release-note line must expand to say project context now also loads into mini-app agents. Until then: chats only. Guarded in-code by the docstring + `clientFactory` NOTE in `MiniAppAgentSession.swift`.
+
 > Opening a chat in a project now loads that project's `AGENTS.md` / `CLAUDE.md` / `.cursorrules` into the agent (so it has project context). Treat a project's context files like its code — only open chats in projects you trust.
 
 ## Future-escalation trigger

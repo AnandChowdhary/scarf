@@ -8,7 +8,6 @@
 - [ ] Add a permission toggle for each chat, for auto or yolo (or supported Hermes verbs) to help with tool dialogs. (added: 2026-06-06)
 - [ ] New chat session from project (or working in a project) isn't linked to the project and doesn't show up in sessions for that project. Harden the project to chat logic. (added: 2026-06-06)
 - [ ] Spike: gateway-WS real-time cross-surface push (id: t-6ae517fb) (added: 2026-06-21) (priority: low)
-- [ ] MiniApp agent sessions: decide process-cwd for AGENTS.md (same root cause as t-565f8d45, trust-gated) (id: t-0b850b5b) (added: 2026-06-28) (priority: low)
 - [ ] Fleet cron-copy: faithfully copy no_agent/pre_run_script jobs (replicate the script file to the target) (id: t-848d3adc) (added: 2026-06-28) (priority: low)
 - [ ] Mini-app kanban writes (kanban:write, behind permission) (id: t-934207cd) (added: 2026-06-21) (priority: low)
 
@@ -63,6 +62,7 @@
 
 ## Done
 
+- [x] MiniApp agent sessions: decide process-cwd for AGENTS.md (same root cause as t-565f8d45, trust-gated) (id: t-0b850b5b) (added: 2026-06-28) (priority: low)
 - [x] ProjectTemplateInstaller: gate --deliver all on the install-target host (same bug as t-69ccb849, aborts install) (id: t-a3292d3f) (added: 2026-06-28)
 - [x] Untrusted project context-file injection: opening a project chat auto-injects its AGENTS.md/CLAUDE.md/.cursorrules (id: t-42db11e9) (added: 2026-06-28) (priority: low)
 - [x] Fleet apply-cron: gate --deliver all on the TARGET host capability (mixed-version fleets) (id: t-69ccb849) (added: 2026-06-27)
