@@ -1,15 +1,15 @@
 import Foundation
 
-/// Cross-profile snapshot returned by `hermes gateway list --json` (Hermes
-/// v0.13+). Each profile is one configured Messaging Gateway instance — most
-/// users have a single `default` profile, but power users keep separate
-/// profiles for work / personal / project-specific accounts.
+/// Cross-profile snapshot derived from `hermes gateway list` (Hermes v0.16).
+/// Each profile is one configured Messaging Gateway instance — most users
+/// have a single `default` profile, but power users keep separate profiles
+/// for work / personal / project-specific accounts.
 public struct GatewayListSnapshot: Sendable, Equatable {
     public struct ProfileEntry: Sendable, Equatable {
         public let profile: String
         public let isRunning: Bool
         public let pid: Int?
-        public let platforms: [String]   // platform names connected/configured
+        public let platforms: [String]   // always empty: text output omits it
 
         public init(
             profile: String,
@@ -65,85 +65,100 @@ public struct GatewayListSnapshot: Sendable, Equatable {
     }
 }
 
-/// Pure parser + sync fetcher for `hermes gateway list --json`. Pre-v0.13
-/// hosts exit non-zero on the unknown subcommand; the fetcher returns `nil`
-/// in that case so the digest row hides itself.
+/// Pure parser + sync fetcher for `hermes gateway list` (Hermes v0.16).
+/// `hermes gateway list` has no `--json` flag — it prints a text table — so
+/// the parser reads that text directly. The fetcher returns `nil` on a
+/// non-zero exit (host without the subcommand) so the digest row hides
+/// itself.
+///
+/// Expected text shape:
+/// ```
+/// Gateways:
+///   ✓ default (current)        — PID 44417
+///   ✗ scarfbox-smoke           — not running
+///   ✗ scarfbox-test            — not running
+/// ```
+/// `✓`/`✗` gives `isRunning`; the word after it is the profile name (a
+/// trailing `(current)` marker is stripped); `— PID <n>` (em dash, U+2014)
+/// carries the pid on running lines. Text output has no per-profile platform
+/// list, so `platforms` is always `[]`.
 ///
 /// The detection is **synchronous** — run from a `Task.detached` to avoid
 /// blocking MainActor on remote SSH round-trips. The pure `parse(_:)`
-/// helper has no I/O and can be used in tests against canned JSON.
+/// helper has no I/O and can be used in tests against canned text.
 public enum HermesGatewayListService {
 
-    /// Parse a JSON blob from `hermes gateway list --json` into a snapshot.
-    /// Tolerant of unknown keys; returns `nil` for unparseable / empty input.
-    ///
-    /// // TODO(WS-5-Q3): the JSON shape below is the plan's best-guess.
-    /// Confirm against actual Hermes v0.13 output once available. Possible
-    /// alternative shapes:
-    /// - root array of profile objects (no `profiles` wrapper)
-    /// - `state` enum string instead of `running` bool
-    /// - `connected_platforms` instead of `platforms`
-    /// The parser is intentionally tolerant so a small shape change can be
-    /// absorbed by tweaking field names without breaking older fixtures.
-    public static func parse(_ json: Data) -> GatewayListSnapshot? {
-        guard !json.isEmpty,
-              let raw = try? JSONSerialization.jsonObject(with: json) else {
-            return nil
-        }
-
-        // Accept both `{"profiles": [...]}` and a bare `[...]` of profiles.
-        let profilesArray: [Any]
-        if let dict = raw as? [String: Any], let arr = dict["profiles"] as? [Any] {
-            profilesArray = arr
-        } else if let arr = raw as? [Any] {
-            profilesArray = arr
-        } else {
-            return nil
-        }
+    /// Parse the text table from `hermes gateway list` into a snapshot.
+    /// Skips the `Gateways:` header; each subsequent profile line yields a
+    /// `ProfileEntry`. `platforms` is always `[]` (the text output omits
+    /// it). Returns `nil` for empty / whitespace-only input.
+    public static func parse(_ text: String) -> GatewayListSnapshot? {
+        let trimmedWhole = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedWhole.isEmpty else { return nil }
 
         var entries: [GatewayListSnapshot.ProfileEntry] = []
-        for raw in profilesArray {
-            guard let obj = raw as? [String: Any] else { continue }
-            let profile = (obj["name"] as? String)
-                ?? (obj["profile"] as? String)
-                ?? "default"
-            let isRunning: Bool
-            if let v = obj["running"] as? Bool {
-                isRunning = v
-            } else if let s = obj["state"] as? String {
-                isRunning = s.lowercased() == "running"
-            } else {
-                isRunning = false
+        for rawLine in text.components(separatedBy: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+            // Skip the `Gateways:` header (and any other non-profile line
+            // that lacks a running marker).
+            guard line.hasPrefix("✓") || line.hasPrefix("✗") else { continue }
+
+            let isRunning = line.hasPrefix("✓")
+
+            // Strip the marker, then split off the trailing `— …` clause
+            // (em dash, U+2014) which carries pid / status.
+            var rest = String(line.dropFirst()).trimmingCharacters(in: .whitespaces)
+            var pid: Int?
+            if let dashRange = rest.range(of: "—") {
+                let after = rest[dashRange.upperBound...]
+                    .trimmingCharacters(in: .whitespaces)
+                rest = String(rest[..<dashRange.lowerBound])
+                    .trimmingCharacters(in: .whitespaces)
+                // Running lines read `PID <n>`; stopped lines `not running`.
+                if after.hasPrefix("PID") {
+                    let digits = after.drop(while: { !$0.isNumber })
+                    pid = Int(digits.prefix(while: { $0.isNumber }))
+                }
             }
-            let pid = obj["pid"] as? Int
-            let platforms = (obj["platforms"] as? [String])
-                ?? (obj["connected_platforms"] as? [String])
-                ?? []
+
+            // The profile name is the first whitespace-delimited token; a
+            // trailing `(current)` marker is a separate token, so dropping
+            // everything after the first space removes it.
+            let profile = rest
+                .split(whereSeparator: { $0 == " " || $0 == "\t" })
+                .first
+                .map(String.init) ?? ""
+            guard !profile.isEmpty else { continue }
+
             entries.append(GatewayListSnapshot.ProfileEntry(
                 profile: profile,
                 isRunning: isRunning,
                 pid: pid,
-                platforms: platforms
+                platforms: []
             ))
         }
+
+        // No recognizable profile lines (e.g. garbage input) → nil.
+        guard !entries.isEmpty else { return nil }
         return GatewayListSnapshot(profiles: entries)
     }
 
     /// Synchronous fetch helper — call from a `Task.detached`. Returns
-    /// `nil` when the subcommand fails (pre-v0.13 host) or when the
-    /// output isn't parseable.
+    /// `nil` when the subcommand fails (host without `gateway list`) or when
+    /// the output has no recognizable profile lines.
     public static func fetch(context: ServerContext) -> GatewayListSnapshot? {
         let transport = context.makeTransport()
         let executable = context.paths.hermesBinary
         do {
             let result = try transport.runProcess(
                 executable: executable,
-                args: ["gateway", "list", "--json"],
+                args: ["gateway", "list"],
                 stdin: nil,
                 timeout: 10
             )
             guard result.exitCode == 0 else { return nil }
-            return parse(result.stdout)
+            return parse(result.stdoutString)
         } catch {
             return nil
         }

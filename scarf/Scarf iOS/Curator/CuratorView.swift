@@ -134,7 +134,7 @@ struct CuratorView: View {
             Text("Archived")
         } footer: {
             if !viewModel.archivedSkills.isEmpty {
-                Text("Restore or prune archived skills from the Mac app.")
+                Text("Restore archived skills, or archive idle ones, from the Mac app.")
                     .font(.caption)
             }
         }

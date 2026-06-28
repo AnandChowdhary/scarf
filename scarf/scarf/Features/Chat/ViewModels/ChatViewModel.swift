@@ -356,10 +356,36 @@ final class ChatViewModel {
     /// binary really isn't there.
     var hermesBinaryExists: Bool = true
 
-    /// Re-checks env + `~/.hermes/.env` for AI-provider credentials and
-    /// updates `missingCredentials`. Cheap — safe to call from view `.task`.
+    /// In-flight debounce handle for `scheduleCredentialPreflightRefresh`.
+    @ObservationIgnored private var credentialPreflightTask: Task<Void, Never>?
+
+    /// Recompute the "no AI credential configured" preflight hint off the main
+    /// actor — `hasAnyAICredential()` reads `.env` + `auth.json` through the
+    /// transport (a synchronous scp/SSH round-trip on remote). Mirrors
+    /// `refreshConfigDiagnostics`. For the file-watcher hot path use the
+    /// debounced `scheduleCredentialPreflightRefresh()`, never this directly.
     func refreshCredentialPreflight() {
-        missingCredentials = !fileService.hasAnyAICredential()
+        let svc = fileService
+        Task.detached { [weak self] in
+            let missing = !svc.hasAnyAICredential()
+            await MainActor.run { [weak self] in
+                self?.missingCredentials = missing
+            }
+        }
+    }
+
+    /// Debounced credential-preflight refresh for the file-watcher `.onChange`.
+    /// The original gh#102 typing-lag was this firing per persisted message —
+    /// synchronously, on the main thread. Coalescing the streaming burst into
+    /// one trailing off-main read ~500 ms after the last change keeps the
+    /// banner live on an external `.env` edit without stalling the UI thread.
+    func scheduleCredentialPreflightRefresh() {
+        credentialPreflightTask?.cancel()
+        credentialPreflightTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            if Task.isCancelled { return }
+            self?.refreshCredentialPreflight()
+        }
     }
 
     /// Re-reads config.yaml and refreshes the

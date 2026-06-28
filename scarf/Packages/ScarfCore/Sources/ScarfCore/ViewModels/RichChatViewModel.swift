@@ -390,6 +390,13 @@ public final class RichChatViewModel {
     // list and route it through the standard send path (the pill
     // bookkeeping in `recordActiveGoal` is independent of the
     // interruptive classification).
+    // NOTE: `/goal` and `/subgoal` are NOT advertised here. They are
+    // gateway-only verbs — the ACP adapter does not advertise them in its
+    // command set (re-verified against Hermes v0.16), so surfacing them in
+    // the ACP slash menu showed rows that no-op against an ACP host. The
+    // optimistic goal/subgoal pill plumbing (`recordActiveGoal`,
+    // `activeSubgoals`, the `SessionInfoBar` pill) is left intact for the
+    // typed-command path and for any future gateway-fronted surface.
     public static let nonInterruptiveCommands: [HermesSlashCommand] = [
         HermesSlashCommand(
             name: "steer",
@@ -398,25 +405,9 @@ public final class RichChatViewModel {
             source: .acpNonInterruptive
         ),
         HermesSlashCommand(
-            name: "goal",
-            description: "Lock the agent on a goal that persists across turns",
-            argumentHint: "<text>",
-            source: .acpNonInterruptive
-        ),
-        HermesSlashCommand(
             name: "queue",
             description: "Queue a prompt to run after the current turn",
             argumentHint: "<text>",
-            source: .acpNonInterruptive
-        ),
-        // v0.14 — extra criteria layered onto the active /goal loop.
-        // Hermes parses `/subgoal <text>`, `/subgoal remove N`, and
-        // `/subgoal clear` server-side; Scarf mirrors the active list
-        // in `activeSubgoals` for the pill render.
-        HermesSlashCommand(
-            name: "subgoal",
-            description: "Add or manage extra criteria on the active goal",
-            argumentHint: "<text | remove N | clear>",
             source: .acpNonInterruptive
         )
     ]
@@ -651,16 +642,16 @@ public final class RichChatViewModel {
             .union(projectNames)
             .union(globalNames)
             .union(Set(quicks.map(\.name)))
-        // Capability gate: `/goal` and `/queue` are v0.13+ surfaces;
-        // hide them when the connected host is older. `/steer` is
-        // surfaced unconditionally — it works on v0.11+ during an
-        // active turn; idle-session greying for pre-v0.13 hosts is
-        // the input bar's concern (it reads `hasACPSteerOnIdle`).
+        // Capability gate: `/queue` is a v0.13+ surface; hide it when the
+        // connected host is older. `/steer` is surfaced unconditionally —
+        // it works on v0.11+ during an active turn; idle-session greying
+        // for pre-v0.13 hosts is the input bar's concern (it reads
+        // `hasACPSteerOnIdle`). `/goal` and `/subgoal` are deliberately
+        // NOT in `nonInterruptiveCommands` (gateway-only, not advertised
+        // by the ACP adapter), so they never reach this filter.
         let supported: [HermesSlashCommand] = Self.nonInterruptiveCommands.filter { cmd in
             switch cmd.name {
-            case "goal":    return capabilitiesGate.hasGoals
             case "queue":   return capabilitiesGate.hasACPQueue
-            case "subgoal": return capabilitiesGate.hasSubgoal
             // P2 of the projects-feature fix: /steer used to be filtered
             // out pre-session, which made the menu look empty on fresh
             // app launches. Now it stays visible and `disabledSlash-
@@ -988,7 +979,7 @@ public final class RichChatViewModel {
         "clear", "compact", "cost", "model", "tools",
         "reload-skills", "help", "exit",
         "yolo", "sessions", "codex-runtime",
-        "steer", "goal", "queue", "subgoal"
+        "steer", "queue"
     ]
 
     /// Tooltip / inline help text shown next to disabled rows. Returns

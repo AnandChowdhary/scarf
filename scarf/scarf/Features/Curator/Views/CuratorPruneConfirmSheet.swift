@@ -2,14 +2,13 @@ import SwiftUI
 import ScarfCore
 import ScarfDesign
 
-/// Destructive-confirm sheet for `hermes curator prune` (bulk).
-///
-/// Pattern matches `TemplateUninstallSheet`: enumerate every entry that
-/// will be removed, surface the total count + bytes, and require an
-/// explicit click on a red `ScarfDestructiveButton` ("Prune
-/// permanently") before kicking off the destructive call. Cancel owns
-/// the keyboard default action so an accidental Enter-press doesn't
-/// nuke the archive.
+/// Confirm sheet for `hermes curator prune` — which **bulk-archives** the
+/// agent-created skills idle for ≥ N days. Archiving is reversible (each skill
+/// can be restored from the Archived list), so this is a non-destructive
+/// tidy-up: a primary confirm, not a red "permanently delete" gate. We still
+/// enumerate the affected skills + their idle age so the user sees exactly what
+/// moves before confirming. Cancel owns the keyboard default so an accidental
+/// Enter-press doesn't archive a batch.
 struct CuratorPruneConfirmSheet: View {
     @Environment(\.dismiss) private var dismiss
     let summary: CuratorPruneSummary
@@ -24,11 +23,11 @@ struct CuratorPruneConfirmSheet: View {
             ScarfDivider()
             ScrollView {
                 VStack(alignment: .leading, spacing: ScarfSpace.s2) {
-                    ForEach(summary.wouldRemove) { skill in
-                        row(skill: skill)
+                    ForEach(summary.candidates) { candidate in
+                        row(candidate: candidate)
                     }
-                    if summary.wouldRemove.isEmpty {
-                        Text("Nothing currently archived. Nothing to prune.")
+                    if summary.candidates.isEmpty {
+                        Text("No skills have been idle for at least \(summary.days) days. Nothing to archive.")
                             .scarfStyle(.caption)
                             .foregroundStyle(ScarfColor.foregroundMuted)
                             .padding(.vertical, ScarfSpace.s2)
@@ -47,52 +46,35 @@ struct CuratorPruneConfirmSheet: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: ScarfSpace.s1) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Prune Archived Skills")
+                Text("Archive idle skills")
                     .scarfStyle(.title2)
                     .foregroundStyle(ScarfColor.foregroundPrimary)
                 Spacer()
-                if summary.totalCount > 0 {
-                    ScarfBadge("\(summary.totalCount)", kind: .danger)
+                if summary.count > 0 {
+                    ScarfBadge("\(summary.count)", kind: .info)
                 }
             }
-            Text("This permanently deletes every archived skill from disk. Restoring an archived skill is no longer possible after pruning.")
+            Text("These skills haven't been used in at least \(summary.days) days. Archiving moves them out of the active set to keep the curator focused — you can restore any of them later from the Archived list.")
                 .scarfStyle(.caption)
                 .foregroundStyle(ScarfColor.foregroundMuted)
                 .fixedSize(horizontal: false, vertical: true)
-            if summary.totalBytes > 0 {
-                Text("Total to remove: \(summary.totalBytesLabel)")
-                    .scarfStyle(.caption)
-                    .foregroundStyle(ScarfColor.foregroundFaint)
-            }
         }
     }
 
-    private func row(skill: HermesCuratorArchivedSkill) -> some View {
+    private func row(candidate: CuratorPruneCandidate) -> some View {
         HStack(spacing: ScarfSpace.s2) {
-            Image(systemName: "minus.circle")
-                .foregroundStyle(ScarfColor.danger)
+            Image(systemName: "archivebox")
+                .foregroundStyle(ScarfColor.foregroundFaint)
                 .font(.caption)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(skill.name)
-                    .scarfStyle(.body)
-                    .foregroundStyle(ScarfColor.foregroundPrimary)
-                    .lineLimit(1)
-                if let reason = skill.reason, !reason.isEmpty {
-                    Text(reason)
-                        .scarfStyle(.caption)
-                        .foregroundStyle(ScarfColor.foregroundMuted)
-                        .lineLimit(1)
-                }
-            }
+            Text(candidate.name)
+                .scarfStyle(.body)
+                .foregroundStyle(ScarfColor.foregroundPrimary)
+                .lineLimit(1)
             Spacer()
-            Text(skill.archivedAtLabel)
+            Text(candidate.idleLabel)
                 .scarfStyle(.caption)
                 .foregroundStyle(ScarfColor.foregroundFaint)
                 .frame(width: 96, alignment: .trailing)
-            Text(skill.sizeLabel)
-                .scarfStyle(.caption)
-                .foregroundStyle(ScarfColor.foregroundFaint)
-                .frame(width: 72, alignment: .trailing)
         }
     }
 
@@ -103,20 +85,19 @@ struct CuratorPruneConfirmSheet: View {
                 dismiss()
             }
             .buttonStyle(ScarfGhostButton())
-            // Cancel owns .defaultAction so accidental Enter-presses
-            // don't trigger the destructive button (template-uninstall
-            // pattern recommended in the WS-4 plan).
+            // Cancel owns .defaultAction so an accidental Enter doesn't archive
+            // a whole batch, even though the action is reversible.
             .keyboardShortcut(.defaultAction)
             .disabled(isPruning)
             Spacer()
             if isPruning {
                 ProgressView().controlSize(.small)
             }
-            Button("Prune permanently") {
+            Button(summary.count == 1 ? "Archive 1 skill" : "Archive \(summary.count) skills") {
                 onConfirm()
             }
-            .buttonStyle(ScarfDestructiveButton())
-            .disabled(isPruning || summary.wouldRemove.isEmpty)
+            .buttonStyle(ScarfPrimaryButton())
+            .disabled(isPruning || summary.candidates.isEmpty)
             .accessibilityIdentifier("curatorPrune.confirm")
         }
     }

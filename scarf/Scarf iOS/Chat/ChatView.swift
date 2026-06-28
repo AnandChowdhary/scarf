@@ -146,23 +146,6 @@ struct ChatView: View {
                 }
                 .disabled(controller.state == .connecting)
             }
-            // Keyboard accessory dismiss button. Previously chained
-            // onto the TextField's `.toolbar` modifier deep in the
-            // composer subtree; iOS 26.5 stopped surfacing it from
-            // that nested placement (gh#107 — "no button displayed
-            // to hide the keyboard"). Hoisting it to the body-root
-            // toolbar collection keeps the same intent (dismiss the
-            // active editor) and is the placement Apple's own apps
-            // (Mail, Notes, Messages) use on iOS 26.
-            ToolbarItemGroup(placement: .keyboard) {
-                Button {
-                    composerFocused = false
-                } label: {
-                    Image(systemName: "keyboard.chevron.compact.down")
-                }
-                .accessibilityLabel("Hide keyboard")
-                Spacer()
-            }
         }
         .sheet(isPresented: $showProjectPicker) {
             ProjectPickerSheet(
@@ -723,6 +706,33 @@ struct ChatView: View {
                 .disabled(attachDisabled)
                 .accessibilityLabel("Attach image")
             }
+            // Inline keyboard-dismiss affordance, shown only while the
+            // composer is focused. It lives here — a plain button in the
+            // composer row — rather than in a `.toolbar(placement:
+            // .keyboard)` accessory bar. That accessory sits directly
+            // above the keyboard, but so does this composer (last child
+            // of the body VStack, lifted by keyboard avoidance), so the
+            // two collided: iOS 26.5 drew the accessory's chevron on top
+            // of the paperclip and the paperclip stole its taps (the
+            // gh#107 regression). A normal sibling button can't overlap
+            // and always receives its own tap. Swipe-down still works on
+            // a scrollable transcript via `.scrollDismissesKeyboard`;
+            // this button covers the empty / resumed-empty state where
+            // there's nothing to scroll.
+            if composerFocused {
+                Button {
+                    composerFocused = false
+                } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundStyle(ScarfColor.foregroundMuted)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Hide keyboard")
+                .transition(.opacity)
+            }
             TextField(
                 "Message…",
                 text: $controller.draft,
@@ -753,13 +763,6 @@ struct ChatView: View {
             .onChange(of: controller.draft) { _, _ in
                 controller.scheduleDraftSave()
             }
-            // Explicit dismiss-keyboard affordance (chevron) is
-            // declared on the body-root `.toolbar` collection (see
-            // `body` above), not here — iOS 26.5 stopped surfacing
-            // `.toolbar(.keyboard)` placements declared deep in a
-            // composer subtree (gh#107). The body-root placement is
-            // also what Apple's own apps (Mail, Notes, Messages)
-            // use on iOS 26.
 
             // Big circular send button. Filled with the brand accent when
             // ready, swapped to a flat gray when disabled — opacity dims
@@ -788,6 +791,10 @@ struct ChatView: View {
             .disabled(!canSendComposer)
             .accessibilityLabel("Send message")
         }
+        // Fade the dismiss button in/out as focus changes so the
+        // TextField's width shift rides the keyboard slide instead of
+        // popping.
+        .animation(ScarfAnimation.fast, value: composerFocused)
     }
 
     /// Send is enabled when ready AND we have either text or at least
@@ -1345,26 +1352,19 @@ final class ChatController {
             PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.hermes/bin:$PATH" \
             \(hermes) config set 'model.provider' '\(Self.escapeShellArg(trimmedProvider))'
             """
-            let providerResult: ProcessResult? = try? ctx.makeTransport().runProcess(
-                executable: "/bin/sh",
-                args: ["-c", providerScript],
-                stdin: nil,
-                timeout: 15
-            )
-            let providerOK = providerResult?.exitCode == 0
+            let provider = Self.runConfigSet(ctx, script: providerScript)
+            let providerOK = provider.result?.exitCode == 0
             var modelResult: ProcessResult? = nil
+            var modelError: String? = nil
             var modelOK = true
             if providerOK, !trimmedModel.isEmpty {
                 let modelScript = """
                 PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.hermes/bin:$PATH" \
                 \(hermes) config set 'model.default' '\(Self.escapeShellArg(trimmedModel))'
                 """
-                modelResult = try? ctx.makeTransport().runProcess(
-                    executable: "/bin/sh",
-                    args: ["-c", modelScript],
-                    stdin: nil,
-                    timeout: 15
-                )
+                let model = Self.runConfigSet(ctx, script: modelScript)
+                modelResult = model.result
+                modelError = model.error
                 modelOK = modelResult?.exitCode == 0
             }
 
@@ -1378,9 +1378,11 @@ final class ChatController {
             let failureMessage = Self.preflightFailureMessage(
                 hermes: hermes,
                 providerOK: providerOK,
-                providerResult: providerResult,
+                providerResult: provider.result,
+                providerError: provider.error,
                 modelOK: modelOK,
-                modelResult: modelResult
+                modelResult: modelResult,
+                modelError: modelError
             )
 
             // Capture `modelOK` by value (it's a `var` finalized above) so the
@@ -1406,23 +1408,48 @@ final class ChatController {
         }
     }
 
+    /// Run one `hermes config set` over the (pooled) transport, capturing
+    /// EITHER the process result — the command ran, even if it exited
+    /// non-zero — OR the transport error string, which means the SSH session
+    /// itself threw before the command could run (a genuine connection
+    /// failure). The failure banner distinguishes the two so the user sees
+    /// the real reason rather than a generic line.
+    nonisolated private static func runConfigSet(
+        _ ctx: ServerContext,
+        script: String
+    ) -> (result: ProcessResult?, error: String?) {
+        do {
+            let result = try ctx.makeTransport().runProcess(
+                executable: "/bin/sh",
+                args: ["-c", script],
+                stdin: nil,
+                timeout: 15
+            )
+            return (result, nil)
+        } catch {
+            return (nil, error.localizedDescription)
+        }
+    }
+
     /// Compose a self-diagnostic error message for the preflight save
     /// failure path. Includes which command failed, the hermes binary
     /// that was invoked (so a misconfigured `hermesBinaryHint` is
-    /// visible), exit code, and the first line of stderr. gh#112.
+    /// visible), and either the exit code + stderr (the command ran) or
+    /// the transport error (the SSH session couldn't be opened). gh#112.
     nonisolated private static func preflightFailureMessage(
         hermes: String,
         providerOK: Bool,
         providerResult: ProcessResult?,
+        providerError: String?,
         modelOK: Bool,
-        modelResult: ProcessResult?
+        modelResult: ProcessResult?,
+        modelError: String?
     ) -> String {
-        let failed: (String, ProcessResult?) = !providerOK
-            ? ("model.provider", providerResult)
-            : ("model.default", modelResult)
-        let (key, result) = failed
-        var lines = ["Couldn't save \(key) to config.yaml via `\(hermes) config set`."]
-        if let result {
+        let failed: (key: String, result: ProcessResult?, error: String?) = !providerOK
+            ? ("model.provider", providerResult, providerError)
+            : ("model.default", modelResult, modelError)
+        var lines = ["Couldn't save \(failed.key) to config.yaml via `\(hermes) config set`."]
+        if let result = failed.result {
             let stderr = result.stderrString.trimmingCharacters(in: .whitespacesAndNewlines)
             let stdout = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
             let payload = [stderr, stdout].filter { !$0.isEmpty }.joined(separator: "\n")
@@ -1434,8 +1461,10 @@ final class ChatController {
                 let trimmed = payload.count > 400 ? String(payload.prefix(400)) + "…" : payload
                 lines.append(trimmed)
             }
+        } else if let error = failed.error, !error.isEmpty {
+            lines.append("Couldn't open an SSH session to the server: \(error)")
         } else {
-            lines.append("Transport refused the command — check that the SSH server is reachable.")
+            lines.append("Couldn't open an SSH session to the server — check that it's reachable and your key is still authorized.")
         }
         return lines.joined(separator: "\n")
     }
@@ -1698,6 +1727,25 @@ final class ChatController {
 
     private func expandIfProjectScoped(_ text: String) -> String {
         vm.expandIfProjectScoped(text, context: context)
+    }
+
+    /// Tear down the live ACP session when the controller is deallocated —
+    /// the tab root unmounts on Disconnect/Forget, or the profile switcher
+    /// rebuilds the tab subtree (#120). The event/health tasks hold the
+    /// `ACPClient` strongly and don't stop on handle release, so without
+    /// this the remote `hermes acp` process + SSH channel would linger after
+    /// the view is gone. `deinit` can't await, so cancel the tasks
+    /// synchronously and fire-and-forget the actor `stop()` — the same
+    /// pattern `CitadelServerTransport.deinit` uses. `isolated` so it runs
+    /// on the MainActor and can touch the actor-isolated task handles.
+    isolated deinit {
+        eventTask?.cancel()
+        healthMonitorTask?.cancel()
+        reconnectTask?.cancel()
+        pendingDraftSave?.cancel()
+        if let client {
+            Task { await client.stop() }
+        }
     }
 
     /// Stop the current session + tear down the SSH exec channel.

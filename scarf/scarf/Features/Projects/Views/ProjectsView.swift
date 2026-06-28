@@ -73,7 +73,7 @@ struct ProjectsView: View {
         .navigationTitle("Projects")
         .toolbar { templatesToolbar }
         .task {
-            viewModel.load()
+            await viewModel.reload()
             // Phase-1: lazily migrate existing projects to the first-class
             // ScarfProject model — write each `.scarf/project.json` record
             // and back-fill the registry UUID. Additive, idempotent, and
@@ -99,8 +99,14 @@ struct ProjectsView: View {
             }
         }
         .onChange(of: fileWatcher.lastChangeDate) {
-            viewModel.load()
-            fileWatcher.updateProjectWatches(dashboardPaths: viewModel.dashboardPaths, scarfDirs: viewModel.projectScarfDirs)
+            // Off-main refresh: `reload()` does the registry/dashboard
+            // transport reads on a detached task so a watcher tick (which
+            // fires per persisted message during an active stream) can't
+            // stall the main thread on a remote context (gh#102 pattern).
+            Task {
+                await viewModel.reload()
+                fileWatcher.updateProjectWatches(dashboardPaths: viewModel.dashboardPaths, scarfDirs: viewModel.projectScarfDirs)
+            }
         }
         .onChange(of: TemplateURLRouter.shared.pendingInstallURL) { _, new in
             // A URL landed *while the app was already running*.

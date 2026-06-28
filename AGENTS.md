@@ -49,12 +49,21 @@ decisions and learnings.
   from the title. The display title comes from frontmatter `title:` (always), with the
   prettified filename as a fallback. So title `"GitHub Status Service"` → file
   `github-status-service.md`, and the UI renders `GitHub Status Service`. Use `write_memory`
-  for new notes — it slug-generates correctly. **Folder names** are lowercase singular:
-  `architecture`, `decisions`, `conventions`, `operations`, `project`, `roadmap`.
+  for new notes — it slug-generates correctly. **Always file each note under exactly one of the
+  six canonical folders** (lowercase) — never omit `folder` (that drops the note at the memory
+  root) and never invent a new folder or pass a description as the folder. The six:
+  `architecture/` — How major systems fit together; long-lived structural truth.; `conventions/` — Coding / naming / workflow conventions the team agreed on.; `decisions/` — Discrete choices with rationale (architecture decision records).; `operations/` — Runbooks, recurring tasks, infrastructure ops, build/deploy notes.; `project/` — Project-level facts (name, owner, scope, contact, repo URL).; `roadmap/` — Forward-looking plans, milestones, follow-up queues.
 - Reindex happens automatically after every write_memory / edit_memory; for direct file edits,
   use the Memophant app's "Reindex" action or restart the MCP server.
-- Optional provenance frontmatter — `source_paths` (repo files a note depends on) + `source_sha`
-  (HEAD when written) — lets Memory Health flag the note when that code later changes.
+- Frontmatter Memophant manages automatically: `created`/`updated` (set on write, bumped on
+  edit), `reviewed`/`reviewed_by` + `source_sha` (the last verification and the commit it was
+  checked against — Memory Health flags the note when that code drifts).
+- **Declare `source_paths` when a note is grounded in code.** Pass the repo-relative file(s) the
+  note depends on to `write_memory` (`source_paths: ["path/one.swift", …]`) and Memophant stamps
+  them against the current commit so drift is detectable. Omit for pure human-decision notes.
+  A note with no `source_paths` can't be drift-checked — this is the signal that keeps memory honest.
+- Set `status` only to flag a retired state — `deprecated`/`superseded`/`historical`/`resolved`;
+  an active, current fact needs none.
 
 **2. Wiki (`wiki/`) — long-form reference docs.** Guides, architecture deep-dives, runbooks, and
 design notes. Deliberately kept OUT of this auto-loaded file to save context — search it on demand

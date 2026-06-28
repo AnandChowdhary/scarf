@@ -35,10 +35,12 @@ public final class CuratorViewModel {
     public private(set) var archivedSkills: [HermesCuratorArchivedSkill] = []
     public private(set) var isLoadingArchive = false
 
-    // Prune state — `pruneSummary` non-nil while the confirm sheet is
-    // mid-flight; `isPruning` flips during the destructive step.
+    // Archive-idle ("prune") state — `pruneSummary` non-nil while the confirm
+    // sheet is mid-flight; `isPruning` flips during the archive step.
     public private(set) var pruneSummary: CuratorPruneSummary?
     public private(set) var isPruning = false
+    /// Idle threshold (days) chosen in `planPrune`, reused by `confirmPrune`.
+    private var plannedPruneDays = 90
 
     // Track which active-skill row is currently being archived so the
     // row chrome can show an inline spinner without blocking the rest.
@@ -173,12 +175,14 @@ public final class CuratorViewModel {
         await loadArchive()
     }
 
-    /// Stage 1 of the bulk-prune flow. Calls `prune --dry-run` and
-    /// populates `pruneSummary`; the View binds its confirm sheet to
-    /// the non-nil presence of this property.
-    public func planPrune() async {
+    /// Stage 1 of the archive-idle flow. Calls `curator prune --days N
+    /// --dry-run` and populates `pruneSummary` (the idle skills a real run
+    /// would archive); the View binds its confirm sheet to the non-nil
+    /// presence of this property. `days` is remembered for `confirmPrune`.
+    public func planPrune(days: Int = 90) async {
+        plannedPruneDays = days
         do {
-            pruneSummary = try await service.prune(dryRun: true)
+            pruneSummary = try await service.prune(days: days, dryRun: true)
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? error.localizedDescription
@@ -186,14 +190,15 @@ public final class CuratorViewModel {
         }
     }
 
-    /// Stage 2 of the bulk-prune flow. Destructive — removes everything
-    /// currently archived. Clears `pruneSummary` regardless of outcome
-    /// so the confirm sheet dismisses.
+    /// Stage 2 of the archive-idle flow. Bulk-archives the idle skills at the
+    /// threshold chosen in `planPrune` (reversible — they remain restorable
+    /// from the Archived list). Clears `pruneSummary` regardless of outcome so
+    /// the confirm sheet dismisses.
     public func confirmPrune() async {
         isPruning = true
         do {
-            _ = try await service.prune(dryRun: false)
-            transientMessage = "Pruned archived skills"
+            _ = try await service.prune(days: plannedPruneDays, dryRun: false)
+            transientMessage = "Archived idle skills"
             errorMessage = nil
             await loadArchive()
             await load()

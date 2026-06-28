@@ -39,7 +39,7 @@ struct V013FeaturesSheet: View {
                     featureRow(
                         icon: "archivebox",
                         title: "Curator archive",
-                        description: "Stale skills move to an Archived list. Restore or prune from the Mac app."
+                        description: "Stale skills move to an Archived list. Restore them, or archive idle ones, from the Mac app."
                     )
                     featureRow(
                         icon: "bubble.left.and.bubble.right",

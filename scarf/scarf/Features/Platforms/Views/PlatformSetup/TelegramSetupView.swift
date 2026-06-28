@@ -28,6 +28,10 @@ struct TelegramSetupView: View {
                 ToggleRow(label: "Reactions", isOn: viewModel.reactions) { viewModel.reactions = $0 }
                 ToggleRow(label: "Disable topic auto-rename", isOn: viewModel.disableTopicAutoRename) { viewModel.disableTopicAutoRename = $0 }
                 ToggleRow(label: "Ignore root DM", isOn: viewModel.ignoreRootDM) { viewModel.ignoreRootDM = $0 }
+                if capabilitiesStore?.capabilities.hasTelegramRichMessages ?? false {
+                    ToggleRow(label: "Rich messages (Bot API 10.1)", isOn: viewModel.richMessages) { viewModel.richMessages = $0 }
+                    ToggleRow(label: "Online/offline status", isOn: viewModel.statusIndicator) { viewModel.statusIndicator = $0 }
+                }
             }
 
             SettingsSection(title: "Webhook (advanced)", icon: "arrow.up.right.square") {

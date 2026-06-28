@@ -12,6 +12,8 @@ tags:
 
 Verified the WS-* "verify against a live host" audit TODOs against the live Hermes v0.16 source (`~/.hermes/hermes-agent`, 2026.6.5) on 2026-06-14. Summary below; verified TODOs were dropped, mismatches captured as follow-up work.
 
+> **UPDATE 2026-06-15 — ALL MISMATCHES RESOLVED** on branch `fix/v016-mismatches` (commits `9bc39b7` gateway allowlist-path + gateway-list text parsing; `6786e66` kanban `verify` verb, curator `list-archived --json`, `openrouter.response_cache` scalar, `addMCPServerSSE` → `--url`+YAML, ACP `/goal`/`/subgoal` de-advertised). Each was re-verified against live v0.16 before fixing. The "MISMATCHES" notes below are kept for the audit trail.
+
 ## VERIFIED (assumption matches v0.16 — TODOs dropped)
 - ACP `/queue <text>` and `/steer <text>` ARE advertised + handled by the ACP adapter (server.py `_ADVERTISED_COMMANDS`).
 - `tts.xai.voice_id` and `tts.xai.auto_speech_tags` are the real xAI TTS keys (tools/tts_tool.py).

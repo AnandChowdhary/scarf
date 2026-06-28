@@ -29,7 +29,6 @@ struct KanbanInspectorPane: View {
     let onUnblock: () -> Void
     let onArchive: () -> Void
     let onReassign: (String?) -> Void
-    let onVerifyHallucination: () -> Void
     let onRejectHallucination: () -> Void
 
     @State private var selectedTab: DetailTab = .comments
@@ -56,7 +55,6 @@ struct KanbanInspectorPane: View {
         onUnblock: @escaping () -> Void,
         onArchive: @escaping () -> Void,
         onReassign: @escaping (String?) -> Void = { _ in },
-        onVerifyHallucination: @escaping () -> Void = {},
         onRejectHallucination: @escaping () -> Void = {}
     ) {
         _viewModel = State(initialValue: KanbanTaskDetailViewModel(service: service, taskId: taskId))
@@ -71,7 +69,6 @@ struct KanbanInspectorPane: View {
         self.onUnblock = onUnblock
         self.onArchive = onArchive
         self.onReassign = onReassign
-        self.onVerifyHallucination = onVerifyHallucination
         self.onRejectHallucination = onRejectHallucination
     }
 
@@ -404,23 +401,23 @@ struct KanbanInspectorPane: View {
         }
     }
 
-    /// v0.13 hallucination-gate banner — Verify / Reject affordances for
-    /// worker-created cards waiting on user verification.
+    /// v0.13 hallucination-gate banner — Reject affordance for
+    /// worker-created cards waiting on user review. (Hermes has no
+    /// `kanban verify` verb, so there is no Verify action; Reject
+    /// archives the card with an audit comment.)
     private var hallucinationBanner: some View {
         HStack(alignment: .top, spacing: ScarfSpace.s2) {
             Image(systemName: "questionmark.diamond.fill")
                 .foregroundStyle(ScarfColor.warning)
                 .font(.system(size: 13, weight: .semibold))
             VStack(alignment: .leading, spacing: 4) {
-                Text("Created by a worker — verify before running")
+                Text("Created by a worker — review before running")
                     .scarfStyle(.captionStrong)
                     .foregroundStyle(ScarfColor.foregroundPrimary)
-                Text("A worker claimed it created this card; Hermes hasn't confirmed the underlying work exists. Verify the card matches a real follow-up, or reject if it's a hallucinated reference.")
+                Text("A worker claimed it created this card; Hermes hasn't confirmed the underlying work exists. Reject it if it's a hallucinated reference.")
                     .scarfStyle(.caption)
                     .foregroundStyle(ScarfColor.foregroundMuted)
                 HStack(spacing: ScarfSpace.s2) {
-                    Button("Verify", action: onVerifyHallucination)
-                        .buttonStyle(ScarfPrimaryButton())
                     Button("Reject", action: onRejectHallucination)
                         .buttonStyle(ScarfDestructiveButton())
                 }

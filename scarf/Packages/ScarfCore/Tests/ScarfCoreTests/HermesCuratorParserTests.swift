@@ -262,50 +262,73 @@ import Foundation
         }
     }
 
-    /// Prune-dry-run JSON with `would_remove` + `total_bytes`.
-    @Test func pruneDryRunHappyPath() {
-        let json = """
-        {
-          "would_remove": [
-            {"name": "stale-a", "size_bytes": 1000},
-            {"name": "stale-b", "size_bytes": 2000}
-          ],
-          "total_bytes": 3000
-        }
+    /// Prune dry-run text → idle candidates parsed from the indented rows;
+    /// the column-0 header + "(dry run …)" footer are ignored.
+    @Test func prunePreviewParsesIdleRows() {
+        let out = """
+        curator: 3 skill(s) idle >= 90d:
+          old-helper                               idle 412d
+          scratch-pad                              idle 120d
+          one-off-script                           idle 95d
+
+        (dry run — no changes made)
         """
-        let summary = CuratorService.parsePruneDryRun(json)
-        #expect(summary.totalCount == 2)
-        #expect(summary.totalBytes == 3000)
-        #expect(summary.wouldRemove.first?.name == "stale-a")
+        let summary = CuratorService.parsePrune(out, days: 90)
+        #expect(summary.count == 3)
+        #expect(summary.days == 90)
+        #expect(summary.candidates.first?.name == "old-helper")
+        #expect(summary.candidates.first?.idleDays == 412)
+        #expect(summary.candidates.last?.name == "one-off-script")
     }
 
-    /// Zero-skill prune is a valid dry-run (no archives).
-    @Test func pruneDryRunZeroSkills() {
-        let json = """
-        {"would_remove": [], "total_bytes": 0}
-        """
-        let summary = CuratorService.parsePruneDryRun(json)
-        #expect(summary.totalCount == 0)
-        #expect(summary.totalBytes == 0)
-        #expect(summary.totalBytesLabel == "—")
+    /// "nothing to prune" (column-0, no indented rows) → empty summary.
+    @Test func pruneNothingToPruneIsEmpty() {
+        let out = "curator: nothing to prune (no unpinned skills idle >= 90d)"
+        let summary = CuratorService.parsePrune(out, days: 90)
+        #expect(summary.count == 0)
+        #expect(summary.candidates.isEmpty)
+        #expect(summary.days == 90)
     }
 
-    /// Bare-array fallback: some Hermes builds may print just the
-    /// would-remove list when the wrapper is missing.
-    @Test func pruneDryRunBareArrayFallback() {
-        let json = """
-        [{"name": "lonely", "size_bytes": 500}]
+    /// Live (-y) run prints the same rows plus a column-0 "archived N/M"
+    /// footer — the footer is ignored, the candidate rows still parse.
+    @Test func pruneLiveRunOutputParsesCandidates() {
+        let out = """
+        curator: 2 skill(s) idle >= 60d:
+          alpha                                    idle 200d
+          beta                                     idle 61d
+
+        curator: archived 2/2
         """
-        let summary = CuratorService.parsePruneDryRun(json)
-        #expect(summary.totalCount == 1)
-        #expect(summary.totalBytes == 500)
+        let summary = CuratorService.parsePrune(out, days: 60)
+        #expect(summary.count == 2)
+        #expect(summary.candidates.map(\.name) == ["alpha", "beta"])
+        #expect(summary.candidates.last?.idleDays == 61)
     }
 
-    /// Empty / whitespace stdout → zero summary (no decoding throw).
-    @Test func pruneDryRunEmptyStaysSafe() {
-        let summary = CuratorService.parsePruneDryRun("   \n")
-        #expect(summary.totalCount == 0)
-        #expect(summary.totalBytes == 0)
+    /// A skill name containing "idle" still parses (we split on the last
+    /// " idle " token, so the trailing idle suffix wins).
+    @Test func pruneToleratesIdleInName() {
+        let out = "  go-idle-watcher                          idle 300d"
+        let summary = CuratorService.parsePrune(out, days: 90)
+        #expect(summary.candidates.first?.name == "go-idle-watcher")
+        #expect(summary.candidates.first?.idleDays == 300)
+    }
+
+    /// CRLF line endings (defensive — Hermes prints LF today) still parse:
+    /// the trailing CR must not defeat the `idle <N>d` suffix match.
+    @Test func pruneToleratesCRLF() {
+        let out = "curator: 1 skill(s) idle >= 90d:\r\n  crlf-skill                               idle 150d\r\n"
+        let summary = CuratorService.parsePrune(out, days: 90)
+        #expect(summary.count == 1)
+        #expect(summary.candidates.first?.name == "crlf-skill")
+        #expect(summary.candidates.first?.idleDays == 150)
+    }
+
+    /// Empty / whitespace stdout → zero summary (no throw).
+    @Test func pruneEmptyStaysSafe() {
+        let summary = CuratorService.parsePrune("   \n", days: 90)
+        #expect(summary.count == 0)
     }
 
     /// Verify the size label uses the byte formatter (not raw bytes).

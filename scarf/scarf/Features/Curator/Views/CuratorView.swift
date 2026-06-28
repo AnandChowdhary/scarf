@@ -65,9 +65,6 @@ struct CuratorView: View {
                         isLoading: viewModel.isLoadingArchive,
                         onRestore: { name in
                             Task { await viewModel.restore(name) }
-                        },
-                        onPruneAll: {
-                            Task { await viewModel.planPrune() }
                         }
                     )
                 }
@@ -143,10 +140,12 @@ struct CuratorView: View {
 
                 if archiveAvailable {
                     Divider()
-                    Button("Prune Archived…", role: .destructive) {
-                        Task { await viewModel.planPrune() }
+                    Menu("Archive idle skills…") {
+                        Button("Idle ≥ 30 days")  { Task { await viewModel.planPrune(days: 30) } }
+                        Button("Idle ≥ 60 days")  { Task { await viewModel.planPrune(days: 60) } }
+                        Button("Idle ≥ 90 days")  { Task { await viewModel.planPrune(days: 90) } }
+                        Button("Idle ≥ 180 days") { Task { await viewModel.planPrune(days: 180) } }
                     }
-                    .disabled(viewModel.archivedSkills.isEmpty && !viewModel.isLoadingArchive)
                 } else {
                     Button("Restore Archived…") {
                         showRestoreSheet = true

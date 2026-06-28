@@ -4,8 +4,9 @@ import ScarfDesign
 
 /// Mac sub-view rendered between the active-skill leaderboards and the
 /// last-report block on Hermes v0.13+ hosts. Lists everything currently
-/// archived (`hermes curator list-archived`) with per-row Restore + a
-/// bulk Prune affordance routed through the parent's confirm sheet.
+/// archived (`hermes curator list-archived`) with per-row Restore.
+/// (Bulk "Archive idle skills" lives in the header menu, not here — it
+/// archives idle *active* skills, it doesn't act on this archived list.)
 ///
 /// Empty-state copy explains what archive means — useful when the
 /// curator hasn't run yet on a fresh install (no archives ≠ a problem).
@@ -13,7 +14,6 @@ struct CuratorArchivedSection: View {
     let archived: [HermesCuratorArchivedSkill]
     let isLoading: Bool
     let onRestore: (String) -> Void
-    let onPruneAll: () -> Void
 
     var body: some View {
         ScarfCard {
@@ -37,13 +37,6 @@ struct CuratorArchivedSection: View {
             Text("\(archived.count) skill\(archived.count == 1 ? "" : "s")")
                 .scarfStyle(.caption)
                 .foregroundStyle(ScarfColor.foregroundMuted)
-            if !archived.isEmpty {
-                Button("Prune All…") {
-                    onPruneAll()
-                }
-                .buttonStyle(ScarfDestructiveButton())
-                .help("Remove every archived skill from disk. Cannot be undone.")
-            }
         }
     }
 

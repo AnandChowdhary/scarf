@@ -218,7 +218,10 @@ import Foundation
         #expect(disabled.contains("model"))
         #expect(disabled.contains("yolo"))
         #expect(disabled.contains("steer"))
-        #expect(disabled.contains("goal"))
+        #expect(disabled.contains("queue"))
+        // `/goal` is gateway-only (not advertised by the ACP adapter), so
+        // it is not in the session-required set and never greyed.
+        #expect(!disabled.contains("goal"))
         // `/new` is NEVER session-required — it's how you GET a session.
         #expect(!disabled.contains("new"))
     }
@@ -237,7 +240,7 @@ import Foundation
     // MARK: - availableCommands capability gating
 
     @MainActor
-    @Test func availableCommandsHidesGoalAndQueueOnPreV013() {
+    @Test func availableCommandsHidesQueueOnPreV013() {
         let vm = RichChatViewModel(context: .local)
         // /steer requires an active session to be in the menu —
         // nudging an idle (no-session) VM is a no-op. Engage so the
@@ -252,14 +255,16 @@ import Foundation
             )
         )
         let names = Set(vm.availableCommands.map(\.name))
-        #expect(!names.contains("goal"))
         #expect(!names.contains("queue"))
         #expect(names.contains("steer"))
         #expect(names.contains("new"))
+        // `/goal` and `/subgoal` are gateway-only — never surfaced.
+        #expect(!names.contains("goal"))
+        #expect(!names.contains("subgoal"))
     }
 
     @MainActor
-    @Test func availableCommandsExposesGoalAndQueueOnV013() {
+    @Test func availableCommandsExposesQueueOnV013ButNeverGoal() {
         let vm = RichChatViewModel(context: .local)
         vm.setSessionId("scratch-session")
         vm.publishCapabilities(
@@ -270,10 +275,12 @@ import Foundation
             )
         )
         let names = Set(vm.availableCommands.map(\.name))
-        #expect(names.contains("goal"))
         #expect(names.contains("queue"))
         #expect(names.contains("steer"))
         #expect(names.contains("new"))
+        // `/goal` and `/subgoal` are NOT advertised by the ACP adapter.
+        #expect(!names.contains("goal"))
+        #expect(!names.contains("subgoal"))
     }
 
     // MARK: - clientSideSlashCommand

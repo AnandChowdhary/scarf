@@ -472,6 +472,32 @@ public struct HermesCapabilities: Sendable, Equatable {
     /// the version boundary for dashboard-aware installs.
     public var hasDashboardCommand: Bool { atLeastSemver(0, 16, 0) }
 
+    // MARK: v0.17 (v2026.6.19) flags
+
+    /// `curator.consolidate` config key — the LLM skill-consolidation pass is
+    /// now OPT-IN (default off); deterministic pruning stays default-on
+    /// (v0.17+). Surfaced as a Settings toggle so users can re-enable the merge
+    /// pass that ran automatically before v0.17.
+    public var hasCuratorConsolidate: Bool { atLeastSemver(0, 17, 0) }
+
+    /// `max_concurrent_sessions` top-level config key — optional cap on
+    /// simultaneously-active chat sessions, with automatic cleanup of the
+    /// oldest when exceeded (v0.17+). `0`/empty means unbounded.
+    public var hasMaxConcurrentSessions: Bool { atLeastSemver(0, 17, 0) }
+
+    /// `photon` gateway platform — iMessage via Photon Spectrum (device-code
+    /// OAuth + local gRPC sidecar), 24th platform (v0.17+).
+    public var hasPhotonPlatform: Bool { atLeastSemver(0, 17, 0) }
+
+    /// `whatsapp_cloud` gateway platform — WhatsApp Business Cloud API (Meta's
+    /// hosted webhook path, distinct from the older `whatsapp` web bridge),
+    /// 25th platform (v0.17+).
+    public var hasWhatsAppCloudPlatform: Bool { atLeastSemver(0, 17, 0) }
+
+    /// Telegram `rich_messages` (Bot API 10.1, default-on) + `status_indicator`
+    /// (opt-in presence label) per-platform config keys (v0.17+).
+    public var hasTelegramRichMessages: Bool { atLeastSemver(0, 17, 0) }
+
     // MARK: Convenience predicates
 
     /// Whether the connected host is on the v0.13 line or newer. Convenience
@@ -497,6 +523,11 @@ public struct HermesCapabilities: Sendable, Equatable {
     /// for UI copy that toggles on the v0.15 → v0.16 boundary without
     /// proxying through a feature-specific flag.
     public var isV016OrLater: Bool { atLeastSemver(0, 16, 0) }
+
+    /// Whether the connected host is on the v0.17 line or newer. Convenience
+    /// for UI copy that toggles on the v0.16 → v0.17 boundary without
+    /// proxying through a feature-specific flag.
+    public var isV017OrLater: Bool { atLeastSemver(0, 17, 0) }
 
     private func atLeastSemver(_ major: Int, _ minor: Int, _ patch: Int) -> Bool {
         guard let s = semver else { return false }

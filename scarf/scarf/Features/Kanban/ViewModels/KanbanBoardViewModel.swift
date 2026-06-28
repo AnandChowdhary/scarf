@@ -419,29 +419,11 @@ final class KanbanBoardViewModel {
 
     // MARK: - Hallucination gate (v0.13)
 
-    /// User confirmed the worker-created card is real. Optimistically
-    /// flip the gate to `verified` so the banner disappears immediately;
-    /// the polling loop confirms the new state on the next tick. On
-    /// failure (e.g. the verb name is wrong on this v0.13.x build), the
-    /// override is cleared and the error surfaces in `lastError`.
-    func verifyHallucination(taskId: String) {
-        var override = optimisticOverrides[taskId] ?? OptimisticOverride()
-        override.hallucinationGate = .verified
-        optimisticOverrides[taskId] = override
-        Task {
-            do {
-                try await service.verify(taskId: taskId)
-                await refresh()
-            } catch let err as KanbanError {
-                clearHallucinationOverride(for: taskId)
-                lastError = err.errorDescription
-                logger.warning("kanban verify failed: \(err.errorDescription ?? "", privacy: .public)")
-            } catch {
-                clearHallucinationOverride(for: taskId)
-                lastError = error.localizedDescription
-            }
-        }
-    }
+    // NOTE: there is no "Verify" action — Hermes has no `kanban verify`
+    // verb (re-verified against v0.16). The gate's only user-driven
+    // action is Reject (below), which archives the card with an audit
+    // comment. The polling loop still reads back a `verified` gate state
+    // if Hermes flips it server-side.
 
     /// User rejected the worker-created card as a hallucinated reference.
     /// Routes through `comment` + `archive` per `KanbanService.rejectHallucinated`
@@ -515,18 +497,6 @@ final class KanbanBoardViewModel {
     private func clearStatusOverride(for taskId: String) {
         guard var override = optimisticOverrides[taskId] else { return }
         override.status = nil
-        if override.isEmpty {
-            optimisticOverrides.removeValue(forKey: taskId)
-        } else {
-            optimisticOverrides[taskId] = override
-        }
-    }
-
-    /// Drop the hallucination-gate side of a task's override (preserving
-    /// any in-flight status-side drag-drop).
-    private func clearHallucinationOverride(for taskId: String) {
-        guard var override = optimisticOverrides[taskId] else { return }
-        override.hallucinationGate = nil
         if override.isEmpty {
             optimisticOverrides.removeValue(forKey: taskId)
         } else {

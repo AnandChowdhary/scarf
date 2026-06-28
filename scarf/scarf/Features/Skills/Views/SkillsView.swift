@@ -139,12 +139,25 @@ struct SkillsView: View {
         }
     }
 
+    /// Snapshot service scoped to this server AND its selected Hermes
+    /// profile (#120). The profile is derived from `paths.home`: a server
+    /// whose home points at `<root>/profiles/<name>` keys its baseline per
+    /// profile; a local/root home yields a nil profile → the unchanged
+    /// per-server key. Without this, switching profiles would diff one
+    /// profile's skills against another's baseline ("What's New" lies).
+    private var snapshotService: SkillSnapshotService {
+        SkillSnapshotService(
+            serverID: serverContext.id,
+            profile: HermesProfileScope.profileName(forHome: serverContext.paths.home)
+        )
+    }
+
     /// Compute the snapshot diff against the active server's last-seen
     /// state. On a first-ever load (empty snapshot) we silently mark
     /// the current set as seen so the next load shows real deltas.
     private func recomputeSnapshotDiff() {
         let allSkills = viewModel.categories.flatMap(\.skills)
-        let svc = SkillSnapshotService(serverID: serverContext.id)
+        let svc = snapshotService
         let diff = svc.diff(against: allSkills)
         if diff.previousSnapshotEmpty {
             // Silent prime — don't show the pill; just record what
@@ -166,8 +179,7 @@ struct SkillsView: View {
                 .font(.callout)
             Spacer()
             Button("Mark as seen") {
-                let svc = SkillSnapshotService(serverID: serverContext.id)
-                svc.markSeen(viewModel.categories.flatMap(\.skills))
+                snapshotService.markSeen(viewModel.categories.flatMap(\.skills))
                 snapshotDiff = nil
             }
             .controlSize(.small)

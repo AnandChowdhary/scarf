@@ -243,19 +243,28 @@ import Foundation
 
     // MARK: - v0.13 non-interruptive commands (WS-2 / Persistent Goals + /queue)
 
-    @Test func nonInterruptiveListIncludesGoalAndQueue() {
+    @Test func nonInterruptiveListIncludesSteerAndQueueNotGoal() {
+        // `/goal` and `/subgoal` are gateway-only and NOT advertised by
+        // the ACP adapter, so they are no longer in this set (they used
+        // to surface ACP slash-menu rows that no-op'd).
         let names = RichChatViewModel.nonInterruptiveCommands.map(\.name)
         #expect(names.contains("steer"))
-        #expect(names.contains("goal"))
         #expect(names.contains("queue"))
+        #expect(!names.contains("goal"))
+        #expect(!names.contains("subgoal"))
     }
 
     @MainActor
-    @Test func availableCommandsHidesGoalWhenCapabilityOff() {
+    @Test func availableCommandsNeverSurfacesGoalOrSubgoal() {
+        // Even on a v0.13+ host with an active session, `/goal` and
+        // `/subgoal` are not surfaced in the ACP slash menu.
         let vm = RichChatViewModel(context: .local)
-        vm.publishCapabilities(.empty)
+        vm.setSessionId("scratch-session")
+        let caps = HermesCapabilities.parseLine("Hermes Agent v0.14.0 (2026.5.7)")
+        vm.publishCapabilities(caps)
         let names = vm.availableCommands.map(\.name)
         #expect(!names.contains("goal"))
+        #expect(!names.contains("subgoal"))
     }
 
     @MainActor
@@ -267,7 +276,7 @@ import Foundation
     }
 
     @MainActor
-    @Test func availableCommandsExposesAllThreeOnV013() {
+    @Test func availableCommandsExposesSteerAndQueueOnV013() {
         let vm = RichChatViewModel(context: .local)
         // /steer is gated on having an active session — nudging an
         // agent that isn't running has nothing to act on. Engage so
@@ -277,7 +286,6 @@ import Foundation
         vm.publishCapabilities(caps)
         let names = vm.availableCommands.map(\.name)
         #expect(names.contains("steer"))
-        #expect(names.contains("goal"))
         #expect(names.contains("queue"))
     }
 
@@ -289,7 +297,6 @@ import Foundation
         vm.publishCapabilities(caps)
         let names = vm.availableCommands.map(\.name)
         #expect(names.contains("steer"))
-        #expect(!names.contains("goal"))
         #expect(!names.contains("queue"))
     }
 
@@ -421,16 +428,17 @@ import Foundation
     }
 
     @MainActor
-    @Test func subgoalMenuRespectsCapabilityGate() {
+    @Test func subgoalNeverSurfacedInACPMenu() {
+        // `/subgoal` is a gateway-only verb (not advertised by the ACP
+        // adapter), so it never appears in the ACP slash menu — on any
+        // host version.
         let vm = RichChatViewModel(context: .local)
-        // No /subgoal on a v0.13 host.
         vm.publishCapabilities(HermesCapabilities.parseLine("Hermes Agent v0.13.0 (2026.5.7)"))
         var names = vm.availableCommands.map(\.name)
         #expect(!names.contains("subgoal"))
-        // /subgoal shows up on a v0.14 host.
         vm.publishCapabilities(HermesCapabilities.parseLine("Hermes Agent v0.14.0 (2026.5.16)"))
         names = vm.availableCommands.map(\.name)
-        #expect(names.contains("subgoal"))
+        #expect(!names.contains("subgoal"))
     }
 
     @MainActor
@@ -465,16 +473,18 @@ import Foundation
         #expect(vm.popQueuedPrompt() == nil)
     }
 
-    @Test func isNonInterruptiveSlashRecognizesGoalAndQueue() {
+    @Test func isNonInterruptiveSlashRecognizesSteerAndQueueNotGoal() {
         // Non-MainActor: the helper itself isn't MainActor-isolated;
         // construct a VM on MainActor and read through it on the test
         // actor to keep the assertion focused on classification.
+        // `/goal` is no longer an ACP non-interruptive command (gateway-
+        // only); its typed-command path has its own explicit dispatch arm.
         Task { @MainActor in
             let vm = RichChatViewModel(context: .local)
-            #expect(vm.isNonInterruptiveSlash("/goal finish v2.8"))
             #expect(vm.isNonInterruptiveSlash("/queue summarize"))
             #expect(vm.isNonInterruptiveSlash("/queue"))
             #expect(vm.isNonInterruptiveSlash("/steer be careful"))
+            #expect(!vm.isNonInterruptiveSlash("/goal finish v2.8"))
             #expect(!vm.isNonInterruptiveSlash("hello"))
             #expect(!vm.isNonInterruptiveSlash("/compress"))
         }

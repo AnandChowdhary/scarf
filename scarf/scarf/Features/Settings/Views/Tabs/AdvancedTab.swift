@@ -74,6 +74,10 @@ struct AdvancedTab: View {
             ToggleRow(label: "Wrap Response", isOn: viewModel.config.cronWrapResponse) { viewModel.setCronWrapResponse($0) }
         }
 
+        if capabilitiesStore?.capabilities.isV017OrLater ?? false {
+            v017Section
+        }
+
         SettingsSection(title: "Config Diagnostics", icon: "stethoscope") {
             HStack {
                 Text("Actions")
@@ -110,6 +114,45 @@ struct AdvancedTab: View {
         pathsSection
         ScarfMonDiagnosticsSection()
         rawConfigSection
+    }
+
+    /// v0.17 knobs — curator consolidation (now opt-in) + a concurrent-session
+    /// cap. Gated so a pre-v0.17 host never sees toggles that write keys it
+    /// ignores.
+    @ViewBuilder
+    private var v017Section: some View {
+        SettingsSection(title: "Sessions & Curator", icon: "sparkles") {
+            ToggleRow(
+                label: "Curator consolidation pass",
+                isOn: viewModel.config.curatorConsolidate
+            ) { viewModel.setCuratorConsolidate($0) }
+
+            consolidationHint
+
+            StepperRow(
+                label: "Max concurrent sessions (0 = unlimited)",
+                value: viewModel.config.maxConcurrentSessions,
+                range: 0...64
+            ) { viewModel.setMaxConcurrentSessions($0) }
+        }
+    }
+
+    /// Inline hint clarifying that v0.17 flipped curator consolidation to
+    /// opt-in, so a user who relied on the automatic merge pass knows to
+    /// re-enable it.
+    @ViewBuilder
+    private var consolidationHint: some View {
+        HStack {
+            Text("")
+                .font(.caption)
+                .frame(width: 160, alignment: .trailing)
+            Text("v0.17 made the LLM skill-merge pass opt-in. Turn this on to restore it; deterministic pruning runs either way.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 
     /// Caching, redaction, and runtime-metadata footer — all v0.12+

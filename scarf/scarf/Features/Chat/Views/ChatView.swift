@@ -111,7 +111,11 @@ struct ChatView: View {
             // appear immediately because the create/resume paths
             // call `loadRecentSessions()` synchronously themselves.
             viewModel.scheduleSessionsRefresh()
-            viewModel.refreshCredentialPreflight()
+            // Debounced + off-main (see `scheduleCredentialPreflightRefresh`):
+            // keeps the missing-credential banner live on an external `.env`
+            // edit without the per-message, on-main read that caused the
+            // gh#102 typing-lag.
+            viewModel.scheduleCredentialPreflightRefresh()
         }
         // Live handoff from the per-project Sessions tab: the tab
         // sets `pendingProjectChat` + flips `selectedSection` to

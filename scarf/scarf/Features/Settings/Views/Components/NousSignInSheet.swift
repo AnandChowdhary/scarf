@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import ScarfDesign
+import ScarfCore
 
 /// In-app sign-in sheet for Nous Portal — hosts a ``NousAuthFlow`` and
 /// renders one of four sub-views keyed on `flow.state`. Reached from the

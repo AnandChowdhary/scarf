@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ScarfCore
 
 /// In-app sign-in sheet for the Spotify skill (Hermes v2026.4.23+).
 /// Hosts a `SpotifyAuthFlow` and renders one of five sub-views keyed

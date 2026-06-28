@@ -137,18 +137,30 @@ render_progress() {
   fi
 }
 
-# ---- stop ONLY the copy we manage, matched by its exact install path ----
-# Path-scoped on purpose: we match `…/<App>-dev.app/Contents/MacOS/`, which the foreign copies an
-# agent runs (out of their own DerivedData) can never contain — so they are never signalled. We
-# deliberately do NOT quit by process name or bundle id (both would also hit those other copies),
-# and we wait for exit BEFORE clobbering the bundle so the on-disk store is never torn mid-write.
-quit_our_copy() {
-  pgrep -f "$EXEC_DIR/" >/dev/null 2>&1 || return 0
-  say "==> stopping our prior dev copy ($INSTALL_PATH) — copies running from any other path are left alone…"
-  pkill -f "$EXEC_DIR/" 2>/dev/null || true                                  # SIGTERM, path-scoped
-  for _ in $(seq 1 16); do pgrep -f "$EXEC_DIR/" >/dev/null 2>&1 || return 0; sleep 0.5; done
+# ---- enforce a SINGLE instance: quit every running copy of this app before we launch the fresh
+#      one, so you never end up with multiple builds open — no matter how the others were launched
+#      (a previous run, a double-click, or Xcode's Run). The ONE exception: a copy running from a
+#      /tmp (or /var/folders) isolated build is an agent's detached test copy, which we deliberately
+#      leave alone. We identify the app by its own executable (…/Contents/MacOS/<APP_PRODUCT>) and
+#      quit by PID, waiting for exit BEFORE clobbering the bundle so the on-disk store isn't torn.
+quit_running_copies() {
+  local pid cmd victims=()
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    cmd="$(ps -p "$pid" -o command= 2>/dev/null)"
+    case "$cmd" in *"/Contents/MacOS/$APP_PRODUCT"*) ;; *) continue ;; esac          # this app's executable
+    case "$cmd" in *"/tmp/"*|*"/var/folders/"*) continue ;; esac                     # spare agent /tmp builds
+    victims+=("$pid")
+  done < <(pgrep -x "$APP_PRODUCT" 2>/dev/null)
+  [ ${#victims[@]} -gt 0 ] || return 0
+  say "==> quitting ${#victims[@]} running copy(ies) of $APP_PRODUCT before launch (agent /tmp test builds left alone)…"
+  kill "${victims[@]}" 2>/dev/null || true                                          # SIGTERM
+  for _ in $(seq 1 16); do
+    local alive=0; for pid in "${victims[@]}"; do kill -0 "$pid" 2>/dev/null && alive=1; done
+    [ "$alive" = 0 ] && return 0; sleep 0.5
+  done
   say "   still running after 8s — SIGKILL…"
-  pkill -9 -f "$EXEC_DIR/" 2>/dev/null || true; sleep 1
+  for pid in "${victims[@]}"; do kill -9 "$pid" 2>/dev/null || true; done; sleep 1
 }
 
 # ---- make sure the installed copy carries the distinct Dock name ----
@@ -204,8 +216,8 @@ if [ "$CHECK_ICLOUD" = 1 ] && ! codesign -d --entitlements - "$BUILT" 2>/dev/nul
   say "!! WARNING: built app has no iCloud entitlements — CloudKit + bookmarks will fail at runtime."
 fi
 
-# Swap in only on a good build: stop our old copy, install the new one decoupled, make it distinct.
-quit_our_copy
+# Swap in only on a good build: quit every running copy, install the new one decoupled, make it distinct.
+quit_running_copies
 rm -rf "$INSTALL_PATH"
 cp -R "$BUILT" "$INSTALL_PATH"
 ensure_display_name

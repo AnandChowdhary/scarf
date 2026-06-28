@@ -2,89 +2,86 @@ import Testing
 import Foundation
 @testable import ScarfCore
 
-/// Parser tests for `hermes gateway list --json`. Pure — no transport, no
-/// process calls.
+/// Parser tests for the `hermes gateway list` text table (Hermes v0.16 has
+/// no `--json` flag). Pure — no transport, no process calls.
 @Suite struct HermesGatewayListServiceTests {
 
-    private func data(_ s: String) -> Data { s.data(using: .utf8)! }
+    @Test func parsesLiveSampleOneRunningTwoStopped() {
+        // The exact live v0.16 output: 1 running default + 2 stopped.
+        let text = """
+        Gateways:
+          ✓ default (current)        — PID 44417
+          ✗ scarfbox-smoke           — not running
+          ✗ scarfbox-test            — not running
+        """
+        let snap = HermesGatewayListService.parse(text)
+        #expect(snap?.profiles.count == 3)
 
-    @Test func parsesSingleProfileSinglePlatform() {
-        let json = data(#"""
-        {"profiles":[{"name":"default","running":true,"pid":1234,
-        "platforms":["slack","telegram"]}]}
-        """#)
-        let snap = HermesGatewayListService.parse(json)
+        #expect(snap?.profiles[0].profile == "default")
+        #expect(snap?.profiles[0].isRunning == true)
+        #expect(snap?.profiles[0].pid == 44417)
+        #expect(snap?.profiles[0].platforms.isEmpty == true)
+
+        #expect(snap?.profiles[1].profile == "scarfbox-smoke")
+        #expect(snap?.profiles[1].isRunning == false)
+        #expect(snap?.profiles[1].pid == nil)
+
+        #expect(snap?.profiles[2].profile == "scarfbox-test")
+        #expect(snap?.profiles[2].isRunning == false)
+        #expect(snap?.profiles[2].pid == nil)
+    }
+
+    @Test func parsesSingleRunningProfile() {
+        let text = """
+        Gateways:
+          ✓ default        — PID 1234
+        """
+        let snap = HermesGatewayListService.parse(text)
         #expect(snap?.profiles.count == 1)
         #expect(snap?.profiles[0].profile == "default")
         #expect(snap?.profiles[0].pid == 1234)
         #expect(snap?.profiles[0].isRunning == true)
-        #expect(snap?.profiles[0].platforms == ["slack", "telegram"])
+        #expect(snap?.profiles[0].platforms.isEmpty == true)
     }
 
-    @Test func parsesMultipleProfiles() {
-        let json = data(#"""
-        {"profiles":[
-            {"name":"work","running":true,"pid":2001,"platforms":["slack"]},
-            {"name":"personal","running":false,"platforms":["telegram"]}
-        ]}
-        """#)
-        let snap = HermesGatewayListService.parse(json)
-        #expect(snap?.profiles.count == 2)
-        #expect(snap?.profiles[0].profile == "work")
-        #expect(snap?.profiles[0].isRunning == true)
-        #expect(snap?.profiles[1].profile == "personal")
-        #expect(snap?.profiles[1].isRunning == false)
-        #expect(snap?.profiles[1].pid == nil)
-    }
-
-    @Test func parsesBareArrayShape() {
-        // Tolerance for a top-level array (no `profiles` wrapper).
-        let json = data(#"""
-        [{"name":"default","running":true,"pid":42,"platforms":["discord"]}]
-        """#)
-        let snap = HermesGatewayListService.parse(json)
+    @Test func parsesSingleStoppedProfile() {
+        let text = """
+        Gateways:
+          ✗ default        — not running
+        """
+        let snap = HermesGatewayListService.parse(text)
         #expect(snap?.profiles.count == 1)
         #expect(snap?.profiles[0].profile == "default")
+        #expect(snap?.profiles[0].isRunning == false)
+        #expect(snap?.profiles[0].pid == nil)
     }
 
-    @Test func toleratesAlternateFieldNames() {
-        // `profile` instead of `name`, `state` instead of `running`,
-        // `connected_platforms` instead of `platforms` — defensive defaults
-        // keep the parser happy if Hermes ships any of these.
-        let json = data(#"""
-        {"profiles":[{"profile":"alt","state":"running","pid":7,
-        "connected_platforms":["matrix"]}]}
-        """#)
-        let snap = HermesGatewayListService.parse(json)
-        #expect(snap?.profiles[0].profile == "alt")
-        #expect(snap?.profiles[0].isRunning == true)
-        #expect(snap?.profiles[0].platforms == ["matrix"])
+    @Test func stripsCurrentMarkerFromProfileName() {
+        // A `(current)` marker after the profile name must not leak into it.
+        let text = """
+        Gateways:
+          ✓ work (current)        — PID 99
+        """
+        let snap = HermesGatewayListService.parse(text)
+        #expect(snap?.profiles[0].profile == "work")
+        #expect(snap?.profiles[0].pid == 99)
     }
 
-    @Test func returnsNilOnEmptyData() {
-        #expect(HermesGatewayListService.parse(Data()) == nil)
+    @Test func returnsNilOnEmptyString() {
+        #expect(HermesGatewayListService.parse("") == nil)
     }
 
-    @Test func returnsNilOnUnparseableJSON() {
-        let json = data("not-json")
-        #expect(HermesGatewayListService.parse(json) == nil)
+    @Test func returnsNilOnWhitespaceOnly() {
+        #expect(HermesGatewayListService.parse("   \n  \n") == nil)
     }
 
-    @Test func returnsEmptySnapshotOnEmptyProfilesArray() {
-        let json = data(#"{"profiles":[]}"#)
-        let snap = HermesGatewayListService.parse(json)
-        #expect(snap?.profiles.isEmpty == true)
+    @Test func returnsNilOnHeaderOnlyNoProfiles() {
+        // Just the header, no profile rows → no recognizable entries → nil.
+        #expect(HermesGatewayListService.parse("Gateways:\n") == nil)
     }
 
-    @Test func toleratesUnknownKeys() {
-        // Forward-compat: a future v0.13.x Hermes adds extra fields, parser
-        // still works.
-        let json = data(#"""
-        {"profiles":[{"name":"default","running":true,"platforms":["slack"],
-        "future_field":"value","another":42}]}
-        """#)
-        let snap = HermesGatewayListService.parse(json)
-        #expect(snap?.profiles[0].profile == "default")
+    @Test func returnsNilOnGarbageInput() {
+        #expect(HermesGatewayListService.parse("this is not gateway output") == nil)
     }
 
     // MARK: - headerDigest

@@ -38,7 +38,10 @@ struct HermesEnvService: Sendable {
 
     /// Read the .env file into a `[key: value]` dict. Comments and commented-out
     /// assignments are ignored. Missing file returns an empty dict.
-    func load() -> [String: String] {
+    /// `nonisolated` so it can run off the main actor (it's pure transport I/O
+    /// on a `Sendable` struct) — callers like `PlatformsViewModel.load()` read
+    /// `.env` on a detached task to keep the main thread free (gh#102).
+    nonisolated func load() -> [String: String] {
         guard let data = try? transport.readFile(path),
               let content = String(data: data, encoding: .utf8) else {
             return [:]
@@ -199,7 +202,7 @@ struct HermesEnvService: Sendable {
     }
 
     /// Strip one layer of matched double or single quotes from a loaded value.
-    private static func stripEnvQuotes(_ s: String) -> String {
+    nonisolated private static func stripEnvQuotes(_ s: String) -> String {
         guard s.count >= 2 else { return s }
         let first = s.first!
         let last = s.last!

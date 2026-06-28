@@ -95,7 +95,7 @@ final class SessionsViewModel {
         // absence of project labels is a cosmetic degradation, not a
         // data-loss problem (matches the iOS Dashboard pattern).
         let ctx = context
-        let bundle: (names: [String: String], projects: [ProjectEntry]) = await Task.detached {
+        let bundle: (names: [String: String], projects: [ProjectEntry], dbSize: String) = await Task.detached {
             let attribution = SessionAttributionService(context: ctx)
             let registry = ProjectDashboardService(context: ctx).loadRegistry()
             let pathToName = Dictionary(
@@ -108,12 +108,21 @@ final class SessionsViewModel {
                     names[sessionID] = name
                 }
             }
-            return (names: names, projects: registry.projects)
+            // Fold the state.db stat() into this off-main batch so the file-
+            // size display doesn't cost a synchronous SSH stat on the main
+            // actor on every watcher tick during a stream (gh#102).
+            let dbSize: String
+            if let stat = ctx.makeTransport().stat(ctx.paths.stateDB) {
+                dbSize = Int64(stat.size).formatted(.byteCount(style: .file))
+            } else {
+                dbSize = "unknown"
+            }
+            return (names: names, projects: registry.projects, dbSize: dbSize)
         }.value
         sessionProjectNames = bundle.names
         allProjects = bundle.projects
 
-        computeStats()
+        computeStats(dbSize: bundle.dbSize)
     }
 
     func previewFor(_ session: HermesSession) -> String {
@@ -216,7 +225,11 @@ final class SessionsViewModel {
 
     // MARK: - Stats
 
-    private func computeStats() {
+    /// `dbSize` is pre-computed off-main by the watcher-driven `load()` so the
+    /// `state.db` stat() — a synchronous SSH round-trip on remote — never runs
+    /// on the main actor on the hot path (gh#102). The nil default keeps the
+    /// one-shot `confirmDelete()` path doing the stat inline (user-initiated).
+    private func computeStats(dbSize: String? = nil) {
         let totalMessages = sessions.reduce(0) { $0 + $1.messageCount }
 
         var platformCounts: [String: Int] = [:]
@@ -225,9 +238,10 @@ final class SessionsViewModel {
         }
         let sorted = platformCounts.sorted { $0.value > $1.value }.map { (platform: $0.key, count: $0.value) }
 
-        let dbPath = context.paths.stateDB
         let fileSize: String
-        if let stat = context.makeTransport().stat(dbPath) {
+        if let dbSize {
+            fileSize = dbSize
+        } else if let stat = context.makeTransport().stat(context.paths.stateDB) {
             fileSize = Int64(stat.size).formatted(.byteCount(style: .file))
         } else {
             fileSize = "unknown"

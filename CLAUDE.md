@@ -2,6 +2,12 @@
 
 ## Build
 
+`./scripts/build-detached.sh` (no args) — builds into isolated DerivedData and launches a decoupled,
+visually-distinct **Scarf Dev** copy; each run quits every running copy first so you get a single
+instance, sparing only agent test copies under `/tmp`.
+
+Raw compile-only:
+
 ```bash
 xcodebuild -project scarf/scarf.xcodeproj -scheme scarf -configuration Debug build
 ```

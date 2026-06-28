@@ -302,8 +302,7 @@ struct HermesFileService: Sendable {
         // `ScarfCore/Parsing/HermesConfig+YAML.swift`. Behaviour parity
         // matters: both parsers must populate `gatewayPlatforms` the same
         // way so iOS and Mac surfaces stay in lockstep.
-        // TODO(WS-5-Q2): YAML key path unverified — see the comment in the
-        // ScarfCore extractor for the resolution path.
+        // Allowlists live at top-level `<platform>.allowed_*` (verified v0.16).
         let gatewayAllowlistPlatforms = [
             "slack", "mattermost", "google-chat",
             "telegram", "whatsapp",
@@ -311,7 +310,7 @@ struct HermesFileService: Sendable {
         ]
         var gatewayPlatforms: [String: GatewayPlatformSettings] = [:]
         for platform in gatewayAllowlistPlatforms {
-            let prefix = "gateway.platforms.\(platform)."
+            let prefix = "\(platform)."
             let allowedChannels = lists[prefix + "allowed_channels"] ?? []
             let allowedChats    = lists[prefix + "allowed_chats"]    ?? []
             let allowedRooms    = lists[prefix + "allowed_rooms"]    ?? []
@@ -718,20 +717,33 @@ struct HermesFileService: Sendable {
     }
 
     /// Adds an SSE-transport MCP server. v0.13+ only — caller is responsible
-    /// for capability-gating; pre-v0.13 hosts will reject the `--transport`
-    /// flag at argparse time. The optional `sseReadTimeout` is passed via
-    /// `--sse-read-timeout <int>` and persisted as `sse_read_timeout: <int>`
-    /// in the YAML entry.
-    // TODO(WS-7-Q3): Verify exact CLI flag spelling against `hermes mcp add --help`
-    // on a v0.13 install. Plan assumes `--transport sse` + `--sse-read-timeout`;
-    // alternatives could be `--sse` (boolean) + `--read-timeout`.
+    /// for capability-gating.
+    ///
+    /// Hermes v0.16 `mcp add` only understands `--url` (there is NO
+    /// `--transport` / `--sse-read-timeout` flag — they'd be rejected at
+    /// argparse time). So we create the entry with `hermes mcp add --url`
+    /// (which produces a remote/HTTP-shaped block) and then write the
+    /// `transport: sse` (+ optional `sse_read_timeout`) scalars into that
+    /// server's YAML block via the same surgical patcher the rest of the
+    /// MCP YAML surface uses. The `transport: sse` scalar is what the
+    /// reader keys on to discriminate SSE from HTTP.
     @discardableResult
     nonisolated func addMCPServerSSE(name: String, url: String, sseReadTimeout: Int?) -> (exitCode: Int32, output: String) {
-        var cliArgs: [String] = ["mcp", "add", name, "--url", url, "--transport", "sse"]
-        if let timeout = sseReadTimeout {
-            cliArgs.append(contentsOf: ["--sse-read-timeout", String(timeout)])
+        let addResult = runHermesCLI(
+            args: ["mcp", "add", name, "--url", url],
+            timeout: 45,
+            stdinInput: "y\ny\ny\n"
+        )
+        guard addResult.exitCode == 0 else { return addResult }
+        // Stamp the SSE transport discriminator (+ optional read timeout)
+        // into the freshly-written entry's YAML block.
+        _ = patchMCPServerField(name: name) { entryLines in
+            Self.replaceOrInsertScalar(key: "transport", value: "sse", in: &entryLines)
+            if let timeout = sseReadTimeout {
+                Self.replaceOrInsertScalar(key: "sse_read_timeout", value: String(timeout), in: &entryLines)
+            }
         }
-        return runHermesCLI(args: cliArgs, timeout: 45, stdinInput: "y\ny\ny\n")
+        return addResult
     }
 
     /// Updates the `sse_read_timeout` scalar in-place via the same surgical

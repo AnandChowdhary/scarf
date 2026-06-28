@@ -406,9 +406,6 @@ struct KanbanBoardView: View {
                 onReassign: { profile in
                     viewModel.reassignTask(taskId: taskId, to: profile)
                 },
-                onVerifyHallucination: {
-                    viewModel.verifyHallucination(taskId: taskId)
-                },
                 onRejectHallucination: {
                     viewModel.rejectHallucination(taskId: taskId)
                     // Card vanishes from active board after archive — close

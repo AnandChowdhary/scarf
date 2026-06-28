@@ -166,7 +166,7 @@ struct HealthView: View {
         }
     }
 
-    /// Run `hermes acp --setup-browser --assume-yes` off MainActor.
+    /// Run `hermes acp --setup-browser --yes` off MainActor.
     /// Updates the inline message strip with success/failure so the
     /// user gets feedback without an alert sheet. v0.14+.
     private func runBrowserSetup() {
@@ -175,10 +175,10 @@ struct HealthView: View {
         browserSetupMessage = "Installing browser tools…"
         let ctx = viewModel.context
         Task.detached(priority: .userInitiated) {
-            // `--assume-yes` skips the interactive consent prompt that
-            // the setup verb pops without a TTY.
+            // `--yes` skips the interactive consent prompt that the setup verb
+            // pops without a TTY. (The flag is `--yes`/`-y`, not `--assume-yes`.)
             let result = HermesFileService(context: ctx).runHermesCLI(
-                args: ["acp", "--setup-browser", "--assume-yes"],
+                args: ["acp", "--setup-browser", "--yes"],
                 timeout: 600   // chromium download + playwright install can be slow
             )
             await MainActor.run {

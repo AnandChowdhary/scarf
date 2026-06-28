@@ -24,6 +24,12 @@ final class PlatformsViewModel {
     var message: String?
     var restartInProgress: Bool = false
 
+    /// Per-platform "has config on disk" set, computed off-main in `load()`
+    /// (one config.yaml + one `.env` read, vs. the old per-platform-per-render
+    /// transport reads). `connectivity` / `hasConfigBlock` read this cache so a
+    /// body re-render never does synchronous scp/SSH on the main thread.
+    private(set) var configuredPlatforms: Set<String> = []
+
     var platforms: [HermesToolPlatform] { KnownPlatforms.all }
 
     /// Tracks the file-watcher change token this VM last loaded for, so a
@@ -34,11 +40,31 @@ final class PlatformsViewModel {
     @ObservationIgnored private var loadedChangeToken: Date?
     @ObservationIgnored private var hasLoaded = false
 
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
+
     func load(changeToken: Date? = nil, force: Bool = false) {
         if !force, hasLoaded, loadedChangeToken == changeToken { return }
         hasLoaded = true
-        loadedChangeToken = changeToken
-        gatewayState = fileService.loadGatewayState()
+        let svc = fileService
+        let ctx = context
+        loadTask?.cancel()
+        loadTask = Task { [weak self] in
+            // Gateway state, config.yaml and `.env` all read through the
+            // transport — synchronous scp/SSH round-trips on remote. Compute
+            // them ONCE off main so neither a file-watcher tick nor a body
+            // re-render stalls the main thread (gh#102 pattern). Cancel-prior
+            // + the is-cancelled guard so an older tick's slower read can't
+            // land after a newer one and latch stale data (the synchronous
+            // load this replaced couldn't interleave); advance the freshness
+            // token only on a committed read.
+            let result = await Task.detached {
+                (state: svc.loadGatewayState(), configured: Self.computeConfiguredPlatforms(context: ctx))
+            }.value
+            guard let self, !Task.isCancelled else { return }
+            self.gatewayState = result.state
+            self.configuredPlatforms = result.configured
+            self.loadedChangeToken = changeToken
+        }
     }
 
     func connectivity(for platform: HermesToolPlatform) -> PlatformConnectivity {
@@ -60,23 +86,41 @@ final class PlatformsViewModel {
     /// until the first YAML edit.
     func hasConfigBlock(for platform: HermesToolPlatform) -> Bool {
         if platform.name == "cli" { return true }
+        return configuredPlatforms.contains(platform.name)
+    }
+
+    /// Compute, off main, the set of platforms with configuration on disk —
+    /// a top-level `<platform>:` block in config.yaml OR an identifying env
+    /// var in `.env`. Reads each source ONCE (vs. the old per-platform read).
+    /// Detection mirrors the previous `hasConfigBlock` exactly.
+    nonisolated static func computeConfiguredPlatforms(context: ServerContext) -> Set<String> {
         let yaml = context.readText(context.paths.configYAML) ?? ""
-        for line in yaml.components(separatedBy: "\n") where !line.hasPrefix(" ") && !line.hasPrefix("\t") {
-            if line.trimmingCharacters(in: .whitespaces) == "\(platform.name):" { return true }
+        let topLevel = Set(
+            yaml.components(separatedBy: "\n")
+                .filter { !$0.hasPrefix(" ") && !$0.hasPrefix("\t") }
+                .compactMap { line -> String? in
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    guard trimmed.hasSuffix(":") else { return nil }
+                    return String(trimmed.dropLast())
+                }
+        )
+        let env = HermesEnvService(context: context).load()
+        var configured: Set<String> = []
+        for platform in KnownPlatforms.all where platform.name != "cli" {
+            if topLevel.contains(platform.name) {
+                configured.insert(platform.name)
+            } else if let key = identifyingEnvVar(for: platform.name),
+                      let value = env[key], !value.isEmpty {
+                configured.insert(platform.name)
+            }
         }
-        // Env-var fallback: any identifying env var for this platform counts
-        // as "configured". Uses the shared `identifyingEnvVar(for:)` mapping.
-        if let key = Self.identifyingEnvVar(for: platform.name) {
-            let env = HermesEnvService(context: context).load()
-            if let value = env[key], !value.isEmpty { return true }
-        }
-        return false
+        return configured
     }
 
     /// Primary credential env var for a platform — the one whose presence
     /// signals that the user has started setup. Centralized here so both the
     /// connectivity detector and future diagnostics agree on the check.
-    private static func identifyingEnvVar(for platformName: String) -> String? {
+    nonisolated private static func identifyingEnvVar(for platformName: String) -> String? {
         switch platformName {
         case "telegram": return "TELEGRAM_BOT_TOKEN"
         case "discord": return "DISCORD_BOT_TOKEN"
@@ -100,9 +144,10 @@ final class PlatformsViewModel {
     func restartGateway() {
         restartInProgress = true
         message = "Restarting gateway…"
-        Task.detached { [fileService] in
+        Task.detached { [weak self, fileService] in
             let result = fileService.runHermesCLI(args: ["gateway", "restart"], timeout: 30)
-            await MainActor.run {
+            await MainActor.run { [weak self] in
+                guard let self else { return }
                 self.restartInProgress = false
                 self.message = result.exitCode == 0 ? "Gateway restarted" : "Restart failed"
                 self.load(force: true)

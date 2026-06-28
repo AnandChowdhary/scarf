@@ -83,42 +83,35 @@ public struct HermesCuratorArchivedSkill: Sendable, Equatable, Identifiable, Cod
     }
 }
 
-/// Result of `hermes curator prune --dry-run` — what would be removed
-/// if the user confirms. The view derives `totalCount` from
-/// `wouldRemove.count` so the wire shape stays flat.
-public struct CuratorPruneSummary: Sendable, Equatable, Codable {
-    public let wouldRemove: [HermesCuratorArchivedSkill]
-    public let totalBytes: Int
-    public var totalCount: Int { wouldRemove.count }
+/// One skill a `hermes curator prune` run would bulk-archive — an
+/// agent-created skill idle for at least the chosen threshold. Archiving is
+/// reversible (Restore), so this is a tidy-up, not a deletion.
+public struct CuratorPruneCandidate: Sendable, Equatable, Identifiable {
+    public var id: String { name }
+    public let name: String
+    public let idleDays: Int
 
-    public init(wouldRemove: [HermesCuratorArchivedSkill], totalBytes: Int) {
-        self.wouldRemove = wouldRemove
-        self.totalBytes = totalBytes
+    public init(name: String, idleDays: Int) {
+        self.name = name
+        self.idleDays = idleDays
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case wouldRemove = "would_remove"
-        case totalBytes = "total_bytes"
-    }
+    /// "idle 412d" — compact right-aligned column for the confirm sheet.
+    public var idleLabel: String { "idle \(idleDays)d" }
+}
 
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.wouldRemove = try c.decodeIfPresent([HermesCuratorArchivedSkill].self, forKey: .wouldRemove) ?? []
-        self.totalBytes = try c.decodeIfPresent(Int.self, forKey: .totalBytes) ?? 0
-    }
+/// Result of `hermes curator prune [--days N] --dry-run` — the agent-created
+/// skills idle ≥ `days` that a real prune would **bulk-archive** (reversibly;
+/// it is NOT a disk deletion). Parsed from the CLI's text output
+/// (`curator: N skill(s) idle >= Nd:` then `  <name> idle Nd` rows); Hermes
+/// has no `--json` for this verb. `days` is threaded through from the request.
+public struct CuratorPruneSummary: Sendable, Equatable {
+    public let candidates: [CuratorPruneCandidate]
+    public let days: Int
+    public var count: Int { candidates.count }
 
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(wouldRemove, forKey: .wouldRemove)
-        try c.encode(totalBytes, forKey: .totalBytes)
-    }
-
-    /// "12.3 KB" / "—" for empty. Convenience for the confirm sheet header.
-    public var totalBytesLabel: String {
-        guard totalBytes > 0 else { return "—" }
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useAll]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(totalBytes))
+    public init(candidates: [CuratorPruneCandidate], days: Int) {
+        self.candidates = candidates
+        self.days = days
     }
 }

@@ -1,10 +1,12 @@
 import Foundation
 
-/// Direct YAML editor for `gateway.platforms.<platform>.allowed_<kind>:` list
-/// blocks. Hermes v0.13 added these list-valued keys, but `hermes config set`
-/// stringifies arrays (the same gotcha that forced Home Assistant's watch
-/// lists to stay read-only). The Messaging Gateway editor sidesteps the CLI
-/// for these keys by editing `~/.hermes/config.yaml` directly.
+/// Direct YAML editor for top-level `<platform>.allowed_<kind>:` list blocks.
+/// Hermes v0.16 reads gateway allowlists from top-level platform sections
+/// (`slack.allowed_channels`, `telegram.allowed_chats`, …) — NOT from
+/// `gateway.platforms.<platform>.*`. `hermes config set` stringifies arrays
+/// (the same gotcha that forced Home Assistant's watch lists to stay
+/// read-only), so the Messaging Gateway editor sidesteps the CLI for these
+/// keys by editing `~/.hermes/config.yaml` directly.
 ///
 /// **Pure-function `setList`** is the heart of the editor — it splits the
 /// YAML into lines, finds (or creates) the targeted block, and splices the
@@ -12,6 +14,12 @@ import Foundation
 /// `saveList` wrapper wires it through `ServerContext.readText` /
 /// `writeText`, so the same code path works on `.local` and `.ssh` servers
 /// — local goes through `LocalTransport`, remote round-trips via SCP.
+///
+/// **Merge, don't clobber.** When the top-level `<platform>:` section already
+/// exists (e.g. it holds `slack.reply_to_mode` or `busy_ack_enabled`), the
+/// allowlist key is spliced in alongside its siblings, which stay
+/// byte-for-byte. Only when the section is entirely absent do we append a
+/// fresh `<platform>:` scaffold.
 ///
 /// **Scalar fields don't go through here.** `busy_ack_enabled`,
 /// `gateway_restart_notification`, and `slash_command_notice_ttl_seconds`
@@ -26,20 +34,20 @@ import Foundation
 /// the full grammar — only "find this block, replace it, preserve the rest".
 public enum GatewayConfigWriter {
 
-    /// Insert or replace `gateway.platforms.<platform>.<key>:` block in the
-    /// YAML, preserving everything else byte-for-byte.
+    /// Insert or replace the top-level `<platform>.<key>:` block in the YAML,
+    /// preserving everything else byte-for-byte.
     ///
     /// - When `items` is empty, the block (and only the block — siblings
     ///   stay) is removed from the YAML if present, and the function is a
     ///   no-op if the block was already absent.
-    /// - When the block is absent and `items` is non-empty, the function
-    ///   appends a `gateway:` / `platforms:` / `<platform>:` scaffold at
-    ///   the end of the file, creating any missing ancestors. This keeps
-    ///   the function idempotent on round-trip but means the new block is
-    ///   appended rather than spliced into an existing top-level
-    ///   `gateway:` section. (See WS-5 plan §Notes for the trade-off; the
-    ///   alternative would mean reflowing existing siblings, which is the
-    ///   exact opposite of "preserve the surrounding YAML byte-for-byte".)
+    /// - When the top-level `<platform>:` section exists but the `<key>:`
+    ///   leaf is missing, the new block is spliced into the existing section
+    ///   alongside any sibling keys (which stay byte-for-byte).
+    /// - When the `<platform>:` section is absent and `items` is non-empty,
+    ///   the function appends a `<platform>:` scaffold at the end of the
+    ///   file. This keeps the function idempotent on round-trip but means
+    ///   the new block is appended rather than spliced into the middle of
+    ///   the file — preserving the surrounding YAML byte-for-byte.
     /// - When the block is present, its bullet rows are replaced with the
     ///   new items at the same indent. Items containing YAML-special
     ///   characters (`:` `#` `@` or leading whitespace) are single-quoted
@@ -50,15 +58,13 @@ public enum GatewayConfigWriter {
         key: String,
         items: [String]
     ) -> String {
-        let blockIndent = 6  // `gateway:\n  platforms:\n    <platform>:\n      <key>:`
-        let itemIndent = 8
+        let keyIndent = 2   // `<platform>:\n  <key>:`
+        let itemIndent = 4  // `<platform>:\n  <key>:\n    - item`
 
         let lines = yaml.components(separatedBy: "\n")
         let trimmedItems = items.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
 
-        // Locate `      <key>:` whose lineage is gateway → platforms → <platform>.
-        // We find the start of the gateway block, walk down the indent tree, and
-        // bail out if any ancestor is missing.
+        // Locate `  <key>:` whose parent is the top-level `<platform>:` section.
         let location = locateBlock(
             in: lines,
             platform: platform,
@@ -72,7 +78,7 @@ public enum GatewayConfigWriter {
                 blockRange: blockRange,
                 key: key,
                 items: trimmedItems,
-                blockIndent: blockIndent,
+                keyIndent: keyIndent,
                 itemIndent: itemIndent
             )
         case .platformPresentKeyMissing(let insertAfter):
@@ -85,9 +91,10 @@ public enum GatewayConfigWriter {
                 insertAfterLineIndex: insertAfter,
                 key: key,
                 items: trimmedItems,
+                keyIndent: keyIndent,
                 itemIndent: itemIndent
             )
-        case .ancestorMissing:
+        case .platformMissing:
             if trimmedItems.isEmpty {
                 // Nothing to write, no existing block.
                 return yaml
@@ -130,15 +137,15 @@ public enum GatewayConfigWriter {
         /// rows attributed to it. Replacing this slice with the new block
         /// completes the edit.
         case found(ClosedRange<Int>)
-        /// `gateway → platforms → <platform>` exists, but the leaf `<key>:`
+        /// The top-level `<platform>:` section exists, but the leaf `<key>:`
         /// is absent under it. The associated value is the line index after
         /// which the new key should be inserted (last line in the platform's
         /// block, or the platform header itself if the platform's body is
         /// empty).
         case platformPresentKeyMissing(insertAfter: Int)
-        /// One of the ancestor section headers is missing. The whole
+        /// The top-level `<platform>:` section is missing entirely. The whole
         /// scaffold needs to be appended.
-        case ancestorMissing
+        case platformMissing
     }
 
     private static func locateBlock(
@@ -146,32 +153,16 @@ public enum GatewayConfigWriter {
         platform: String,
         key: String
     ) -> BlockLocation {
-        // Walk top-to-bottom looking for `gateway:` at indent 0.
-        guard let gatewayIdx = firstIndex(of: lines, headerLineEqualTo: "gateway:", indent: 0) else {
-            return .ancestorMissing
-        }
-        // Inside `gateway:`, find `  platforms:` at indent 2.
-        guard let platformsIdx = firstIndex(
-            of: lines,
-            after: gatewayIdx,
-            headerLineEqualTo: "platforms:",
-            indent: 2,
-            stopWhenIndentLessThan: 2
-        ) else {
-            return .ancestorMissing
-        }
-        // Inside `platforms:`, find `    <platform>:` at indent 4.
+        // Walk top-to-bottom looking for `<platform>:` at indent 0.
         guard let platformIdx = firstIndex(
             of: lines,
-            after: platformsIdx,
             headerLineEqualTo: "\(platform):",
-            indent: 4,
-            stopWhenIndentLessThan: 4
+            indent: 0
         ) else {
-            return .ancestorMissing
+            return .platformMissing
         }
 
-        // Inside the platform block, find `<key>:` at indent 6, OR the end
+        // Inside the platform block, find `<key>:` at indent 2, OR the end
         // of the platform's body if the key is missing.
         var keyIdx: Int?
         var lastBodyIdx = platformIdx
@@ -184,11 +175,11 @@ public enum GatewayConfigWriter {
                 i += 1
                 continue
             }
-            if indent < 6 {
-                // Out of the platform's block.
+            if indent < 2 {
+                // Out of the platform's block (next top-level section).
                 break
             }
-            if indent == 6 && trimmed == "\(key):" {
+            if indent == 2 && trimmed == "\(key):" {
                 keyIdx = i
                 break
             }
@@ -201,7 +192,7 @@ public enum GatewayConfigWriter {
         }
 
         // Walk down the bullet rows until we leave the block (indent shrinks
-        // below the bullet indent OR we hit a sibling key at indent 6).
+        // below the bullet indent OR we hit a sibling key at indent 2).
         var endIdx = keyIdx
         var j = keyIdx + 1
         while j < lines.count {
@@ -213,19 +204,19 @@ public enum GatewayConfigWriter {
             }
             let indent = leadingSpaces(line)
             // Block-style YAML allows bullets at the same indent as their
-            // parent key; tolerate 6-space `- item` rows alongside the
-            // canonical 8-space ones.
+            // parent key; tolerate 2-space `- item` rows alongside the
+            // canonical 4-space ones.
             let isBullet = trimmed.hasPrefix("- ")
-            if isBullet && (indent == 8 || indent == 6) {
+            if isBullet && (indent == 4 || indent == 2) {
                 endIdx = j
                 j += 1
                 continue
             }
-            // Anything not a bullet at indent ≥ 8 ends the block.
-            if indent <= 6 {
+            // Anything not a bullet at indent ≤ 2 ends the block.
+            if indent <= 2 {
                 break
             }
-            // Indent > 8 with no bullet — unusual but tolerate (e.g. inline
+            // Indent > 4 with no bullet — unusual but tolerate (e.g. inline
             // continuation). Treat as still in the block and advance.
             endIdx = j
             j += 1
@@ -239,12 +230,12 @@ public enum GatewayConfigWriter {
         blockRange: ClosedRange<Int>,
         key: String,
         items: [String],
-        blockIndent: Int,
+        keyIndent: Int,
         itemIndent: Int
     ) -> String {
         var newLines = Array(lines.prefix(blockRange.lowerBound))
         if !items.isEmpty {
-            newLines.append("\(spaces(blockIndent))\(key):")
+            newLines.append("\(spaces(keyIndent))\(key):")
             for item in items {
                 newLines.append("\(spaces(itemIndent))- \(yamlQuoteIfNeeded(item))")
             }
@@ -262,10 +253,11 @@ public enum GatewayConfigWriter {
         insertAfterLineIndex: Int,
         key: String,
         items: [String],
+        keyIndent: Int,
         itemIndent: Int
     ) -> String {
         var newLines = Array(lines.prefix(insertAfterLineIndex + 1))
-        newLines.append("      \(key):")
+        newLines.append("\(spaces(keyIndent))\(key):")
         for item in items {
             newLines.append("\(spaces(itemIndent))- \(yamlQuoteIfNeeded(item))")
         }
@@ -294,12 +286,10 @@ public enum GatewayConfigWriter {
         if !trimmed.isEmpty {
             lines.append("")  // blank separator
         }
-        lines.append("gateway:")
-        lines.append("  platforms:")
-        lines.append("    \(platform):")
-        lines.append("      \(key):")
+        lines.append("\(platform):")
+        lines.append("  \(key):")
         for item in items {
-            lines.append("        - \(yamlQuoteIfNeeded(item))")
+            lines.append("    - \(yamlQuoteIfNeeded(item))")
         }
         lines.append("")  // trailing newline so subsequent edits append cleanly
         return trimmed + lines.joined(separator: "\n")
@@ -329,35 +319,6 @@ public enum GatewayConfigWriter {
             if leadingSpaces(line) == indent && trimmed == header {
                 return i
             }
-        }
-        return nil
-    }
-
-    /// Scoped variant: search starts at `after + 1`, stops if a line at indent
-    /// `< stopWhenIndentLessThan` is encountered (we've left the parent block).
-    private static func firstIndex(
-        of lines: [String],
-        after: Int,
-        headerLineEqualTo header: String,
-        indent: Int,
-        stopWhenIndentLessThan: Int
-    ) -> Int? {
-        var i = after + 1
-        while i < lines.count {
-            let line = lines[i]
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") {
-                i += 1
-                continue
-            }
-            let lineIndent = leadingSpaces(line)
-            if lineIndent < stopWhenIndentLessThan {
-                return nil
-            }
-            if lineIndent == indent && trimmed == header {
-                return i
-            }
-            i += 1
         }
         return nil
     }

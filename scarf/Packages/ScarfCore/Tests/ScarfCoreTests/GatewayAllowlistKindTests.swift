@@ -11,9 +11,9 @@ import Foundation
         #expect(GatewayAllowlistKind.kind(for: "mattermost") == .channels)
         #expect(GatewayAllowlistKind.kind(for: "google-chat") == .channels)
         #expect(GatewayAllowlistKind.kind(for: "telegram")   == .chats)
-        #expect(GatewayAllowlistKind.kind(for: "whatsapp")   == .chats)
         #expect(GatewayAllowlistKind.kind(for: "matrix")     == .rooms)
-        #expect(GatewayAllowlistKind.kind(for: "dingtalk")   == .rooms)
+        // v0.16: Hermes reads `dingtalk.allowed_chats`, not allowed_rooms.
+        #expect(GatewayAllowlistKind.kind(for: "dingtalk")   == .chats)
     }
 
     @Test func acceptsBothGoogleChatSpellings() {
@@ -25,6 +25,11 @@ import Foundation
 
     @Test func returnsNilForPlatformsWithoutAllowlist() {
         #expect(GatewayAllowlistKind.kind(for: "cli")            == nil)
+        // whatsapp gates senders via allow_from / dm_policy, NOT an
+        // allowed_chats list — writing whatsapp.allowed_chats is a silent
+        // no-op (verified vs v0.17 gateway/platforms/whatsapp.py), so it is
+        // intentionally excluded from this chat-id allowlist editor.
+        #expect(GatewayAllowlistKind.kind(for: "whatsapp")       == nil)
         #expect(GatewayAllowlistKind.kind(for: "yuanbao")        == nil)
         #expect(GatewayAllowlistKind.kind(for: "microsoft-teams") == nil)
         #expect(GatewayAllowlistKind.kind(for: "discord")        == nil)

@@ -8,12 +8,14 @@ tags:
 - ssh
 source_sha: 427321d742d63298100f9e444f96fd1524d7a46c
 source_paths: README.md, scarf/scarf.xcodeproj/project.pbxproj, scarf/Packages/ScarfDesign
+updated: 2026-06-25
 ---
 
 ## Observations
 - [structure] ScarfGo is a separate iOS target (`scarf mobile`) in the same Xcode project. Both `scarf` (Mac) and `scarf mobile` import the shared `ScarfDesign` and `ScarfCore` Swift packages under `scarf/Packages/`. #targets
 - [design] ScarfGo uses pure-Swift SSH via Citadel — no `ssh` binary on iOS. Generates Ed25519 keypair on device; private key stored in iOS Keychain with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, excluded from iCloud sync. #security
 - [scope] Feature surface: multi-server, project-scoped chat, session resume, memory editor, cron list, skills tree, settings (read-only). All sessions are scoped to a project via the same Scarf-managed AGENTS.md block the Mac app writes. #features
+- [profiles] Profile switching (#120, Design B): ScarfGo switches WHICH Hermes profile it views per-server WITHOUT mutating the host's `active_profile` (Mac app/terminal undisturbed). File layer scopes via `IOSServerConfig.remoteHome` → `HermesPathSet`; process layer (chat ACP + every hermes CLI) prepends `HERMES_HOME=<root>/profiles/<name>` via `HermesProfileScope.hermesHomeShellAssignment` in `CitadelServerTransport.asyncRunProcess`/`ACPClient+iOS`. Selection lives in `ScarfGoCoordinator.selectedProfile` (persisted per-server via `IOSProfileSelectionStore`); `ScarfGoTabRoot` rebuilds the tab tree (`.id`) on switch and `ChatController.deinit` tears down the old ACP session. `ProfilesView` is now a switcher (was read-only). Create/rename/delete/import-export stay Mac-only. #profiles #ios
 - [distribution] Public TestFlight: https://testflight.apple.com/join/qCrRpcTz . Requires iOS 18.0+. #distribution
 - [constraint] iOS Dynamic Type clamped at scene root in `ScarfIOSApp.swift`: `.dynamicTypeSize(.xSmall ... .accessibility2)`. iOS adopts native `.navigationTitle` + `.large` instead of `ScarfPageHeader` on tab roots. #accessibility
 

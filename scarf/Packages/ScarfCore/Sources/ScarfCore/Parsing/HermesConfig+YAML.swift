@@ -189,7 +189,9 @@ public extension HermesConfig {
             requireMention: bool("telegram.require_mention", default: true),
             reactions: bool("telegram.reactions", default: false),
             disableTopicAutoRename: bool("telegram.disable_topic_auto_rename", default: false),
-            ignoreRootDM: bool("platforms.telegram.extra.ignore_root_dm", default: false)
+            ignoreRootDM: bool("platforms.telegram.extra.ignore_root_dm", default: false),
+            richMessages: bool("platforms.telegram.extra.rich_messages", default: true),
+            statusIndicator: bool("platforms.telegram.extra.status_indicator", default: false)
         )
 
         // -- v0.15: Signal group-only require_mention + ntfy (23rd platform).
@@ -203,6 +205,21 @@ public extension HermesConfig {
             publishTopic: str("platforms.ntfy.extra.publish_topic"),
             token: str("platforms.ntfy.extra.token"),
             markdown: bool("platforms.ntfy.extra.markdown", default: false)
+        )
+
+        // -- v0.17: WhatsApp Business Cloud API (`platforms.whatsapp_cloud.extra.*`).
+        // Meta's hosted webhook path; creds + verify/app secrets live in the YAML
+        // extra block (not .env). dm_policy gates DMs (allowlist activates allow_from).
+        let whatsappCloud = WhatsAppCloudSettings(
+            phoneNumberID: str("platforms.whatsapp_cloud.extra.phone_number_id"),
+            accessToken: str("platforms.whatsapp_cloud.extra.access_token"),
+            verifyToken: str("platforms.whatsapp_cloud.extra.verify_token"),
+            appSecret: str("platforms.whatsapp_cloud.extra.app_secret"),
+            appID: str("platforms.whatsapp_cloud.extra.app_id"),
+            wabaID: str("platforms.whatsapp_cloud.extra.waba_id"),
+            apiVersion: str("platforms.whatsapp_cloud.extra.api_version", default: "v20.0"),
+            dmPolicy: str("platforms.whatsapp_cloud.extra.dm_policy", default: "open"),
+            allowFrom: str("platforms.whatsapp_cloud.extra.allow_from")
         )
 
         // -- v0.15: Bitwarden Secrets Manager bootstrap (`secrets.bitwarden.*`).
@@ -264,19 +281,15 @@ public extension HermesConfig {
         )
 
         // -- v0.13: per-platform Messaging Gateway settings --------------
-        // Read `gateway.platforms.<platform>.{allowed_channels|allowed_chats|
-        // allowed_rooms|busy_ack_enabled|gateway_restart_notification|
-        // slash_command_notice_ttl_seconds}` and bundle each platform that
-        // has at least one v0.13 key present in the file. Platforms without
-        // an explicit block don't appear in the dictionary, so the
-        // editor's `?? .empty` fallback hands the user the v0.13 defaults
-        // without leaving stale keys littered across the YAML.
-        //
-        // TODO(WS-5-Q2): the `gateway.platforms.*` path is unverified —
-        // Hermes v0.13 may emit allowlists under `platforms.<platform>.*`
-        // (sibling to existing `platforms.slack.reply_to_mode`) instead.
-        // If so, swap the `prefix` line below to `"platforms.\(platform)."`
-        // and update `GatewayConfigWriter` in lockstep.
+        // Allowlists live at top-level `<platform>.allowed_*` (verified
+        // v0.16): `slack.allowed_channels`, `telegram.allowed_chats`,
+        // `matrix.allowed_rooms`, `dingtalk.allowed_chats`, plus the
+        // top-level `<platform>.gateway_restart_notification` toggle.
+        // `busy_ack_enabled` / `slash_command_notice_ttl_seconds` are
+        // no-ops in v0.16 but kept for round-trip. Platforms without an
+        // explicit block don't appear in the dictionary, so the editor's
+        // `?? .empty` fallback hands the user the defaults without leaving
+        // stale keys littered across the YAML.
         let gatewayAllowlistPlatforms = [
             "slack", "mattermost", "google-chat",
             "telegram", "whatsapp",
@@ -284,7 +297,7 @@ public extension HermesConfig {
         ]
         var gatewayPlatforms: [String: GatewayPlatformSettings] = [:]
         for platform in gatewayAllowlistPlatforms {
-            let prefix = "gateway.platforms.\(platform)."
+            let prefix = "\(platform)."
             let allowedChannels = lists[prefix + "allowed_channels"] ?? []
             let allowedChats    = lists[prefix + "allowed_chats"]    ?? []
             let allowedRooms    = lists[prefix + "allowed_rooms"]    ?? []
@@ -351,6 +364,8 @@ public extension HermesConfig {
             approvalTimeout: int("approvals.timeout", default: 60),
             fileReadMaxChars: int("file_read_max_chars", default: 100_000),
             cronWrapResponse: bool("cron.wrap_response", default: true),
+            curatorConsolidate: bool("curator.consolidate", default: false),
+            maxConcurrentSessions: int("max_concurrent_sessions", default: 0),
             prefillMessagesFile: str("prefill_messages_file"),
             skillsExternalDirs: lists["skills.external_dirs"] ?? [],
             platformToolsets: platformToolsets,
@@ -377,16 +392,17 @@ public extension HermesConfig {
             runtimeMetadataFooter: bool("agent.runtime_metadata_footer", default: false),
             gatewayPlatforms: gatewayPlatforms,
             // -- v0.13 additions -------------------------------------
-            // TODO(WS-6-Q1): the `openrouter.response_cache.enabled`
-            // key shape is provisional pending verification against a
-            // v0.13 `hermes config check`. If upstream uses a different
-            // path (e.g. `providers.openrouter.response_cache_enabled`
-            // or nested under `prompt_caching`), update this single
-            // line + the matching `setSetting` key in
-            // `SettingsViewModel.setOpenRouterResponseCache`. Default
-            // is `false` per WS-6-plan §Open Questions #2.
+            // Hermes v0.16: `openrouter.response_cache` is a SCALAR bool
+            // directly under `openrouter:` (default `true` in Hermes).
+            // Read it as the scalar. A legacy nested value
+            // (`openrouter.response_cache.enabled: …`) flattens to a
+            // different dotted key, so it has no scalar entry here and
+            // decodes to the default `false` — the next save writes the
+            // scalar, healing the shape. Keep in lockstep with the
+            // matching `setSetting` key in
+            // `SettingsViewModel.setOpenRouterResponseCache`.
             imageGenModel: str("image_gen.model", default: ""),
-            openrouterResponseCacheEnabled: bool("openrouter.response_cache.enabled", default: false),
+            openrouterResponseCacheEnabled: bool("openrouter.response_cache", default: false),
             // Pre-v0.13 hosts wrote a single `web_tools.backend`. v0.13 split
             // it into per-capability keys. Read all three so the round-trip
             // never loses a value the user already set; the WebTools tab
@@ -396,6 +412,7 @@ public extension HermesConfig {
             webToolsExtractBackend: str("web_tools.extract.backend", default: "reader"),
             // -- v0.15 additions -------------------------------------
             ntfy: ntfy,
+            whatsappCloud: whatsappCloud,
             signal: signal,
             bitwarden: bitwarden
         )

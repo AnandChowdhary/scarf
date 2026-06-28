@@ -84,6 +84,11 @@ public enum KnownPlatforms {
         // topic; auth is an optional bearer token or `user:pass` Basic.
         // Identifier matches Hermes's gateway platform name verbatim.
         HermesToolPlatform(name: "ntfy", displayName: "ntfy", icon: "bell.badge"),
+        // -- v0.17 additions ---------------------------------------------
+        // WhatsApp Business Cloud API (25th platform) — Meta's hosted webhook
+        // path, distinct from the older `whatsapp` web-bridge. iMessage via
+        // Photon (24th) is intentionally not surfaced yet (moving protocol).
+        HermesToolPlatform(name: "whatsapp_cloud", displayName: "WhatsApp Cloud", icon: "phone.bubble.fill"),
     ]
 
     public static func icon(for platform: String) -> String {
@@ -107,6 +112,7 @@ public enum KnownPlatforms {
         case "line": return "bubble.left.and.text.bubble.right"
         case "simplex": return "lock.shield.fill"
         case "ntfy": return "bell.badge"
+        case "whatsapp_cloud": return "phone.bubble.fill"
         default: return "bubble.left"
         }
     }

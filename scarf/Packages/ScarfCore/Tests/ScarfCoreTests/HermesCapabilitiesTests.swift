@@ -415,4 +415,93 @@ import Foundation
         let caps = HermesCapabilities.empty
         #expect(!caps.isV015OrLater)
     }
+
+    // MARK: - v0.16 capability flags (backfilled — the v0.16 cycle shipped the
+    // flags without this cluster; surfaced by the v0.17 audit)
+
+    @Test func v016FlagsAllOnForV016Host() {
+        let caps = HermesCapabilities.parseLine("Hermes Agent v0.16.0 (2026.6.5)")
+        #expect(caps.hasSessionsRename)
+        #expect(caps.hasSessionsOptimize)
+        #expect(caps.hasKanbanGoalMode)
+        #expect(caps.hasInsightsCommand)
+        #expect(caps.hasDashboardCommand)
+        #expect(caps.isV016OrLater)
+    }
+
+    @Test func v015HostHidesV016Flags() {
+        // Every v0.16 flag must stay off on a pristine v0.15 host.
+        let caps = HermesCapabilities.parseLine("Hermes Agent v0.15.2 (2026.5.29)")
+        #expect(!caps.hasSessionsRename)
+        #expect(!caps.hasSessionsOptimize)
+        #expect(!caps.hasKanbanGoalMode)
+        #expect(!caps.hasInsightsCommand)
+        #expect(!caps.hasDashboardCommand)
+        #expect(!caps.isV016OrLater)
+        // v0.15 surfaces stay alive on a v0.15 host.
+        #expect(caps.hasBitwarden)
+        #expect(caps.isV015OrLater)
+    }
+
+    // MARK: - v0.17 capability flags
+
+    @Test func v017FlagsAllOnForV017Host() {
+        let caps = HermesCapabilities.parseLine("Hermes Agent v0.17.0 (2026.6.19)")
+        // v0.17 config surfaces.
+        #expect(caps.hasCuratorConsolidate)
+        #expect(caps.hasMaxConcurrentSessions)
+        // v0.17 gateway platforms + Telegram.
+        #expect(caps.hasPhotonPlatform)
+        #expect(caps.hasWhatsAppCloudPlatform)
+        #expect(caps.hasTelegramRichMessages)
+        // Convenience predicate.
+        #expect(caps.isV017OrLater)
+    }
+
+    @Test func v016HostHidesV017Flags() {
+        // Every v0.17 flag must stay off on a pristine v0.16 host so the UI
+        // degrades silently; v0.16 flags themselves remain on.
+        let caps = HermesCapabilities.parseLine("Hermes Agent v0.16.0 (2026.6.5)")
+        #expect(!caps.hasCuratorConsolidate)
+        #expect(!caps.hasMaxConcurrentSessions)
+        #expect(!caps.hasPhotonPlatform)
+        #expect(!caps.hasWhatsAppCloudPlatform)
+        #expect(!caps.hasTelegramRichMessages)
+        #expect(!caps.isV017OrLater)
+        // v0.16 surfaces stay alive on a v0.16 host.
+        #expect(caps.hasSessionsRename)
+        #expect(caps.isV016OrLater)
+    }
+
+    @Test func v0_17_patchReleaseStillEnablesAllFlags() {
+        // A future v0.17.x patch should still enable every v0.17 flag —
+        // patches don't roll back capability gates.
+        let caps = HermesCapabilities.parseLine("Hermes Agent v0.17.1 (2026.6.26)")
+        #expect(caps.hasCuratorConsolidate)
+        #expect(caps.hasPhotonPlatform)
+        #expect(caps.hasWhatsAppCloudPlatform)
+        #expect(caps.isV017OrLater)
+    }
+
+    // MARK: - isV016OrLater / isV017OrLater convenience predicates
+
+    @Test func isV016OrLater_v016HostTrue() {
+        #expect(HermesCapabilities.parseLine("Hermes Agent v0.16.0 (2026.6.5)").isV016OrLater)
+    }
+
+    @Test func isV016OrLater_v015HostFalse() {
+        #expect(!HermesCapabilities.parseLine("Hermes Agent v0.15.2 (2026.5.29)").isV016OrLater)
+    }
+
+    @Test func isV017OrLater_v017HostTrue() {
+        #expect(HermesCapabilities.parseLine("Hermes Agent v0.17.0 (2026.6.19)").isV017OrLater)
+    }
+
+    @Test func isV017OrLater_v016HostFalse() {
+        #expect(!HermesCapabilities.parseLine("Hermes Agent v0.16.0 (2026.6.5)").isV017OrLater)
+    }
+
+    @Test func isV017OrLater_emptyFalse() {
+        #expect(!HermesCapabilities.empty.isV017OrLater)
+    }
 }

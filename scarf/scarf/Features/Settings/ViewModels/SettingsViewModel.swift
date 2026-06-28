@@ -104,8 +104,16 @@ final class SettingsViewModel {
             }
         } else {
             logger.warning("hermes config set \(key) failed (exit \(result.exitCode)): \(result.output)")
-            saveMessage = "Failed to save \(key)"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            // Surface the CLI's reason instead of a generic failure — e.g.
+            // "Cannot set '<key>': it is managed by your administrator" when the
+            // key is pinned under managed scope (/etc/hermes), so the user
+            // understands why the control snapped back. Verbatim CLI tail.
+            let reason = result.output
+                .split(separator: "\n")
+                .last
+                .map { String($0).trimmingCharacters(in: .whitespaces) } ?? ""
+            saveMessage = reason.isEmpty ? "Failed to save \(key)" : "Couldn’t save \(key): \(reason)"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
                 self?.saveMessage = nil
             }
         }
@@ -268,14 +276,15 @@ final class SettingsViewModel {
     /// invoke this setter.
     func setImageGenModel(_ value: String) { setSetting("image_gen.model", value: value) }
 
-    /// `openrouter.response_cache.enabled` — toggles OpenRouter
-    /// response caching for repeat prompts (Hermes v0.13+).
-    /// Capability-gated in `AuxiliaryTab` so pre-v0.13 hosts never
-    /// invoke this setter.
-    // TODO(WS-6-Q1): the YAML key path is provisional — keep in lockstep
-    // with `HermesConfig+YAML.swift`'s parser line.
+    /// `openrouter.response_cache` — toggles OpenRouter response caching
+    /// for repeat prompts. Hermes v0.16 reads this as a SCALAR bool
+    /// directly under `openrouter:` (writing the nested `.enabled` shape
+    /// would be read as a truthy dict, so disabling it would silently
+    /// stay on). Capability-gated in `AuxiliaryTab` so pre-v0.13 hosts
+    /// never invoke this setter. Keep in lockstep with the parser line in
+    /// `HermesConfig+YAML.swift`.
     func setOpenRouterResponseCache(_ value: Bool) {
-        setSetting("openrouter.response_cache.enabled", value: value ? "true" : "false")
+        setSetting("openrouter.response_cache", value: value ? "true" : "false")
     }
 
     // MARK: - Security / Privacy
@@ -327,6 +336,12 @@ final class SettingsViewModel {
     func setDelegationBaseURL(_ value: String) { setSetting("delegation.base_url", value: value) }
     func setDelegationMaxIterations(_ value: Int) { setSetting("delegation.max_iterations", value: String(value)) }
     func setCronWrapResponse(_ value: Bool) { setSetting("cron.wrap_response", value: value ? "true" : "false") }
+
+    // MARK: - v0.17 config surfaces
+    /// v0.17 — curator LLM consolidation pass (opt-in; deterministic pruning stays on).
+    func setCuratorConsolidate(_ value: Bool) { setSetting("curator.consolidate", value: value ? "true" : "false") }
+    /// v0.17 — cap on simultaneously-active chat sessions (0 = unbounded).
+    func setMaxConcurrentSessions(_ value: Int) { setSetting("max_concurrent_sessions", value: String(value)) }
 
     // MARK: - Config diagnostics
 

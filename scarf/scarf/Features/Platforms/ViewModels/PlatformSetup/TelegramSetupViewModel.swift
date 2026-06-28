@@ -27,6 +27,10 @@ final class TelegramSetupViewModel {
     var disableTopicAutoRename: Bool = false
     /// Hermes v0.15 — `platforms.telegram.extra.ignore_root_dm`.
     var ignoreRootDM: Bool = false
+    /// Hermes v0.17 — `platforms.telegram.extra.rich_messages` (Bot API 10.1; default on).
+    var richMessages: Bool = true
+    /// Hermes v0.17 — `platforms.telegram.extra.status_indicator` (opt-in presence label).
+    var statusIndicator: Bool = false
 
     var message: String?
 
@@ -44,6 +48,8 @@ final class TelegramSetupViewModel {
         reactions = cfg.telegram.reactions
         disableTopicAutoRename = cfg.telegram.disableTopicAutoRename
         ignoreRootDM = cfg.telegram.ignoreRootDM
+        richMessages = cfg.telegram.richMessages
+        statusIndicator = cfg.telegram.statusIndicator
     }
 
     func save() {
@@ -59,7 +65,9 @@ final class TelegramSetupViewModel {
             "telegram.require_mention": PlatformSetupHelpers.envBool(requireMention),
             "telegram.reactions": PlatformSetupHelpers.envBool(reactions),
             "telegram.disable_topic_auto_rename": PlatformSetupHelpers.envBool(disableTopicAutoRename),
-            "platforms.telegram.extra.ignore_root_dm": PlatformSetupHelpers.envBool(ignoreRootDM)
+            "platforms.telegram.extra.ignore_root_dm": PlatformSetupHelpers.envBool(ignoreRootDM),
+            "platforms.telegram.extra.rich_messages": PlatformSetupHelpers.envBool(richMessages),
+            "platforms.telegram.extra.status_indicator": PlatformSetupHelpers.envBool(statusIndicator)
         ]
         message = PlatformSetupHelpers.saveForm(context: context, envPairs: envPairs, configKV: configKV)
         clearMessageAfterDelay()
