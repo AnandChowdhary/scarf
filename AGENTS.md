@@ -62,8 +62,8 @@ decisions and learnings.
   note depends on to `write_memory` (`source_paths: ["path/one.swift", …]`) and Memophant stamps
   them against the current commit so drift is detectable. Omit for pure human-decision notes.
   A note with no `source_paths` can't be drift-checked — this is the signal that keeps memory honest.
-- Set `status` only to flag a deviation — `provisional` (unverified) or a retired state
-  (`deprecated`/`superseded`/`historical`/`resolved`); an active, current fact needs none.
+- Set `status` only to flag a retired state — `deprecated`/`superseded`/`historical`/`resolved`;
+  an active, current fact needs none.
 
 **2. Wiki (`wiki/`) — long-form reference docs.** Guides, architecture deep-dives, runbooks, and
 design notes. Deliberately kept OUT of this auto-loaded file to save context — search it on demand
