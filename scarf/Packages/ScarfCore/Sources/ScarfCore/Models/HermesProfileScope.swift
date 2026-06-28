@@ -136,19 +136,24 @@ public enum HermesProfileScope {
     /// user's own configured home — but we escape it regardless.
     public static func hermesHomeShellAssignment(forHome home: String) -> String {
         guard isProfileHome(home) else { return "" }
-        return "HERMES_HOME=\(shellQuoteHome(home)) "
+        return "HERMES_HOME=\(shellQuotePath(home)) "
     }
 
-    /// Quote a home path for safe interpolation into a double-quoted-free
-    /// remote shell command. Mirrors `RemoteSQLiteBackend`'s fallback path.
-    private static func shellQuoteHome(_ home: String) -> String {
-        if home == "~" {
+    /// Quote a remote path for safe interpolation into a shell command.
+    /// A leading `~`/`~/` becomes a live `$HOME` so the shell expands it,
+    /// with the remainder escaped so `$HOME` still expands but injected
+    /// `$()`/backtick/quote are inert; any other (absolute) path is
+    /// single-quoted and fully inert. Single source of truth for both the
+    /// `HERMES_HOME=` assignment above and the iOS `cd <project>` prefix in
+    /// `ACPClient+iOS` — the iOS counterpart to Mac's `SSHTransport.remotePathArg`.
+    public static func shellQuotePath(_ path: String) -> String {
+        if path == "~" {
             return "\"$HOME\""
         }
-        if home.hasPrefix("~/") {
+        if path.hasPrefix("~/") {
             // Escape backslash FIRST, then the rest, so `$HOME` still
             // expands but injected `$()`/backtick/quote are inert.
-            let rest = String(home.dropFirst(2))
+            let rest = String(path.dropFirst(2))
                 .replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"", with: "\\\"")
                 .replacingOccurrences(of: "$", with: "\\$")
@@ -156,7 +161,7 @@ public enum HermesProfileScope {
             return "\"$HOME/\(rest)\""
         }
         // Absolute (or other) path → single-quote; no expansion at all.
-        return "'" + home.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     /// Trim trailing slashes from a base home, preserving a lone `"/"`.

@@ -1483,16 +1483,17 @@ final class ChatController {
         pendingStartIntent = nil
     }
 
-    /// Open the SSH exec channel, send ACP `initialize`, then
-    /// `session/new` — so that by the time `state == .ready` the user
-    /// can type and hit send immediately.
-    func start() async {
-        if state == .connecting || state == .ready { return }
-        guard await passModelPreflight(intent: .fresh) else { return }
-        state = .connecting
-        vm.reset()
-        let client = ACPClient.forIOSApp(
+    /// Build an `ACPClient` for this controller's server, wired with the
+    /// shared Keychain key provider. `projectCwd` (when set) is threaded to
+    /// `forIOSApp` so `hermes acp` spawns IN the project dir and Hermes
+    /// loads its `AGENTS.md` / `CLAUDE.md` / `.cursorrules` (it reads
+    /// context files from the process cwd, not the ACP session cwd) — the
+    /// iOS counterpart to Mac's project-cwd spawn. Single source of truth
+    /// for the four chat-start paths (fresh / project / resume / reconnect).
+    private func makeClient(projectCwd: String? = nil) -> ACPClient {
+        ACPClient.forIOSApp(
             context: context,
+            projectCwd: projectCwd,
             keyProvider: {
                 let store = KeychainSSHKeyStore()
                 guard let key = try await store.load() else {
@@ -1504,6 +1505,17 @@ final class ChatController {
                 return key
             }
         )
+    }
+
+    /// Open the SSH exec channel, send ACP `initialize`, then
+    /// `session/new` — so that by the time `state == .ready` the user
+    /// can type and hit send immediately.
+    func start() async {
+        if state == .connecting || state == .ready { return }
+        guard await passModelPreflight(intent: .fresh) else { return }
+        state = .connecting
+        vm.reset()
+        let client = makeClient()
         self.client = client
 
         // Hand the VM a closure that can fetch the ACPClient's recent
@@ -2048,19 +2060,7 @@ final class ChatController {
                     guard !Task.isCancelled else { return }
                 }
 
-                let client = ACPClient.forIOSApp(
-                    context: context,
-                    keyProvider: {
-                        let store = KeychainSSHKeyStore()
-                        guard let key = try await store.load() else {
-                            throw SSHKeyStoreError.backendFailure(
-                                message: "No SSH key in Keychain — re-run onboarding.",
-                                osStatus: nil
-                            )
-                        }
-                        return key
-                    }
-                )
+                let client = makeClient(projectCwd: lastProjectPath)
 
                 do {
                     try await client.start()
@@ -2245,19 +2245,7 @@ final class ChatController {
         }
         guard await passModelPreflight(intent: intent) else { return }
         state = .connecting
-        let client = ACPClient.forIOSApp(
-            context: context,
-            keyProvider: {
-                let store = KeychainSSHKeyStore()
-                guard let key = try await store.load() else {
-                    throw SSHKeyStoreError.backendFailure(
-                        message: "No SSH key in Keychain — re-run onboarding.",
-                        osStatus: nil
-                    )
-                }
-                return key
-            }
-        )
+        let client = makeClient(projectCwd: projectPath)
         self.client = client
         vm.acpStderrProvider = { [weak client] in
             await client?.recentStderr ?? ""
@@ -2380,19 +2368,7 @@ final class ChatController {
         }
 
         state = .connecting
-        let client = ACPClient.forIOSApp(
-            context: context,
-            keyProvider: {
-                let store = KeychainSSHKeyStore()
-                guard let key = try await store.load() else {
-                    throw SSHKeyStoreError.backendFailure(
-                        message: "No SSH key in Keychain — re-run onboarding.",
-                        osStatus: nil
-                    )
-                }
-                return key
-            }
-        )
+        let client = makeClient(projectCwd: resolved?.path)
         self.client = client
         vm.acpStderrProvider = { [weak client] in
             await client?.recentStderr ?? ""
@@ -2410,15 +2386,24 @@ final class ChatController {
         startHealthMonitor(client: client)
 
         do {
-            let home = await context.resolvedUserHome()
+            // Project-scoped sessions resume with their project path as
+            // cwd (matching the reconnect path); others use the remote
+            // user's home. Hermes loads project context from the process
+            // cwd set at spawn (forIOSApp projectCwd), not from this.
+            let cwd: String
+            if let projectPath = resolved?.path {
+                cwd = projectPath
+            } else {
+                cwd = await context.resolvedUserHome()
+            }
             // Prefer `session/resume` for true resume semantics
             // (same session id preserved in state.db); fall back to
             // `session/load` if the remote doesn't know resume.
             let resolvedID: String
             do {
-                resolvedID = try await client.resumeSession(cwd: home, sessionId: sessionID)
+                resolvedID = try await client.resumeSession(cwd: cwd, sessionId: sessionID)
             } catch {
-                resolvedID = try await client.loadSession(cwd: home, sessionId: sessionID)
+                resolvedID = try await client.loadSession(cwd: cwd, sessionId: sessionID)
             }
             vm.setSessionId(resolvedID)
             loadDraft()

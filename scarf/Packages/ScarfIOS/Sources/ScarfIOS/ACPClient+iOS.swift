@@ -29,14 +29,21 @@ public extension ACPClient {
     /// - Parameters:
     ///   - context: Server context — must be a `.ssh` kind; `.local`
     ///     doesn't make sense on iOS (no local subprocess on iOS).
+    ///   - projectCwd: When set, `hermes acp` is spawned with this as its
+    ///     working directory (via a `cd …;` prefix), so Hermes loads that
+    ///     project's `AGENTS.md` / `CLAUDE.md` / `.cursorrules` context
+    ///     files. Hermes reads them from the PROCESS cwd, not the ACP
+    ///     session cwd — this is the iOS counterpart to Mac's
+    ///     `ACPClient.forMacApp(projectCwd:)`. Nil for non-project chats.
     ///   - keyProvider: How to load the SSH private key for the
     ///     connection. Typically `{ try await KeychainSSHKeyStore().load() }`.
     static func forIOSApp(
         context: ServerContext,
+        projectCwd: String? = nil,
         keyProvider: @escaping @Sendable () async throws -> SSHKeyBundle
     ) -> ACPClient {
         ACPClient(context: context) { ctx in
-            try await makeSSHExecChannel(for: ctx, keyProvider: keyProvider)
+            try await makeSSHExecChannel(for: ctx, projectCwd: projectCwd, keyProvider: keyProvider)
         }
     }
 
@@ -46,6 +53,7 @@ public extension ACPClient {
     /// underlying SSH connection is also closed (clean teardown).
     nonisolated private static func makeSSHExecChannel(
         for context: ServerContext,
+        projectCwd: String?,
         keyProvider: @Sendable () async throws -> SSHKeyBundle
     ) async throws -> any ACPChannel {
         guard case .ssh(let sshConfig) = context.kind else {
@@ -54,34 +62,62 @@ public extension ACPClient {
         let key = try await keyProvider()
         let client = try await openSSHClient(config: sshConfig, key: key)
 
-        // Command to spawn. `hermes acp` is the ACP entry point.
-        //
-        // SSH `exec` (RFC 4254) runs a non-interactive, non-login shell
-        // whose PATH is the sshd default (`/usr/bin:/bin:/usr/sbin:/sbin`).
-        // Common Hermes install locations like `~/.local/bin` (pipx),
-        // `/opt/homebrew/bin`, and `/usr/local/bin` aren't on that PATH,
-        // and `-l` alone doesn't help because most users add PATH exports
-        // to `.zshrc` which is only sourced for interactive shells.
-        //
-        // We mirror `HermesPathSet.hermesBinaryCandidates` (the Mac-side
-        // local probe list) by prepending all four common locations to
-        // PATH before `exec`-ing hermes. Binary-clean stdio (JSON-RPC on
-        // stdin/stdout) is preserved because `exec` replaces the shell
-        // process — no intermediate layer buffers the bytes.
-        let hermesCmd = context.paths.hermesBinary + " acp"
-        // Scope the chat session to the selected profile's HERMES_HOME
-        // (#120, Design B), so chat reads/writes the same profile the rest
-        // of the app shows. Empty for a default/root home → unchanged
-        // `exec hermes acp`. `context.paths.home` already carries the
-        // profile-resolved remoteHome from ScarfGoTabRoot's effectiveConfig.
-        let hermesHome = HermesProfileScope.hermesHomeShellAssignment(forHome: context.paths.home)
-        let command = "PATH=\"$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.hermes/bin:$PATH\" \(hermesHome)exec \(hermesCmd)"
+        let command = buildACPCommand(
+            hermesBinary: context.paths.hermesBinary,
+            home: context.paths.home,
+            projectCwd: projectCwd
+        )
 
         return try await SSHExecACPChannel(
             client: client,
             command: command,
             ownsClient: true
         )
+    }
+
+    /// Build the remote shell command that spawns `hermes acp`. Pure and
+    /// side-effect-free so it's unit-testable without an SSH connection
+    /// (see `ACPCommandBuilderTests`).
+    ///
+    /// SSH `exec` (RFC 4254) runs a non-interactive, non-login shell whose
+    /// PATH is the sshd default (`/usr/bin:/bin:/usr/sbin:/sbin`). Common
+    /// Hermes install locations like `~/.local/bin` (pipx),
+    /// `/opt/homebrew/bin`, and `/usr/local/bin` aren't on that PATH, and
+    /// `-l` alone doesn't help because most users add PATH exports to
+    /// `.zshrc` which is only sourced for interactive shells. We mirror
+    /// `HermesPathSet.hermesBinaryCandidates` (the Mac-side local probe
+    /// list) by prepending all four common locations to PATH before
+    /// `exec`-ing hermes. Binary-clean stdio (JSON-RPC on stdin/stdout) is
+    /// preserved because `exec` replaces the shell process — no
+    /// intermediate layer buffers the bytes.
+    ///
+    /// When `projectCwd` is set, the command `cd`s into the project dir
+    /// FIRST so Hermes loads that project's `AGENTS.md` / `CLAUDE.md` /
+    /// `.cursorrules` (it reads context files from the process cwd, not the
+    /// ACP session cwd — same rationale and counterpart to Mac's
+    /// `SSHTransport.makeProcess(cwd:)`). `;` not `&&` is deliberate: a
+    /// stale/missing project dir degrades to the login dir rather than
+    /// failing the whole session. The path is quoted via
+    /// `HermesProfileScope.shellQuotePath` so spaces survive and an
+    /// injected `$()`/`;`/backtick in a hostile path is inert.
+    static func buildACPCommand(
+        hermesBinary: String,
+        home: String,
+        projectCwd: String?
+    ) -> String {
+        // Scope the chat session to the selected profile's HERMES_HOME
+        // (#120, Design B), so chat reads/writes the same profile the rest
+        // of the app shows. Empty for a default/root home → unchanged
+        // `exec hermes acp`. `home` already carries the profile-resolved
+        // remoteHome from ScarfGoTabRoot's effectiveConfig.
+        let hermesHome = HermesProfileScope.hermesHomeShellAssignment(forHome: home)
+        let cdPrefix: String
+        if let projectCwd, !projectCwd.isEmpty {
+            cdPrefix = "cd \(HermesProfileScope.shellQuotePath(projectCwd)); "
+        } else {
+            cdPrefix = ""
+        }
+        return "\(cdPrefix)PATH=\"$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.hermes/bin:$PATH\" \(hermesHome)exec \(hermesBinary) acp"
     }
 
     /// Shared SSH connect flow — used by ACPClient and
