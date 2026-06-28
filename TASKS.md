@@ -8,6 +8,8 @@
 - [ ] Add a permission toggle for each chat, for auto or yolo (or supported Hermes verbs) to help with tool dialogs. (added: 2026-06-06)
 - [ ] New chat session from project (or working in a project) isn't linked to the project and doesn't show up in sessions for that project. Harden the project to chat logic. (added: 2026-06-06)
 - [ ] Spike: gateway-WS real-time cross-surface push (id: t-6ae517fb) (added: 2026-06-21) (priority: low)
+- [ ] MiniApp agent sessions: decide process-cwd for AGENTS.md (same root cause as t-565f8d45, trust-gated) (id: t-0b850b5b) (added: 2026-06-28) (priority: low)
+- [ ] Fleet cron-copy: faithfully copy no_agent/pre_run_script jobs (replicate the script file to the target) (id: t-848d3adc) (added: 2026-06-28) (priority: low)
 
 ## Todo
 
@@ -61,6 +63,11 @@
 
 ## Done
 
+- [x] ProjectTemplateInstaller: gate --deliver all on the install-target host (same bug as t-69ccb849, aborts install) (id: t-a3292d3f) (added: 2026-06-28)
+- [x] Untrusted project context-file injection: opening a project chat auto-injects its AGENTS.md/CLAUDE.md/.cursorrules (id: t-42db11e9) (added: 2026-06-28) (priority: low)
+- [x] Fleet apply-cron: gate --deliver all on the TARGET host capability (mixed-version fleets) (id: t-69ccb849) (added: 2026-06-27)
+- [x] Project context (cwd) for RESUME/reconnect/auto-start of a project chat (id: t-24594c4a) (added: 2026-06-28)
+- [x] Fix project AGENTS.md context not loading in ACP chats (spawn hermes acp with cwd=project) (id: t-565f8d45) (added: 2026-06-28) (priority: high)
 - [x] **[miniapps/M2 · test-gap]** Add ScarfMiniAppBridge dispatch tests — DONE. Extracted a WebKit-free `dispatch(method:args:reply:)` seam (`userContentController` now just decodes `{method,args}` then delegates; behavior identical) so the trust boundary is testable without a `WKScriptMessage`. Added `scarfTests/ScarfMiniAppBridgeTests` (12 tests, `@MainActor`): preflight default-deny carries `errorCode: errorMessage` AND leaves the service untouched (agent-wire spy `sentCount==0` + no store state file); per-surface gating (`prompt` denied w/o grant, `store` get/set round-trip); the dynamic `query:<kind>` gate at ScarfMiniAppBridge.swift ~178 (granted kind runs → `[]`, non-granted → permission_denied, privacy-deferred sessions/messages → not_implemented even when granted); and `file.read` containment (in-root UTF-8 returns text; `..`/absolute/symlink-escape → not_found, proving it calls the symlink-hardened `containedFilePath`). Reused the `FakeACPChannel` harness. Full app-target build + all 12 green. (id: t-ma2brg) (completed: 2026-06-16)
 - [x] **[miniapps/M2]** Fix MiniAppAgentSession prompt-completion hang + add runtime tests — `scarf.prompt` never resolved on a normal turn (it awaited a stream `.promptComplete` that `ACPClient` never emits; `sendPrompt`'s RETURN is the real completion signal), so the JS promise hung until teardown and the session wedged at `promptInFlight=true`. Fix: synthesize `.promptComplete` from `sendPrompt`'s return through `handle()` (also fires the `onEvent` "complete"). Added `scarfTests/MiniAppAgentSessionTests` (7 tests via an injected `clientFactory` + in-memory `FakeACPChannel`) guarding completion + the two 350c3bd concurrency fixes (atomic busy claim across the `ensureSession()` await; no continuation leak on stream end) + rate-limit / permission-auto-cancel / shutdown. Teeth verified (revert → 4/7 clean-fail); full `scarfTests` green. See [[ACP turn completion is sendPrompt's return, not a stream .promptComplete event]]. (id: t-ma2agt) (completed: 2026-06-16)
 - [x] Send message button not working (id: t-e2b3bc) (source: gh#107) — **CLOSED on GitHub 2026-06-13** (fixed `8023097`, shipped v2.10.1, reporter confirmed).

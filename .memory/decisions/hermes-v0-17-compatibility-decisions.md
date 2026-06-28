@@ -8,9 +8,10 @@ tags:
 - compatibility
 - capabilities
 - decisions
+updated: 2026-06-27
 ---
 
-Implemented on branch `feat/hermes-v017-parity` (6 commits, 2026-06-21), built on top of the [[Hermes v0.17.0 Audit Findings]]. NOT yet merged/pushed/released — target bump + README/wiki land in release-prep. Verified each phase: Debug build + ScarfCore tests green (641/642; the 1 failure is the known flaky RemoteSQLiteBackend subprocess race [[t-aud32]], not these changes).
+Implemented on branch `feat/hermes-v017-parity` (6 commits, 2026-06-21), built on top of the [[Hermes v0.17.0 Audit Findings]]. Merged + SHIPPED in v2.12.0 (the Hermes v0.17 catch-up release; task t-b2b590c6) — main is now at v2.13.0. [corrected 2026-06-27] Verified each phase: Debug build + ScarfCore tests green (641/642; the 1 failure is the known flaky RemoteSQLiteBackend subprocess race [[t-aud32]], not these changes).
 
 ## Observations
 - [tier1] Fixed 5 PRE-EXISTING bugs the v0.17 argv-vs-argparse audit surfaced (broken on v0.16 too, missed by prior cycles): `hermes audit`→`security audit` (bare audit routed to an agent turn); `migrate xai` needs `--apply` (was dry-run → silent no-op + false success); `acp --setup-browser` flag is `--yes` not `--assume-yes` (argparse exit 2); WhatsApp allowlist wrote a no-op `whatsapp.allowed_chats` (Hermes reads `allow_from`) — dropped from the chat-id editor; Settings now surfaces the real `config set` failure reason (managed-scope etc.). Commit 0d9e026. #tier1

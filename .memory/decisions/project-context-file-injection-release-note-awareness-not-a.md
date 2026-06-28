@@ -1,0 +1,37 @@
+---
+title: Project context-file injection: release-note awareness, not a trust gate (t-42db11e9)
+type: note
+permalink: scarf/decisions/project-context-file-injection-release-note-awareness-not-a
+created: 2026-06-28
+updated: 2026-06-28
+source_sha: 40f8d1c9d4836d5854e0964e08d71d77d528b533
+source_paths: scarf/scarf/Features/Chat/ViewModels/ChatViewModel.swift, scarf/scarf/Core/Services/ProjectAgentContextService.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/MiniAppGrantStore.swift
+tags:
+- security
+- projects
+- design-decision
+- hermes-context-files
+---
+
+## Context
+
+Opening a project chat spawns `hermes acp` with cwd = the project dir (shipped in t-565f8d45 for new chats, t-24594c4a for resume/reconnect/auto-start). Hermes then auto-loads that project's context files (AGENTS.md / CLAUDE.md / .cursorrules — first match) from the PROCESS cwd into the agent's system prompt. A project obtained from an untrusted source (e.g. a cloned repo carrying a hostile CLAUDE.md/.cursorrules) therefore becomes a prompt-injection vector with no user opt-in beyond opening a chat. (t-42db11e9, found by the 2026-06-28 fresh-eyes audit of b421280.)
+
+## Decision (2026-06-28)
+
+**Ship a release-note awareness line for v-next. Do NOT add a first-open "trust this project's context?" gate now.** Keep the trust-affordance ticketed as a FUTURE escalation.
+
+## Why
+
+- **Projects are user-chosen.** They're added deliberately (NewProjectSheet / clone / template install) — a strong implicit-trust signal. This is categorically different from mini-apps, which are agent-GENERATED untrusted code and therefore DO get a per-(projectId,miniAppId) permission gate (MiniAppGrantStore; sensitive perms net/file:write/kanban:write default OFF for `generated:true`). Context files are DATA injected into the prompt, not capabilities.
+- **Inherent Hermes behavior, not a Scarf vector.** `cd <repo> && hermes` loads the same context files. A Scarf-only gate would be inconsistent with the CLI and give false security; the durable fix (if any) is upstream in Hermes. Hermes already security-scans context files for prompt injection before loading (mitigates, doesn't eliminate).
+- **A gate fights t-24594c4a.** The safe version ("don't load context until trusted") would degrade EVERY project chat to "no project context until you click trust" — friction on the primary action for a user-chosen, Hermes-mitigated threat.
+- **Awareness already partly exists.** The chat header project chip (currentProjectName, from t-24594c4a) signals chat↔project scope; a release-note line closes the remaining awareness gap.
+
+## Drafted release-note line (for the next scarf-release-prep)
+
+> Opening a chat in a project now loads that project's `AGENTS.md` / `CLAUDE.md` / `.cursorrules` into the agent (so it has project context). Treat a project's context files like its code — only open chats in projects you trust.
+
+## Future-escalation trigger
+
+Revisit a first-open trust affordance (persisted per project id, mirroring the mini-app gate via [[phase-1-milestone-2-mini-apps-implementation-decisions]]) IF the threat model changes — chiefly if Scarf ever auto-opens chats in projects the user did NOT deliberately add, or if Hermes drops its context-file injection scan. Relates to [[hermes-v0-17-0-audit-findings]].

@@ -12,7 +12,7 @@ Optional exploratory spike from the projects-amazing build order (the "+ gateway
 
 ## Plan
 
-
+ASSESSED 2026-06-28 — recommend DEFER (keep in ideas). Grounded against installed Hermes v0.17.0: no client-subscribable gateway WebSocket / event-bus surface found for cross-surface push. The `websockets` dep in uv.lock is transitive; "Tool Gateway" (README) is tool-routing (web search / image gen / TTS), and the messaging "gateway" is the platform-bridge, not a Scarf-subscribable agent-output stream. The per-session ACP stream (scarf.onEvent → MiniAppAgentSession) already delivers live output and works today. A spike would be open-ended research with no obvious Hermes seam to build on → low ROI now. Revisit IF Hermes ships a subscribable event bus / multi-consumer session stream. Not forced.
 
 ## Artifacts
 
