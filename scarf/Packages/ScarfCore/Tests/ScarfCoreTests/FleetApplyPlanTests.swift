@@ -131,4 +131,103 @@ import Foundation
         let out = FleetApplyPlan.rewriteCronPrompt(prompt, sourceRoot: "/src/proj", targetRoot: "/x")
         #expect(out == "/x /x /x")
     }
+
+    // MARK: - Capability-aware cron-copy args (t-69ccb849)
+
+    static func cronJob(
+        name: String = "[proj:x] daily",
+        prompt: String = "run",
+        deliver: String? = nil,
+        skills: [String]? = nil,
+        workdir: String? = nil
+    ) -> HermesCronJob {
+        HermesCronJob(
+            id: "id-\(name)", name: name, prompt: prompt, skills: skills,
+            schedule: CronSchedule(kind: "cron"), enabled: true, state: "scheduled",
+            deliver: deliver, workdir: workdir
+        )
+    }
+
+    /// `deliver=all` is v0.14+ — on an older (or unknown) target the flag is
+    /// dropped so `cron create` doesn't argparse-fail; the job still lands.
+    @Test func cronArgsDropsDeliverAllOnPreV014() {
+        let job = Self.cronJob(deliver: "all")
+        for caps in [HermesCapabilities.parse("Hermes Agent v0.13.0 (2026.5.7)"), .empty] {
+            let (args, dropped) = FleetApplyPlan.cronCreateArgs(
+                copying: job, schedule: "0 9 * * *", caps: caps, sourceRoot: "/s", targetRoot: "/t")
+            #expect(!args.contains("--deliver"))
+            #expect(!args.contains("all"))
+            #expect(dropped)
+            // The job is still created — name, schedule, prompt all present.
+            #expect(args.contains("--name"))
+            #expect(args.contains("0 9 * * *"))
+            #expect(args.last == "run")
+        }
+    }
+
+    @Test func cronArgsKeepsDeliverAllOnV014Plus() {
+        let job = Self.cronJob(deliver: "all")
+        let caps = HermesCapabilities.parse("Hermes Agent v0.14.0 (2026.5.16)")
+        let (args, dropped) = FleetApplyPlan.cronCreateArgs(
+            copying: job, schedule: "0 9 * * *", caps: caps, sourceRoot: "/s", targetRoot: "/t")
+        #expect(args.contains("--deliver"))
+        let i = args.firstIndex(of: "--deliver")!
+        #expect(args[args.index(after: i)] == "all")
+        #expect(!dropped)
+    }
+
+    /// A specific platform (not `all`) is baseline — forwarded verbatim on
+    /// every host, even an unknown one, including composite channel forms.
+    @Test func cronArgsAlwaysForwardsSpecificPlatformDeliver() {
+        for value in ["discord", "discord:general:42", "telegram:chat"] {
+            let job = Self.cronJob(deliver: value)
+            for caps in [HermesCapabilities.parse("Hermes Agent v0.14.0"), .empty] {
+                let (args, dropped) = FleetApplyPlan.cronCreateArgs(
+                    copying: job, schedule: "@daily", caps: caps, sourceRoot: "/s", targetRoot: "/t")
+                #expect(args.contains("--deliver"))
+                let i = args.firstIndex(of: "--deliver")!
+                #expect(args[args.index(after: i)] == value)
+                #expect(!dropped)
+            }
+        }
+    }
+
+    /// `--workdir` is v0.12+ and is path-rewritten source→target like the prompt.
+    @Test func cronArgsForwardsAndRewritesWorkdirOnV012Plus() {
+        let caps = HermesCapabilities.parse("Hermes Agent v0.12.0 (2026.4.30)")
+        // Subpath under the project root.
+        let sub = FleetApplyPlan.cronCreateArgs(
+            copying: Self.cronJob(workdir: "/src/proj/sub"), schedule: "@daily",
+            caps: caps, sourceRoot: "/src/proj", targetRoot: "/tgt/proj").args
+        #expect(sub.contains("--workdir"))
+        #expect(sub[sub.index(after: sub.firstIndex(of: "--workdir")!)] == "/tgt/proj/sub")
+        // The most common case: workdir == the project root itself (end-of-
+        // string boundary in the rewriter).
+        let root = FleetApplyPlan.cronCreateArgs(
+            copying: Self.cronJob(workdir: "/src/proj"), schedule: "@daily",
+            caps: caps, sourceRoot: "/src/proj", targetRoot: "/tgt/proj").args
+        #expect(root[root.index(after: root.firstIndex(of: "--workdir")!)] == "/tgt/proj")
+    }
+
+    @Test func cronArgsDropsWorkdirOnPreV012() {
+        let job = Self.cronJob(workdir: "/src/proj/sub")
+        for caps in [HermesCapabilities.parse("Hermes Agent v0.11.0"), .empty] {
+            let (args, _) = FleetApplyPlan.cronCreateArgs(
+                copying: job, schedule: "@daily", caps: caps, sourceRoot: "/src/proj", targetRoot: "/tgt/proj")
+            #expect(!args.contains("--workdir"))
+        }
+    }
+
+    @Test func cronArgsForwardsSkillsAndRewritesPrompt() {
+        let job = Self.cronJob(prompt: "summarize /src/proj/notes.md", skills: ["research", "writing"])
+        let caps = HermesCapabilities.parse("Hermes Agent v0.14.0")
+        let (args, _) = FleetApplyPlan.cronCreateArgs(
+            copying: job, schedule: "@daily", caps: caps, sourceRoot: "/src/proj", targetRoot: "/tgt/proj")
+        #expect(args.filter { $0 == "--skill" }.count == 2)
+        #expect(args.contains("research"))
+        #expect(args.contains("writing"))
+        // prompt is the trailing positional, path-rewritten; schedule precedes it.
+        #expect(args.last == "summarize /tgt/proj/notes.md")
+        #expect(args[args.count - 2] == "@daily")
+    }
 }

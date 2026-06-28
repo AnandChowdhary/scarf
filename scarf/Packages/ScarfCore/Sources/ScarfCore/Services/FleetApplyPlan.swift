@@ -228,4 +228,63 @@ public struct FleetApplyPlan: Sendable, Equatable {
         while s.count > 1 && s.hasSuffix("/") { s.removeLast() }
         return s
     }
+
+    /// Build the `hermes cron create` argv for copying `job` from the source
+    /// host to a target host, forwarding only the flags that target's `caps`
+    /// understand and rewriting project paths source→target.
+    ///
+    /// **Capability gating (mixed-version fleets).** `--deliver all` is a
+    /// v0.14+ value (`caps.hasCronDeliverAll`): on an older target argparse
+    /// rejects it and the whole `cron create` fails, so we DROP `--deliver`
+    /// (the job is still created, falling back to Hermes's default delivery)
+    /// and report it via the returned `droppedDeliverAll` so the caller can
+    /// surface the downgrade. The match is exact — `"all"` is Hermes's single
+    /// v0.14 fan-out sentinel; a specific platform (`discord`, `discord:chan`,
+    /// `telegram:chat`) is baseline and always forwarded unchanged. `--workdir`
+    /// is a v0.12+ flag (`caps.hasCronWorkdir`); it's path-rewritten
+    /// source→target like the prompt, and omitted on a pre-v0.12 target (which
+    /// also matches the pre-existing behavior of dropping workdir entirely).
+    ///
+    /// Pass `.empty` caps to be conservative (drop the version-gated flags) —
+    /// e.g. when the target's `hermes --version` probe failed.
+    ///
+    /// NOT forwarded, each with a concrete reason (all dropped today too):
+    /// - `repeat` — not modeled on `HermesCronJob` (a loaded job carries no
+    ///   repeat count; only the template spec does), so nothing to forward.
+    /// - `context_from` — YAML-only; Hermes exposes no `--context-from` CLI flag.
+    /// - `pre_run_script` / `no_agent` — `pre_run_script` is a FILE PATH on the
+    ///   source host that fleet-apply does not replicate to the target, so
+    ///   forwarding `--script` would dangle. `no_agent` (script-only) jobs are
+    ///   therefore skipped + surfaced by the caller, not built here. A
+    ///   script-replicating copy is tracked separately.
+    /// - `model` — the source's model reference may not be configured on the
+    ///   target (would error at create or first run).
+    /// - `silent` — JSON-only field; `cron create` has no flag for it.
+    /// `schedule` is passed in resolved (the caller owns the
+    /// cron-expr/run-at/display fallback).
+    public static func cronCreateArgs(
+        copying job: HermesCronJob,
+        schedule: String,
+        caps: HermesCapabilities,
+        sourceRoot: String,
+        targetRoot: String
+    ) -> (args: [String], droppedDeliverAll: Bool) {
+        var args = ["cron", "create", "--name", job.name]
+        var droppedDeliverAll = false
+
+        if let deliver = job.deliver, !deliver.isEmpty {
+            if deliver == "all" && !caps.hasCronDeliverAll {
+                droppedDeliverAll = true
+            } else {
+                args += ["--deliver", deliver]
+            }
+        }
+        for skill in job.skills ?? [] where !skill.isEmpty { args += ["--skill", skill] }
+        if let workdir = job.workdir, !workdir.isEmpty, caps.hasCronWorkdir {
+            args += ["--workdir", rewriteCronPrompt(workdir, sourceRoot: sourceRoot, targetRoot: targetRoot)]
+        }
+        args.append(schedule)  // positional schedule
+        args.append(rewriteCronPrompt(job.prompt, sourceRoot: sourceRoot, targetRoot: targetRoot))  // positional prompt
+        return (args, droppedDeliverAll)
+    }
 }

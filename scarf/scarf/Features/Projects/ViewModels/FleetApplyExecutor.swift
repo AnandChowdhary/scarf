@@ -162,7 +162,17 @@ struct FleetApplyExecutor: Sendable {
         let existingNames = Set(before.map(\.name))
         let beforeIDs = Set(before.map(\.id))
 
-        var created = 0, skipped = 0, failed = 0
+        // Probe the TARGET host's Hermes version ONCE so we forward only the
+        // cron flags it understands (mixed-version fleets): a pre-v0.14 host
+        // rejects `--deliver all`, a pre-v0.12 host rejects `--workdir`. A
+        // failed/unparseable probe yields `.empty` → conservative (drop the
+        // version-gated flags rather than risk an argparse error that fails
+        // the whole `cron create`). FleetApplyPlan.cronCreateArgs owns the
+        // per-flag gating + source→target path rewriting.
+        let (versionOut, versionExit) = ctx.runHermes(["--version"], timeout: 10)
+        let caps = versionExit == 0 ? HermesCapabilities.parse(versionOut) : .empty
+
+        var created = 0, skipped = 0, failed = 0, deliverAllDowngrades = 0, scriptOnlySkipped = 0
         var createdNames: [String] = []
 
         for job in sourceJobs {
@@ -174,21 +184,36 @@ struct FleetApplyExecutor: Sendable {
                 skipped += 1
                 continue
             }
+            // Script-only watchdog jobs (`no_agent`) can't be faithfully
+            // copied: their behavior is a pre-run script that lives as a FILE
+            // PATH on the SOURCE host (`pre_run_script`), and fleet-apply
+            // doesn't replicate that file to the target. Forwarding `--script`
+            // would dangle, and dropping it leaves an empty-prompt no-op — so
+            // we skip and SURFACE it rather than report a do-nothing job as
+            // "created". Full script-replicating copy is tracked separately.
+            // (Agent jobs that merely also carry a pre-run script are still
+            // copied — they keep their working prompt.)
+            if job.noAgent == true {
+                scriptOnlySkipped += 1
+                continue
+            }
             guard let scheduleArg = Self.scheduleArg(job.schedule) else {
                 failed += 1
                 continue
             }
-            let prompt = FleetApplyPlan.rewriteCronPrompt(job.prompt, sourceRoot: sourceRoot, targetRoot: targetRoot)
-            var args = ["cron", "create", "--name", job.name]
-            if let deliver = job.deliver, !deliver.isEmpty { args += ["--deliver", deliver] }
-            for skill in job.skills ?? [] where !skill.isEmpty { args += ["--skill", skill] }
-            args.append(scheduleArg)  // positional schedule
-            args.append(prompt)       // positional prompt (path-rewritten)
+            let (args, droppedDeliverAll) = FleetApplyPlan.cronCreateArgs(
+                copying: job,
+                schedule: scheduleArg,
+                caps: caps,
+                sourceRoot: sourceRoot,
+                targetRoot: targetRoot
+            )
 
             let (_, exit) = ctx.runHermes(args)
             if exit == 0 {
                 created += 1
                 createdNames.append(job.name)
+                if droppedDeliverAll { deliverAllDowngrades += 1 }
             } else {
                 failed += 1
             }
@@ -222,7 +247,14 @@ struct FleetApplyExecutor: Sendable {
                 : "\(created) created, \(unpaused) could NOT be paused — verify on host")
         }
         if skipped > 0 { parts.append("\(skipped) already present") }
+        if scriptOnlySkipped > 0 { parts.append("\(scriptOnlySkipped) script-only skipped") }
         if failed > 0 { parts.append("\(failed) failed") }
+        // A deliver=all downgrade is a created-but-degraded job (runs with
+        // Hermes's default delivery, not fan-out) — the user must SEE it,
+        // same rationale as the unpaused-job note above.
+        if deliverAllDowngrades > 0 {
+            parts.append("\(deliverAllDowngrades) w/o deliver=all (host < v0.14)")
+        }
         // `.failed` only when nothing landed; a created-but-unpaused job
         // still applied (its live state is surfaced in the message above).
         let status: FieldResult.Status = (created == 0 && failed > 0) ? .failed : .applied
