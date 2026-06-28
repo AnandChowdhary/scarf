@@ -23,6 +23,8 @@ permalink: scarf-wiki/sidebar
 - [Slash Commands](Slash-Commands)
 - [Memory & Skills](Memory-&-Skills)
 - [Projects & Profiles](Projects-&-Profiles)
+- [Mini-Apps](Mini-Apps)
+- [Fleet & Portfolio](Fleet-&-Portfolio)
 - [Project Templates](Project-Templates)
 - [Template Catalog](Template-Catalog)
 - [Template Ideas](Template-Ideas)

@@ -55,10 +55,12 @@
 - [ ] MCP per-server keepalive_interval editor field (v0.17) (id: t-07a9baa4) (added: 2026-06-21) (priority: low)
 - [ ] Photon / iMessage gateway platform support (v0.17) — decide support level (id: t-5ab57e6f) (added: 2026-06-21) (priority: low)
 - [ ] Gateway allowlist: google-chat is a no-op + wrong platform id (v0.17 = google_chat) (id: t-2d6888ea) (added: 2026-06-21)
+- [ ] Next release notes: add project context-file awareness line (t-42db11e9) (id: t-cea43144) (added: 2026-06-28) (priority: low)
 
 ## Doing
 
 - [ ] Hermes v0.17 — Tier 2: capability gates + tests + new platforms + config surfaces, bump target to v0.17 (id: t-8f0f7ac0) (added: 2026-06-21)
+- [ ] Cut v2.15.0 — Projects Grow Up (mini-apps, fleet, upgrade, cockpit) (id: t-af0690ff) (added: 2026-06-28) (priority: high)
 
 ## Done
 

@@ -19,6 +19,19 @@
   <a href="https://www.buymeacoffee.com/awizemann"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="28"></a>
 </p>
 
+## What's New in 2.15.0
+
+**Projects grow up** — the biggest Projects update since v2.3. A project becomes a first-class object with its own mission-control pane, and gains three new powers. (Skips 2.14; this is a feature release, not a Hermes-compat one.)
+
+- **Mini-apps** — sandboxed web panels (plain HTML/CSS/JS) that live inside a project and can drive your agent. They run in a locked-down `WKWebView` (no network, scoped assets, symlink-contained file reads) with **default-deny permissions you review on first open**. A mini-app's `scarf.prompt(...)` gets its own isolated, rate-limited `hermes acp` session — it can't reach your chats. Build one with the `scarf-miniapp-author` skill, or have **Upgrade Project** generate a starter. (v1 wires the read + prompt surfaces; `kanban:write` / `file:write` / `net` are declared but not yet enabled.)
+- **Fleet & Portfolio** — run the same repo on more than one machine and Scarf groups them as **one logical project**, flags config **drift** across hosts, and lets you **Apply to Fleet** to push a host's model preset, board, and cron jobs to the others (per-host, non-fatal, version-gated).
+- **One-click Upgrade Project** — bring an existing repo up to the full experience: a fast idempotent structural pass (stable id, board, AGENTS.md block, dashboard) then an agent hand-off that tailors a dashboard, slash commands, cron, and a starter mini-app.
+- **The cockpit** — selecting a project opens one unified pane with everything about it: Dashboard, Sessions, Board, Site, Context, Cron, Memory, Secrets, Templates, Slash, Mini-apps, and Fleet.
+- **Project chats load your AGENTS.md** — opening a chat in a project now spawns Hermes with the project as its cwd, so the agent gets the project's `AGENTS.md` / `CLAUDE.md` / `.cursorrules` automatically (new, resumed, and reconnected chats). Treat a project's context files like its code — only open chats in projects you trust.
+- **Hardening:** remote SSH paths escaped against command injection; window size/position persists again.
+
+See the full [v2.15.0 release notes](https://github.com/awizemann/scarf/releases/tag/v2.15.0).
+
 ## What's New in 2.13.0
 
 ScarfGo — the iOS companion — gets **Hermes profile switching**, plus a remote-chat/Settings reliability fix that anyone running ScarfGo over SSH will feel. The shared-core pieces ride into the Mac app too.

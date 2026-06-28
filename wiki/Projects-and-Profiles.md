@@ -41,6 +41,26 @@ The full schema is documented in [`scarf/docs/DASHBOARD_SCHEMA.md`](https://gith
 
 **Per-project tabs** _(v2.3+, v2.5, v2.7.5)_: clicking a project row reveals a tabbed detail view — **Dashboard**, **Sessions**, **Site** (when the dashboard has a webview widget), **Kanban** (v2.7.5+, Hermes v0.12+ only), and **Slash Commands** (v2.5). The Sessions tab lists chats attributed to the project; **New Chat** spawns `hermes acp` with the project's directory as the session cwd and writes a Scarf-managed block into `<project>/AGENTS.md` so the agent boots with project context. Attribution survives across Mac and ScarfGo via the shared `SessionAttributionService`. See [Slash Commands](Slash-Commands) for the per-project authoring tab.
 
+### Projects grow up _(v2.15)_
+
+v2.15 promotes a project from "a folder with a dashboard" to a **first-class object** with one unified pane and three new powers.
+
+**First-class project object.** A project is now backed by a portable `<project>/.scarf/project.json` record (stable id minted once, name, bound model preset, board/tenant, cron job ids, memory namespace, secret-field *names*, template lock, host bindings, registered mini-apps) plus a fast per-host index at `~/.hermes/scarf/projects.json`. The stable id is what links the same repo across machines — see [Fleet & Portfolio](Fleet-&-Portfolio).
+
+**The cockpit — one pane for the whole project.** Selecting a project now opens a single **cockpit** (it supersedes the older Dashboard/Site/Slash tab strip). A unified header shows the project name, path, bound model preset, and the hosts the project lives on; below it a flat row of panels, each of which hides itself when it doesn't apply:
+
+- **Dashboard** · **Sessions** · **Board** (Kanban) · **Site** (a dashboard webview widget, full-canvas)
+- **Context** — read-only preview of the Scarf-managed `AGENTS.md` block the agent actually sees
+- **Cron** — project-attributed jobs (`[proj:<id>]` / `[tmpl:<id>]`) with state + schedule
+- **Memory** — the project's `MEMORY.md` block (if it owns one)
+- **Secrets** — secret config field **names** only (values stay in the Keychain)
+- **Templates** — installed template id/version + uninstall manifest
+- **Slash** — project-scoped slash commands
+- **[Mini-apps](Mini-Apps)** — sandboxed web panels that can drive the project's agent
+- **[Fleet](Fleet-&-Portfolio)** — the project across every host it's registered on (multi-host only)
+
+**One-click Upgrade Project.** Got a project from before all this, or one scaffolded by hand? A cockpit banner offers **Upgrade Project**. One click runs a fast, idempotent structural pass — mints the stable id + `project.json`, creates a Kanban board, refreshes the `AGENTS.md` block, seeds a placeholder dashboard — then hands off to chat, where the agent (via the bundled `scarf-template-author` and `scarf-miniapp-author` skills) tailors a real dashboard, slash commands, cron jobs, and a starter mini-app to your project. Re-running it is a no-op, so it's safe to click.
+
 **Per-project Kanban** _(v2.7.5)_: each project gets its own Kanban board scoped to a Scarf-minted `scarf:<slug>` tenant. The slug is derived from the project name (lowercased, hyphenated, ≤48 chars), persisted to `<project>/.scarf/manifest.json`'s new optional `kanbanTenant` field on first kanban interaction, and **immutable across rename** so existing tasks stay attributable. `ProjectAgentContextService` adds a `Kanban tenant: scarf:<slug>` line inside the AGENTS.md scarf-managed block at every chat-start, instructing the agent to pass `--tenant <slug>` on `hermes kanban create` so agent-spawned tasks land on the right project board automatically. Bare projects (no template manifest) get a sentinel manifest written with `id: scarf/<project-id>` + `version: 0.0.0` + just the `kanbanTenant` set — `ProjectAgentContextService` recognizes the sentinel and refuses to surface it as a "Template" line, so a project that's never been template-installed doesn't suddenly start advertising a fake template to the agent. iOS gets a read-only board on the same project tab as a horizontally-paged segmented `Picker` of single-column lists. The new `kanban_summary` dashboard widget shows the top three `running` / `blocked` / `todo` tasks plus a glance footer (`"12 todo · 3 running · 5 blocked"`); add `{ kind: kanban_summary, max_rows: 3 }` to `dashboard.json` to include it. See [Sidebar and Navigation](Sidebar-and-Navigation) for the global Kanban surface.
 
 **Kanban v0.15 wave** _(v2.10.0+, Hermes v0.15+)_: the board gains server-side `--sort`, Promote / Schedule (park) / Delete-permanently (`archive --rm`) card actions, new Scheduled + Review columns (collapse when empty), per-task worktree `--branch` on create + a read-only `model_override` line in the inspector, and `--board` multi-board plumbing in the service layer (board switcher UI is a follow-up). The biggest change for project boards: tasks are now scoped by the originating ACP **`session_id`** (stamped by Hermes) rather than the tenant + time-window approximation, so a board opened from a project chat shows exactly that session's tasks — even ones the agent created without tagging the `scarf:<slug>` tenant — with a "This chat ⇄ All tasks" scope toggle to widen it. The tenant slug above is still minted and injected for cross-session attribution, but session scoping is now authoritative for the per-chat view. Gated on `HermesCapabilities.hasKanbanV015` / `hasKanbanSessionFilter`; pre-v0.15 hosts keep the v2.7.5 tenant-scoped board. See [Chat](Chat) for the chat-header Kanban chip.
@@ -76,6 +96,8 @@ Crucially, the switch is **per-connection and view-only**: it does **not** run `
 
 ## Related pages
 
+- [Mini-Apps](Mini-Apps) — sandboxed web panels (v2.15) that drive a project's agent via the `window.scarf` bridge.
+- [Fleet & Portfolio](Fleet-&-Portfolio) — the same project across multiple hosts (v2.15): drift detection + Apply to Fleet.
 - [Project Templates](Project-Templates) — `.scarftemplate` bundles (schemaVersion 3 in v2.5), the install / export / author flows, the public catalog.
 - [Slash Commands](Slash-Commands) — project-scoped slash commands authored in the per-project Slash Commands tab.
 - [Hermes Paths](Hermes-Paths) — `~/.hermes/profiles/` and the projects registry.
@@ -83,4 +105,4 @@ Crucially, the switch is **per-connection and view-only**: it does **not** run `
 - [Settings](Gateway-Cron-Health-Logs) — exposes "Backup & Restore" buttons (`hermes backup` / `hermes import`) at the profile level.
 
 ---
-_Last updated: 2026-05-28 — Scarf v2.10.0 (Kanban v0.15 wave: `--sort`, Promote / Schedule / Delete-permanently actions, Scheduled + Review columns, worktree `--branch` + `model_override` display, session-scoped per-project board)_
+_Last updated: 2026-06-28 — Scarf v2.15.0 (projects grow up: first-class project object, the cockpit single pane, one-click Upgrade Project; links to the new Mini-Apps and Fleet & Portfolio pages)_

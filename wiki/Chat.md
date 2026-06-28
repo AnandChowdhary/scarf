@@ -43,6 +43,14 @@ Streams tokens, thoughts, and tool calls live via the [ACP subprocess](ACP-Subpr
 
 **Voice mode controls:** PTT (push-to-talk), TTS playback, STT transcription preferences live in **Settings → Voice**. The chat toolbar exposes the basic toggles.
 
+## Project context — your AGENTS.md in project chats _(v2.15+, Mac)_
+
+Opening a chat **inside a project** now gives the agent that project's context automatically. Scarf spawns `hermes acp` with the **project directory as the process working directory**, and Hermes reads a project's context files (`AGENTS.md` / `CLAUDE.md` / `.cursorrules`, first match) from that working directory on session boot — so the agent starts already knowing the repo, its conventions, and the Scarf-managed project block, with no re-explaining.
+
+This applies to every way a project chat starts — **new, resumed, reconnected, and auto-started** sessions. For resumed/reconnected chats the project path is recovered from the session-attribution sidecar (`SessionAttributionService`) before the subprocess spawns, including over SSH. The chat header's **project chip** (name + git branch) tells you at a glance which project a session is scoped to.
+
+> **A note on trust.** Opening a chat in a project loads that project's `AGENTS.md` / `CLAUDE.md` / `.cursorrules` into the agent. Treat a project's context files like its code — **only open chats in projects you trust.** This is inherent to how Hermes works (`cd <repo> && hermes` does the same), and Hermes scans context files for prompt injection before loading them. [Mini-apps](Mini-Apps) deliberately do **not** load these files into their agent sessions, because they run less-trusted web content.
+
 ## Multimodal image input _(v2.6+, Hermes v0.12+)_
 
 Hermes v0.12 advertises `prompt_capabilities.image = true` on ACP and accepts image content blocks in `session/prompt`. Scarf wires the producer side on both targets — capability-gated on `HermesCapabilities.hasACPImagePrompts` so v0.11 hosts never see the attachment surface.
@@ -178,4 +186,4 @@ Each Mac window is bound to one server, so chat in window A talks to local Herme
 - [Settings — Voice tab](Gateway-Cron-Health-Logs) for TTS/STT configuration (Settings is documented there).
 
 ---
-_Last updated: 2026-04-29 — Scarf v2.5.2 (chat-start model preflight + ScarfGo resilience + cached-snapshot fallback + bounded history paging)_
+_Last updated: 2026-06-28 — Scarf v2.15.0 (project chats spawn hermes acp with cwd=project so the project's AGENTS.md / CLAUDE.md / .cursorrules load automatically — new, resumed, reconnected, and auto-started; trust note added)_

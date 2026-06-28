@@ -28,7 +28,9 @@ Opening a project chat spawns `hermes acp` with cwd = the project dir (shipped i
 - **A gate fights t-24594c4a.** The safe version ("don't load context until trusted") would degrade EVERY project chat to "no project context until you click trust" — friction on the primary action for a user-chosen, Hermes-mitigated threat.
 - **Awareness already partly exists.** The chat header project chip (currentProjectName, from t-24594c4a) signals chat↔project scope; a release-note line closes the remaining awareness gap.
 
-## Drafted release-note line (for the next scarf-release-prep)
+## Finalized release-note line — queued for the next release (t-cea43144)
+
+**Status (2026-06-28):** FINAL and **chat-only**, reconciled with t-0b850b5b (shipped option (b) — mini-app agents deliberately do NOT load project context). The chat context-loading behavior is **unreleased** — commits `b421280` ("load project AGENTS.md in ACP chats — spawn hermes acp with cwd=project") and `5538e30` ("project cwd for resume/reconnect/auto-start chats") sit in `v2.13.0..main` — so this line ships with the **next** cut (first release after v2.13.0). Queued as board task **t-cea43144** so the next `scarf-release-prep` folds it into the security/awareness area of `RELEASE_NOTES.md` instead of rendering it as a plain feature bullet that drops the trust caution. Verbatim line below.
 
 ### Scope: chats only — does NOT need to expand to mini-apps (t-0b850b5b, 2026-06-28)
 
