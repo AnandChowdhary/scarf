@@ -10,6 +10,7 @@
 - [ ] Spike: gateway-WS real-time cross-surface push (id: t-6ae517fb) (added: 2026-06-21) (priority: low)
 - [ ] MiniApp agent sessions: decide process-cwd for AGENTS.md (same root cause as t-565f8d45, trust-gated) (id: t-0b850b5b) (added: 2026-06-28) (priority: low)
 - [ ] Fleet cron-copy: faithfully copy no_agent/pre_run_script jobs (replicate the script file to the target) (id: t-848d3adc) (added: 2026-06-28) (priority: low)
+- [ ] Mini-app kanban writes (kanban:write, behind permission) (id: t-934207cd) (added: 2026-06-21) (priority: low)
 
 ## Todo
 
@@ -52,7 +53,6 @@
 - [ ] **[todo/misc, pending Hermes]** APNS Hermes-side sender (POST deviceToken/serverID) — blocked on upstream Hermes work: `Scarf iOS/Notifications/APNSTokenStore.swift:46`. (id: t-todo-apns) (added: 2026-06-13, source: t-aud16)
 - [ ] **[todo/misc]** Ed25519KeyGenerator: resolve the FIXME re Citadel auth method expectations: `Packages/ScarfIOS/Sources/ScarfIOS/Ed25519KeyGenerator.swift:31`. (id: t-todo-ed25519) (added: 2026-06-13, source: t-aud16)
 - [ ] Project tool/skill scoping (blocked on hermes-agent#45958) (id: t-93517390) (added: 2026-06-21)
-- [ ] Mini-app kanban writes (kanban:write, behind permission) (id: t-934207cd) (added: 2026-06-21) (priority: low)
 - [ ] MCP per-server keepalive_interval editor field (v0.17) (id: t-07a9baa4) (added: 2026-06-21) (priority: low)
 - [ ] Photon / iMessage gateway platform support (v0.17) — decide support level (id: t-5ab57e6f) (added: 2026-06-21) (priority: low)
 - [ ] Gateway allowlist: google-chat is a no-op + wrong platform id (v0.17 = google_chat) (id: t-2d6888ea) (added: 2026-06-21)
