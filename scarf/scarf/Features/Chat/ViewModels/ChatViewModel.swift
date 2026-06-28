@@ -345,6 +345,16 @@ final class ChatViewModel {
     /// config.yaml. Cleared on cancel or after replay.
     private var pendingStartArgs: (sessionId: String?, projectPath: String?, initialPrompt: String?)?
 
+    /// Monotonic "latest session-start intent" token. Every user-initiated
+    /// session start (new / resume / continue-last / auto-start) bumps it
+    /// synchronously on entry. The deferred starts now resolve the project
+    /// cwd off the MainActor (an SSH attribution read on remote) before
+    /// spawning ACP; each captures the token and bails if a newer intent
+    /// superseded it across that `await`. Without this, two rapid resumes
+    /// of DIFFERENT sessions could resolve out of order on a remote and
+    /// load the wrong chat. t-24594c4a.
+    private var sessionStartGeneration = 0
+
     private static let maxReconnectAttempts = 5
     private static let reconnectBaseDelay: UInt64 = 1_000_000_000 // 1 second
     private static let maxReconnectDelay: UInt64 = 16_000_000_000 // 16 seconds
@@ -503,6 +513,7 @@ final class ChatViewModel {
         // until the Task body runs, which on remote contexts is
         // multiple seconds after the click. v2.8.
         isStartingSession = true
+        sessionStartGeneration &+= 1
         voiceEnabled = false
         ttsEnabled = false
         isRecording = false
@@ -534,13 +545,32 @@ final class ChatViewModel {
 
     func resumeSession(_ sessionId: String) {
         isStartingSession = true
+        sessionStartGeneration &+= 1
         voiceEnabled = false
         ttsEnabled = false
         isRecording = false
         richChatViewModel.reset()
 
         if displayMode == .richChat {
-            startACPSession(resume: sessionId)
+            // Recover the project this session was started under so the
+            // respawned `hermes acp` runs with cwd = the project dir
+            // (Hermes loads AGENTS.md from the PROCESS cwd) and tool calls
+            // resolve against the project (the ACP session cwd) — the same
+            // wiring new project chats get (t-565f8d45). The attribution
+            // sidecar read is transport I/O, so resolve off the MainActor
+            // before kicking ACP. Unattributed sessions resolve to nil →
+            // home cwd (unchanged global-chat behavior).
+            let ctx = context
+            let intent = sessionStartGeneration
+            Task { @MainActor in
+                let projectPath = await Task.detached {
+                    SessionAttributionService(context: ctx).resolveProjectPath(known: nil, sessionID: sessionId)
+                }.value
+                // Bail if a newer session-start superseded us while the
+                // (possibly remote) attribution read was in flight.
+                guard intent == sessionStartGeneration else { return }
+                startACPSession(resume: sessionId, projectPath: projectPath)
+            }
         } else {
             richChatViewModel.setSessionId(sessionId)
             launchTerminal(arguments: ["chat", "--resume", sessionId])
@@ -549,6 +579,8 @@ final class ChatViewModel {
 
     func continueLastSession() {
         isStartingSession = true
+        sessionStartGeneration &+= 1
+        let intent = sessionStartGeneration
         voiceEnabled = false
         ttsEnabled = false
         isRecording = false
@@ -570,8 +602,20 @@ final class ChatViewModel {
                 let sessionId = await dataService.fetchMostRecentlyActiveSessionId()
                 await dataService.close()
                 if let sessionId {
-                    startACPSession(resume: sessionId)
+                    // The most-recent session may be project-scoped; recover
+                    // its project so the resume spawns with the project cwd
+                    // (AGENTS.md + tool dirs), matching resumeSession. Off the
+                    // MainActor — the attribution lookup is transport I/O.
+                    let ctx = context
+                    let projectPath = await Task.detached {
+                        SessionAttributionService(context: ctx).resolveProjectPath(known: nil, sessionID: sessionId)
+                    }.value
+                    // Bail if a newer session-start superseded us across the
+                    // DB + attribution reads above.
+                    guard intent == sessionStartGeneration else { return }
+                    startACPSession(resume: sessionId, projectPath: projectPath)
                 } else {
+                    guard intent == sessionStartGeneration else { return }
                     startACPSession(resume: nil)
                 }
             }
@@ -623,13 +667,36 @@ final class ChatViewModel {
     /// failure with no UI feedback.
     private func autoStartACPAndSend(text: String, images: [ChatImageAttachment] = []) {
         isStartingSession = true
+        sessionStartGeneration &+= 1
+        let intent = sessionStartGeneration
         // Show the user message immediately
         richChatViewModel.addUserMessage(text: text)
 
         Task { @MainActor in
             let sessionToResume = richChatViewModel.sessionId
 
-            let client = ACPClient.forMacApp(context: context)
+            // Auto-start under the chat's project scope (if any) so the
+            // spawned `hermes acp` loads the project's AGENTS.md (process
+            // cwd) and tool calls resolve against the project (session
+            // cwd), matching startACPSession. currentProjectPath wins; else
+            // recover via the attribution sidecar for the session we resume.
+            // Off the MainActor — the sidecar read is transport I/O.
+            //
+            // We intentionally don't (re)set the project chip here: the
+            // realistic autostart path (typing after a reconnect exhausted)
+            // already has currentProjectPath set from the original
+            // startACPSession, so the chip persists. startACPSession remains
+            // the single owner of chip + model-preset + git-branch setup.
+            let knownProject = currentProjectPath
+            let ctx = context
+            let projectPath = await Task.detached {
+                SessionAttributionService(context: ctx).resolveProjectPath(known: knownProject, sessionID: sessionToResume)
+            }.value
+            // Bail if a newer session-start superseded us while the (possibly
+            // remote) attribution read was in flight.
+            guard intent == sessionStartGeneration else { return }
+
+            let client = ACPClient.forMacApp(context: context, projectCwd: projectPath)
             self.acpClient = client
 
             do {
@@ -639,7 +706,12 @@ final class ChatViewModel {
                 startACPEventLoop(client: client)
                 startHealthMonitor(client: client)
 
-                let cwd = await context.resolvedUserHome()
+                let cwd: String
+                if let projectPath {
+                    cwd = projectPath
+                } else {
+                    cwd = await context.resolvedUserHome()
+                }
 
                 hasActiveProcess = true
 
@@ -1329,6 +1401,19 @@ final class ChatViewModel {
         reconnectTask = Task { @MainActor [weak self] in
             guard let self else { return }
 
+            // Reconnect into the SAME project scope the chat was started
+            // under so the respawned `hermes acp` reloads the project's
+            // AGENTS.md (process cwd) and tool calls keep resolving against
+            // the project (session cwd). currentProjectPath was set when the
+            // session went ready; fall back to the attribution sidecar.
+            // Resolve once (off the MainActor — transport I/O) and reuse it
+            // across retry attempts.
+            let knownProject = self.currentProjectPath
+            let ctx = self.context
+            let projectPath = await Task.detached {
+                SessionAttributionService(context: ctx).resolveProjectPath(known: knownProject, sessionID: sessionId)
+            }.value
+
             for attempt in 1...Self.maxReconnectAttempts {
                 guard !Task.isCancelled else { return }
 
@@ -1345,11 +1430,16 @@ final class ChatViewModel {
                     guard !Task.isCancelled else { return }
                 }
 
-                let client = ACPClient.forMacApp(context: context)
+                let client = ACPClient.forMacApp(context: context, projectCwd: projectPath)
                 do {
                     try await client.start()
 
-                    let cwd = await context.resolvedUserHome()
+                    let cwd: String
+                    if let projectPath {
+                        cwd = projectPath
+                    } else {
+                        cwd = await context.resolvedUserHome()
+                    }
                     let resolvedSessionId: String
 
                     // Try resumeSession first (designed for reconnection), then loadSession.

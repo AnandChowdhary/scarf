@@ -142,9 +142,11 @@ struct ChatView: View {
         }
         // Live handoff for resume: user clicked an existing session in
         // the Projects Sessions tab while already in the Chat section
-        // (or switched back to Chat after). Project-chip rendering
-        // happens automatically inside ChatViewModel.resumeSession ->
-        // startACPSession via the attribution.projectPath(for:) lookup.
+        // (or switched back to Chat after). ChatViewModel.resumeSession
+        // recovers the session's project from the attribution sidecar and
+        // threads it through startACPSession, so the respawned `hermes acp`
+        // gets the project cwd (AGENTS.md + tool dirs) and the header chip
+        // — not just the chip. t-24594c4a.
         .onChange(of: coord.selectedSessionId) { _, new in
             if let sessionId = new {
                 coordinator.selectedSessionId = nil

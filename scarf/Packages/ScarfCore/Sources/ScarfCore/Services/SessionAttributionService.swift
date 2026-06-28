@@ -84,6 +84,29 @@ public struct SessionAttributionService: Sendable {
         return Set(map.mappings.filter { $0.value == projectPath }.keys)
     }
 
+    /// Resolve the project a chat is scoped to, for threading the
+    /// project dir into a `hermes acp` spawn (process cwd → AGENTS.md)
+    /// and the ACP `session/new` cwd (tool dirs). A caller-known path
+    /// wins and costs no I/O; otherwise we fall back to the attribution
+    /// recorded for `sessionID` when the chat was first created. Returns
+    /// nil for a non-empty-but-unattributed or unknown session — the
+    /// caller then uses the user's home (the global-chat default).
+    ///
+    /// This is the recovery seam for resuming / reconnecting / auto-
+    /// starting a project chat, where the project path isn't passed in
+    /// by the UI. It reads the sidecar (`load()` → transport I/O, SSH on
+    /// remote), so call it OFF the MainActor.
+    public nonisolated func resolveProjectPath(known: String?, sessionID: String?) -> String? {
+        // A whitespace-only `known` is "no path", not a cwd — but a real
+        // path is returned verbatim (a trailing space can be a legitimate
+        // directory name on Unix), so we only trim for the emptiness test.
+        if let known, !known.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return known
+        }
+        guard let sessionID else { return nil }
+        return projectPath(for: sessionID)
+    }
+
     // MARK: - Write
 
     /// Record that `sessionID` was created under the given project
