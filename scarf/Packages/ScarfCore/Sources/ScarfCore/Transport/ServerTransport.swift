@@ -63,6 +63,15 @@ public protocol ServerTransport: Sendable {
     /// Linux-CI code paths that already depended on it.
     #if !os(iOS)
     nonisolated func makeProcess(executable: String, args: [String]) -> Process
+
+    /// As `makeProcess(executable:args:)` but spawns the process with its
+    /// working directory set to `cwd` (when non-nil + present). Used for
+    /// project-scoped `hermes acp` chats: Hermes reads a project's context
+    /// files (AGENTS.md / CLAUDE.md / .cursorrules) from the PROCESS cwd, so
+    /// the spawn dir — not the ACP `session/new` cwd — is what loads them.
+    /// A default impl (below) ignores `cwd`, so transports that don't need
+    /// it require no change.
+    nonisolated func makeProcess(executable: String, args: [String], cwd: String?) -> Process
     #endif
 
     /// Platform-neutral streaming exec. Runs `executable args…` on the target
@@ -140,6 +149,15 @@ public extension ServerTransport {
             ))
         }
     }
+
+    #if !os(iOS)
+    /// Default: ignore `cwd` and fall back to the 2-arg spawn. Concrete
+    /// transports that can honor a working directory (Local, SSH) override
+    /// this; test fakes + iOS inherit the no-op.
+    nonisolated func makeProcess(executable: String, args: [String], cwd: String?) -> Process {
+        makeProcess(executable: executable, args: args)
+    }
+    #endif
 }
 
 /// Stat-style file metadata. `nil` (return value) means the file does not

@@ -1041,7 +1041,10 @@ final class ChatViewModel {
 
         acpStatus = ACPPhase.spawning
 
-        let client = ACPClient.forMacApp(context: context)
+        // Project-scoped chats spawn `hermes acp` with the project as the
+        // process cwd so Hermes loads the project's AGENTS.md context files
+        // (it reads them from the process cwd, not the ACP session cwd).
+        let client = ACPClient.forMacApp(context: context, projectCwd: projectPath)
         self.acpClient = client
         let attribution = SessionAttributionService(context: context)
 

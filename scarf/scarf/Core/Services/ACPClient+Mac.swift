@@ -13,9 +13,12 @@ extension ACPClient {
     /// Convenience: build an `ACPClient` for `context` pre-wired with a
     /// `ProcessACPChannel` factory. Use this at every call site that
     /// used to do `ACPClient(context:)` before M1.
-    public static func forMacApp(context: ServerContext = .local) -> ACPClient {
+    /// `projectCwd` (when set) becomes the spawned `hermes acp` process's
+    /// working directory, so Hermes loads that project's AGENTS.md context
+    /// files (it reads them from the process cwd, not the ACP session cwd).
+    public static func forMacApp(context: ServerContext = .local, projectCwd: String? = nil) -> ACPClient {
         ACPClient(context: context) { ctx in
-            try await makeProcessChannel(for: ctx)
+            try await makeProcessChannel(for: ctx, projectCwd: projectCwd)
         }
     }
 
@@ -26,11 +29,12 @@ extension ACPClient {
     /// credentials exported from `.zprofile` / `.zshrc` are visible)
     /// minus `TERM` (ACP speaks raw JSON over stdio, any terminal
     /// escape sequence would corrupt it).
-    nonisolated private static func makeProcessChannel(for context: ServerContext) async throws -> any ACPChannel {
+    nonisolated private static func makeProcessChannel(for context: ServerContext, projectCwd: String? = nil) async throws -> any ACPChannel {
         let transport = context.makeTransport()
         let proc = transport.makeProcess(
             executable: context.paths.hermesBinary,
-            args: ["acp"]
+            args: ["acp"],
+            cwd: projectCwd
         )
 
         if context.isRemote {

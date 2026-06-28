@@ -247,9 +247,20 @@ public struct LocalTransport: ServerTransport {
 
     #if !os(iOS)
     public func makeProcess(executable: String, args: [String]) -> Process {
+        makeProcess(executable: executable, args: args, cwd: nil)
+    }
+
+    public func makeProcess(executable: String, args: [String], cwd: String?) -> Process {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: executable)
         proc.arguments = args
+        // Spawn FROM the project dir so Hermes loads its AGENTS.md (Hermes
+        // reads project context files from the process cwd). Guard on
+        // existence so a stale/missing path degrades to the default cwd
+        // instead of making `run()` throw and killing the session.
+        if let cwd, !cwd.isEmpty, FileManager.default.fileExists(atPath: cwd) {
+            proc.currentDirectoryURL = URL(fileURLWithPath: cwd)
+        }
         return proc
     }
     #endif

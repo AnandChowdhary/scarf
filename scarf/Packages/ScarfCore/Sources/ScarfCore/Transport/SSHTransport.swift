@@ -423,6 +423,10 @@ public struct SSHTransport: ServerTransport {
 
     #if !os(iOS)
     public func makeProcess(executable: String, args: [String]) -> Process {
+        makeProcess(executable: executable, args: args, cwd: nil)
+    }
+
+    public func makeProcess(executable: String, args: [String], cwd: String?) -> Process {
         ensureControlDir()
         // `-T` disables pty allocation — critical for binary-clean stdin/stdout
         // (ACP JSON-RPC, log tail bytes). `bash -lc` (login shell) sources the
@@ -431,7 +435,15 @@ public struct SSHTransport: ServerTransport {
         // pipx-installed `hermes` isn't on PATH unless `hermesBinaryHint` was
         // set explicitly — exactly the failure that surfaces as a
         // "command not found" / opaque init timeout against fresh droplets.
-        let cmd = ([executable] + args).map { Self.remotePathArg($0) }.joined(separator: " ")
+        var cmd = ([executable] + args).map { Self.remotePathArg($0) }.joined(separator: " ")
+        // Run FROM the project dir so Hermes loads its AGENTS.md (Hermes reads
+        // project context files from the process cwd, not the ACP session cwd).
+        // `;` (not `&&`) is deliberate: a stale/missing dir degrades to the
+        // login dir rather than failing the session; `remotePathArg` rewrites
+        // `~/`→`$HOME/` and double-quotes so spaces/metacharacters survive.
+        if let cwd, !cwd.isEmpty {
+            cmd = "cd \(Self.remotePathArg(cwd)); " + cmd
+        }
         var sshArgv = sshArgs()
         sshArgv.insert("-T", at: 0)
         sshArgv.append(hostSpec)

@@ -195,6 +195,38 @@ import Foundation
         #expect(t.displayName == "Home")
     }
 
+    @Test func sshMakeProcessInjectsProjectCwd() {
+        let cfg = SSHConfig(host: "box.local", user: "alan")
+        let t = SSHTransport(contextID: UUID(), config: cfg, displayName: "Home")
+        // With a project cwd, the remote command must `cd` into it first so
+        // Hermes loads that project's AGENTS.md (read from the process cwd).
+        let withCwd = t.makeProcess(executable: "hermes", args: ["acp"], cwd: "/srv/Projects/news")
+        let cmd = withCwd.arguments?.last ?? ""
+        #expect(cmd.contains("cd "))
+        #expect(cmd.contains("/srv/Projects/news"))
+        #expect(cmd.contains("acp"))
+        // Without a cwd, no `cd` is injected (unchanged behavior).
+        let noCwd = t.makeProcess(executable: "hermes", args: ["acp"], cwd: nil)
+        #expect(noCwd.arguments?.last?.contains("cd ") == false)
+    }
+
+    @Test func localMakeProcessSetsProjectCwdWhenPresent() {
+        let t = ServerContext.local.makeTransport()
+        let dir = NSTemporaryDirectory()
+        // Existing dir → spawned with that working directory.
+        let p1 = t.makeProcess(executable: "/bin/echo", args: ["x"], cwd: dir)
+        #expect(p1.currentDirectoryURL?.path == URL(fileURLWithPath: dir).path)
+        // A missing dir is NOT applied (graceful — setting a bad cwd would make
+        // `run()` throw). `Process.currentDirectoryURL` is never nil (it
+        // defaults to the caller's cwd), so assert it's NOT the bad path.
+        let missing = "/no/such/dir/zzz-\(UUID().uuidString)"
+        let p3 = t.makeProcess(executable: "/bin/echo", args: ["x"], cwd: missing)
+        #expect(p3.currentDirectoryURL?.path != missing)
+        // nil cwd → left at the inherited default (same as an unconfigured Process).
+        let p2 = t.makeProcess(executable: "/bin/echo", args: ["x"], cwd: nil)
+        #expect(p2.currentDirectoryURL == Process().currentDirectoryURL)
+    }
+
     @Test func transportErrorDescriptionsAreUserFacing() {
         #expect(TransportError.hostUnreachable(host: "h", stderr: "").errorDescription?.contains("h") == true)
         #expect(TransportError.authenticationFailed(host: "h", stderr: "").errorDescription?.contains("authentication") == true)
