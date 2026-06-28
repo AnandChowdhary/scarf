@@ -9,6 +9,8 @@ tags:
 - decision
 - scarfproject
 - architecture
+created: 2026-06-15
+updated: 2026-06-15
 ---
 
 How Milestone 1 (the first-class `ScarfProject`) was actually built, and the non-obvious calls a future agent must know before touching the model, the registry, or the fleet/portfolio work. Built on `feat/projects` per the impl spec.

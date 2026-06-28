@@ -8,6 +8,8 @@ tags:
 - webkit
 - convention
 - gotcha
+created: 2026-06-16
+updated: 2026-06-16
 ---
 
 When serving files out of a directory that untrusted or agent-writable content can populate (the mini-app `scarf-miniapp://` host is the live case), a lexical path-containment check is NOT enough — it's a real escape vector.

@@ -8,6 +8,8 @@ tags:
 - tenants
 source_sha: 8d2293330e574b9e3b4ff42f6fcd155af248ab59
 source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/KanbanService.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Models/KanbanError.swift, scarf/scarf/Core/Services/KanbanTenantResolver.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/KanbanTenantReader.swift, scarf/scarf/Features/Kanban/ViewModels/KanbanBoardViewModel.swift, scarf/scarf/Features/Kanban/Views/KanbanBoardView.swift
+created: 2026-05-29
+updated: 2026-05-29
 ---
 
 ## Observations

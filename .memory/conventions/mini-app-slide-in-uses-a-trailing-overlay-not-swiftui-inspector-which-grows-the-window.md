@@ -8,6 +8,8 @@ tags:
 - mini-app
 - gotcha
 - macos
+created: 2026-06-21
+updated: 2026-06-21
 ---
 
 A mini-app opens in a trailing slide-in OVERLAY (`scarf/scarf/Features/Projects/MiniApp/MiniAppInspectorSurface.swift`, bound in `ContentView` via `.overlay`), NOT SwiftUI `.inspector`.

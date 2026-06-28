@@ -9,6 +9,9 @@ tags:
 source_sha: 1ebbf6c45e34bf8a4304b3b465026ff7216b112f
 source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/HermesCapabilities.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelCatalogService.swift, README.md, CLAUDE.md
 reviewed: 2026-05-29
+created: 2026-05-29
+updated: 2026-06-14
+reviewed_by: human
 ---
 
 ## Observations

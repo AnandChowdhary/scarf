@@ -8,6 +8,8 @@ tags:
 - isolation
 - servercontext
 - swift6
+created: 2026-06-13
+updated: 2026-06-13
 ---
 
 ScarfCore unit tests that exercise local-home file I/O MUST point at an isolated temp dir, never the developer's real `~/.hermes`. The seam (added in t-aud25) is a per-instance injectable home on `ServerContext`.

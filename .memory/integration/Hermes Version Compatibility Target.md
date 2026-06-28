@@ -9,6 +9,9 @@ tags:
 source_sha: f770fe49412e097d9b082179e1f96a83d3ebbc21
 source_paths: README.md, CLAUDE.md, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/HermesCapabilities.swift, scarf/scarf/Core/Services/HermesLogService.swift
 reviewed: 2026-06-15
+created: 2026-05-29
+updated: 2026-06-15
+reviewed_by: human
 ---
 
 ## Observations

@@ -9,6 +9,8 @@ tags:
 - xcodebuild
 - iteration
 - performance
+created: 2026-06-15
+updated: 2026-06-15
 ---
 
 Fast feedback loop for running Scarf tests while iterating. The slow part is almost always the build (and accidentally pulling in UI tests), NOT the tests themselves.

@@ -7,6 +7,9 @@ tags:
 - rules
 source_sha: 1ebbf6c45e34bf8a4304b3b465026ff7216b112f
 reviewed: 2026-05-29
+created: 2026-05-29
+updated: 2026-05-29
+reviewed_by: human
 ---
 
 ## Observations

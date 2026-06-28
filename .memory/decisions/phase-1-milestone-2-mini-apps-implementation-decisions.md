@@ -11,6 +11,8 @@ tags:
 - security
 - webkit
 - acp
+created: 2026-06-16
+updated: 2026-06-16
 ---
 
 How Milestone 2 (Cowork-style mini-apps) was built, the security posture, and what's deliberately deferred. All bridge surfaces are live; built trust-boundary-first. Branch `feat/projects`.

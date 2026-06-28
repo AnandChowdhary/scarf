@@ -7,6 +7,8 @@ tags:
 - conventions
 - rule
 - audit-2026-06-13
+created: 2026-06-13
+updated: 2026-06-13
 ---
 
 ## Observations

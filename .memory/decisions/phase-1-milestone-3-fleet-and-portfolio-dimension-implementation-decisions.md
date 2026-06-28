@@ -11,6 +11,8 @@ tags:
 - config-as-policy
 - decision
 - cron
+created: 2026-06-20
+updated: 2026-06-20
 ---
 
 How Milestone 3 (the Fleet/Portfolio dimension — Phase-1 item #4) was built: a portfolio that groups the same project across servers by stable id, per-host config **drift**, and **apply-to-fleet** (config-as-policy). Built on `feat/projects`, incremental + tested per step, mirroring M1/M2. Read alongside the design's "Fleet dimension" section + "Decisions (locked 2026-06-14)".

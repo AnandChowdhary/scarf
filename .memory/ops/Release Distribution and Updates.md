@@ -8,6 +8,8 @@ tags:
 - distribution
 source_sha: 427321d742d63298100f9e444f96fd1524d7a46c
 source_paths: scripts/release.sh, README.md
+created: 2026-05-29
+updated: 2026-06-06
 ---
 
 ## Observations

@@ -5,6 +5,8 @@ permalink: scarf/ops/localization-workflow
 tags:
 - i18n
 - localization
+created: 2026-05-29
+updated: 2026-05-29
 ---
 
 ## Observations

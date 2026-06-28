@@ -8,6 +8,8 @@ tags:
 - audit
 - versioning
 - capability-gating
+created: 2026-06-21
+updated: 2026-06-21
 ---
 
 The repeatable process for auditing a new Hermes release against Scarf. Canonical procedure lives in the repo skill `.claude/skills/hermes-release-audit/SKILL.md`; this note is the memory-backend-discoverable summary. Done six times (v0.11 → v0.17).

@@ -9,6 +9,8 @@ tags:
 - vision
 - gh113
 - wire-format
+created: 2026-06-13
+updated: 2026-06-13
 ---
 
 Diagnosed gh#113 ("images attached to messages ignored") against the real Hermes v0.16.0 source at `~/.hermes/hermes-agent/` (build 2026.6.5). Scarf's image path is correct end-to-end; "ignored" is a Hermes model-vision routing decision, NOT a Scarf wire bug.

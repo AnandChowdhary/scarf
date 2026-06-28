@@ -8,6 +8,8 @@ tags:
 - macos
 - gotcha
 - persistence
+created: 2026-06-21
+updated: 2026-06-21
 ---
 
 macOS Scarf persists each window's frame (size + position) across launches MANUALLY — its own UserDefaults key + `setFrame` on appear — deliberately NOT AppKit's `setFrameAutosaveName`/`setFrameUsingName`, and NOT relying on SwiftUI's built-in autosave. See `scarf/scarf/Core/SwiftUI/WindowFrameAutosave.swift` (applied at the `WindowGroup` content via `.windowFrameAutosave("Scarf.Window.<serverID>")`).

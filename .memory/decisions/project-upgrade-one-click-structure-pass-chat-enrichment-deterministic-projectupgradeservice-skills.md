@@ -9,6 +9,8 @@ tags:
 - mini-app
 - decision
 - phase-1
+created: 2026-06-20
+updated: 2026-06-20
 ---
 
 How "Upgrade Project" was built — the one-click path for the ~1000+ existing installs to bring a basic/legacy project up to the full first-class cockpit experience. Built on `feat/projects` after the Fleet (M3) + cockpit-consolidation work. **Fleet is excluded from upgrade** (per the design + user). Importing Hermes-only projects is **part 2, deferred** — its enumeration design lives in [[Hermes has no project concept — infer working dirs from checkpoints, sessions.cwd, cron, kanban]].

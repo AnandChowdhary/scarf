@@ -8,6 +8,8 @@ tags:
 - swiftui
 - concurrency
 - gotcha
+created: 2026-06-13
+updated: 2026-06-13
 ---
 
 When a SwiftUI `View` (or any struct) stores a closure property typed `@Sendable` (e.g. `let onForget: @MainActor @Sendable () async -> Void`), the **synthesized memberwise initializer drops the `@Sendable`** from the corresponding parameter. The struct then converts a non-Sendable param into a `@Sendable` stored property *inside* the synthesized init — and the Swift-6 strict-concurrency diagnostic surfaces at the CALL SITE as "converting non-Sendable function value to '@MainActor @Sendable …' may introduce data races", not where you'd expect.

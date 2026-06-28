@@ -10,6 +10,8 @@ tags:
 - testing
 - concurrency
 - security
+created: 2026-06-16
+updated: 2026-06-16
 ---
 
 Every ACP consumer must derive turn-completion from `sendPrompt`'s return; the event stream does not carry it. Missing this shipped a hung happy-path in the M2 mini-app agent channel. Branch `feat/projects`.

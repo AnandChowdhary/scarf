@@ -8,6 +8,8 @@ tags:
 - verification
 - wire-format
 - gotcha
+created: 2026-06-14
+updated: 2026-06-15
 ---
 
 Verified the WS-* "verify against a live host" audit TODOs against the live Hermes v0.16 source (`~/.hermes/hermes-agent`, 2026.6.5) on 2026-06-14. Summary below; verified TODOs were dropped, mismatches captured as follow-up work.

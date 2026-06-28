@@ -6,6 +6,8 @@ tags:
 - hermes
 - capabilities
 - v015
+created: 2026-05-29
+updated: 2026-05-29
 ---
 
 ## Observations

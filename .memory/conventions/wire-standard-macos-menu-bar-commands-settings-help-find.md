@@ -9,6 +9,9 @@ tags:
 - audit-2026-06-13
 source_sha: f770fe49412e097d9b082179e1f96a83d3ebbc21
 reviewed: 2026-06-15
+created: 2026-06-13
+updated: 2026-06-15
+reviewed_by: human
 ---
 
 ## Observations

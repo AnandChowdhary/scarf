@@ -8,6 +8,8 @@ tags:
 - acp
 source_sha: 8d2293330e574b9e3b4ff42f6fcd155af248ab59
 source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Models/ModelPreset.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelPresetService.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ProjectModelPresetReader.swift, scarf/scarf/Core/Services/ProjectModelPresetBinding.swift, scarf/scarf/Features/Models/Views/ModelPresetsView.swift
+created: 2026-05-29
+updated: 2026-05-29
 ---
 
 ## Observations

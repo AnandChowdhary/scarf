@@ -5,6 +5,8 @@ permalink: scarf/profile/owner-and-distribution-profile
 tags:
 - owner
 - identity
+created: 2026-05-29
+updated: 2026-05-29
 ---
 
 ## Observations

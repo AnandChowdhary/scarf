@@ -5,6 +5,8 @@ permalink: scarf/design/scarf-design-system-scarf-design
 tags:
 - design
 - ui
+created: 2026-05-29
+updated: 2026-05-29
 ---
 
 ## Observations

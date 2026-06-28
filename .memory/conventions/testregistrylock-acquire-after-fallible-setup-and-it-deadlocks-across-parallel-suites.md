@@ -10,6 +10,8 @@ tags:
 - concurrency
 - swift-testing
 - isolation
+created: 2026-06-20
+updated: 2026-06-20
 ---
 
 `TestRegistryLock` (scarfTests/ProjectTemplateTests.swift) is a global cross-suite `NSLock` that serializes app-target tests touching the real `~/.hermes/scarf/projects.json` + the global `SCARF_HERMES_HOME` env. It has bitten twice with the SAME symptom: a hung `scarf` test host (Debug build), reparented under `launchd`, 0% CPU, stuck for hours at `CatalogViewModelTests.makeTmpHome → TestRegistryLock.acquireAndSnapshot → _pthread_mutex_firstfit_lock_slow → __psynch_mutexwait`. There are TWO distinct failure modes — don't conflate them.

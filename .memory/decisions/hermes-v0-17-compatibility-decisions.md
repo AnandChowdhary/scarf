@@ -9,6 +9,7 @@ tags:
 - capabilities
 - decisions
 updated: 2026-06-27
+created: 2026-06-21
 ---
 
 Implemented on branch `feat/hermes-v017-parity` (6 commits, 2026-06-21), built on top of the [[Hermes v0.17.0 Audit Findings]]. Merged + SHIPPED in v2.12.0 (the Hermes v0.17 catch-up release; task t-b2b590c6) — main is now at v2.13.0. [corrected 2026-06-27] Verified each phase: Debug build + ScarfCore tests green (641/642; the 1 failure is the known flaky RemoteSQLiteBackend subprocess race [[t-aud32]], not these changes).

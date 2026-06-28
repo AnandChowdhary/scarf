@@ -8,6 +8,8 @@ tags:
 - install
 source_sha: 8d2293330e574b9e3b4ff42f6fcd155af248ab59
 source_paths: scarf/scarf/Core/Services/ProjectTemplateService.swift, scarf/scarf/Core/Services/ProjectTemplateInstaller.swift, scarf/scarf/Core/Services/ProjectTemplateExporter.swift, scarf/scarf/Core/Services/ProjectTemplateUninstaller.swift, scarf/scarf/Core/Services/TemplateURLRouter.swift
+created: 2026-05-29
+updated: 2026-05-29
 ---
 
 ## Observations

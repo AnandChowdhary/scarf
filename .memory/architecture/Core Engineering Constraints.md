@@ -8,6 +8,8 @@ tags:
 - dependencies
 source_sha: 427321d742d63298100f9e444f96fd1524d7a46c
 source_paths: CLAUDE.md, README.md, scarf/scarf.xcodeproj/project.pbxproj
+created: 2026-05-29
+updated: 2026-06-02
 ---
 
 ## Observations

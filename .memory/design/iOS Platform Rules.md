@@ -6,6 +6,8 @@ tags:
 - ios
 - design
 - accessibility
+created: 2026-05-29
+updated: 2026-05-29
 ---
 
 ## Observations

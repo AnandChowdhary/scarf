@@ -10,6 +10,8 @@ tags:
 - import
 - enumeration
 - reference
+created: 2026-06-20
+updated: 2026-06-20
 ---
 
 Researched from the vendored Hermes source (`~/Developer/ScarfBox/Vendor/hermes-agent`) + the live `~/.hermes` (2026-06, Hermes v2.10/state.db schema_v14). The substrate for a future "import Hermes-only projects into Scarf" feature (Phase-1 "projects amazing" part 2).

@@ -2,6 +2,8 @@
 title: Never run synchronous transport I/O on the MainActor from a file-watcher tick or view body
 type: note
 permalink: scarf/conventions/never-run-synchronous-transport-i/o-on-the-mainactor-from-a-file-watcher-tick-or-view-body
+created: 2026-06-21
+updated: 2026-06-21
 ---
 
 ## Observations

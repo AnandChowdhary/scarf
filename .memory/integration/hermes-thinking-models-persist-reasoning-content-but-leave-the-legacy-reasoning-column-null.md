@@ -8,6 +8,8 @@ tags:
 - state-db
 - thinking-models
 - gh-aud27
+created: 2026-06-13
+updated: 2026-06-13
 ---
 
 The `messages` table in Hermes' `state.db` has BOTH a `reasoning` (v0.7) and a `reasoning_content` (v0.11) column, but for v0.16 thinking models only `reasoning_content` is populated on the live write path. Verified against the real source at `~/.hermes/hermes-agent/` (build 2026.6.5).

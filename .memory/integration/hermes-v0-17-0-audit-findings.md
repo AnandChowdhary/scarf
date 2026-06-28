@@ -8,6 +8,8 @@ tags:
 - audit
 - verification
 - wire-format
+created: 2026-06-21
+updated: 2026-06-21
 ---
 
 Source-verified audit of Hermes v0.17.0 (tag v2026.6.19, semver 0.17.0, commit 2bd1977d8) vs Scarf (currently targets v0.16.0). Audited 2026-06-21 against a read-only worktree at the tag, via 8 parallel per-surface investigators + live `--help` probes. Recorded so the next cycle doesn't re-litigate the NO-OPs. NOTE: implementation NOT yet decided/shipped — this is the findings record, not a decisions note.
