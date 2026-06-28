@@ -5,6 +5,7 @@
 # Usage:
 #   ./scripts/wiki.sh status                 # git status inside .wiki-worktree/
 #   ./scripts/wiki.sh pull                   # fetch + fast-forward; aborts if dirty
+#   ./scripts/wiki.sh sync                   # copy wiki/*.md → .wiki-worktree/, stripping frontmatter
 #   ./scripts/wiki.sh new <Page-Name>        # create Page-Name.md with stub template
 #   ./scripts/wiki.sh stub-check             # list pages still containing the TODO stub
 #   ./scripts/wiki.sh commit "<msg>"         # secret-scan, then git add -A && git commit
@@ -36,6 +37,11 @@ set -euo pipefail
 # ---------- config ----------
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WIKI_DIR="$REPO_ROOT/.wiki-worktree"
+# Memophant-managed source of the wiki pages. These carry YAML frontmatter
+# (title/type/permalink) that the published GitHub wiki must NOT (GitHub
+# renders it as a stray heading) — `sync` strips it. Top level only; the
+# wiki/roadmap/ subdir is an internal program doc, not a published page.
+WIKI_SRC="$REPO_ROOT/wiki"
 WIKI_REMOTE="git@github.com:awizemann/scarf.wiki.git"
 BLOCKLIST="$REPO_ROOT/scripts/wiki-blocklist.txt"
 STUB_MARKER='> **TODO: document.**'
@@ -119,6 +125,36 @@ cmd_pull() {
   in_wiki git fetch origin
   in_wiki git merge --ff-only origin/master
   log "Up to date."
+}
+
+cmd_sync() {
+  need_worktree
+  [[ -d "$WIKI_SRC" ]] || die "no wiki source dir at $WIKI_SRC"
+  local synced=0 created=0 src base dst
+  shopt -s nullglob
+  for src in "$WIKI_SRC"/*.md; do
+    base="$(basename "$src")"
+    dst="$WIKI_DIR/$base"
+    [[ -e "$dst" ]] || created=$((created + 1))
+    # Strip ONLY the leading `---`…`---` YAML frontmatter block (plus the
+    # blank line[s] right after it); preserve any mid-document `---`
+    # horizontal rules. Files without frontmatter pass through unchanged, so
+    # re-running is idempotent.
+    awk '
+      NR==1 && $0=="---" { infm=1; next }
+      infm           { if ($0=="---") { infm=0; closed=1 } ; next }
+      closed && !body && $0 ~ /^[[:space:]]*$/ { next }
+      { body=1; print }
+    ' "$src" > "$dst"
+    synced=$((synced + 1))
+  done
+  shopt -u nullglob
+  [[ "$synced" -gt 0 ]] || die "no .md pages found in $WIKI_SRC"
+  # Additive by design: overwrites/adds pages, never deletes. wiki/ is a
+  # superset of the published set; removing a published page is a rare,
+  # destructive act left to a manual `git rm` in .wiki-worktree.
+  log "Synced $synced page(s) from wiki/ → .wiki-worktree/ ($created new), frontmatter stripped."
+  log "Next: ./scripts/wiki.sh commit \"<msg>\"  then  ./scripts/wiki.sh push"
 }
 
 cmd_new() {
@@ -235,7 +271,7 @@ cmd_push() {
 }
 
 cmd_help() {
-  sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # ---------- dispatch ----------
@@ -244,6 +280,7 @@ shift || true
 case "$sub" in
   status)     cmd_status "$@" ;;
   pull)       cmd_pull "$@" ;;
+  sync)       cmd_sync "$@" ;;
   new)        cmd_new "$@" ;;
   stub-check) cmd_stub_check "$@" ;;
   touch)      cmd_touch "$@" ;;

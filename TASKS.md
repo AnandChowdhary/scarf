@@ -62,6 +62,7 @@
 
 ## Done
 
+- [x] Add wiki.sh sync subcommand (strip frontmatter, wiki/ → .wiki-worktree/) (id: t-6c69add2) (added: 2026-06-28)
 - [x] Next release notes: add project context-file awareness line (t-42db11e9) (id: t-cea43144) (added: 2026-06-28) (priority: low)
 - [x] Cut v2.15.0 — Projects Grow Up (mini-apps, fleet, upgrade, cockpit) (id: t-af0690ff) (added: 2026-06-28) (priority: high)
 - [x] MiniApp agent sessions: decide process-cwd for AGENTS.md (same root cause as t-565f8d45, trust-gated) (id: t-0b850b5b) (added: 2026-06-28) (priority: low)
