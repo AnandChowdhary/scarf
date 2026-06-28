@@ -266,6 +266,28 @@ import Foundation
         #expect(!caps.isV014OrLater)
     }
 
+    /// The cron `--deliver` gate shared by fleet apply-cron and the template
+    /// installer: only `all` is version-gated; everything else is baseline.
+    @Test func supportsCronDeliverGatesOnlyTheAllSentinel() {
+        let v14 = HermesCapabilities.parseLine("Hermes Agent v0.14.0 (2026.5.16)")
+        let v13 = HermesCapabilities.parseLine("Hermes Agent v0.13.0 (2026.5.7)")
+        let unknown = HermesCapabilities.empty
+
+        // `all` requires v0.14+.
+        #expect(v14.supportsCronDeliver("all"))
+        #expect(!v13.supportsCronDeliver("all"))
+        #expect(!unknown.supportsCronDeliver("all"))
+
+        // nil / empty (no flag) and specific platforms are baseline everywhere.
+        for caps in [v14, v13, unknown] {
+            #expect(caps.supportsCronDeliver(nil))
+            #expect(caps.supportsCronDeliver(""))
+            #expect(caps.supportsCronDeliver("discord"))
+            #expect(caps.supportsCronDeliver("discord:general:42"))
+            #expect(caps.supportsCronDeliver("telegram:chat"))
+        }
+    }
+
     @Test func v014PatchReleaseStillEnablesAllFlags() {
         // A v0.14.3 patch release should still enable every v0.14 flag.
         let caps = HermesCapabilities.parseLine("Hermes Agent v0.14.3 (2026.6.20)")

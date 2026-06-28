@@ -273,10 +273,10 @@ public struct FleetApplyPlan: Sendable, Equatable {
         var droppedDeliverAll = false
 
         if let deliver = job.deliver, !deliver.isEmpty {
-            if deliver == "all" && !caps.hasCronDeliverAll {
-                droppedDeliverAll = true
-            } else {
+            if caps.supportsCronDeliver(deliver) {
                 args += ["--deliver", deliver]
+            } else {
+                droppedDeliverAll = true
             }
         }
         for skill in job.skills ?? [] where !skill.isEmpty { args += ["--skill", skill] }

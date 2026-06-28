@@ -312,6 +312,19 @@ public struct HermesCapabilities: Sendable, Equatable {
     /// specific platform string.
     public var hasCronDeliverAll: Bool { atLeastSemver(0, 14, 0) }
 
+    /// Whether `hermes cron create --deliver <value>` is accepted by this
+    /// host. Only the v0.14+ fan-out sentinel `all` is version-gated
+    /// (`hasCronDeliverAll`); nil/empty (no `--deliver` flag) and any specific
+    /// platform (`discord`, `discord:chan`, `telegram:chat`, …) are baseline
+    /// and accepted everywhere. Forwarding an unsupported `--deliver all` makes
+    /// argparse reject the whole `cron create`, so every Scarf cron-create path
+    /// that copies a job to another host (fleet apply-cron, template install)
+    /// gates on this.
+    public func supportsCronDeliver(_ deliver: String?) -> Bool {
+        guard deliver == "all" else { return true }
+        return hasCronDeliverAll
+    }
+
     /// Discord plugin reads recent channel history when joining a thread
     /// (default on in v0.14+). Scarf surfaces the toggle so users can
     /// disable the backfill for noisy channels.

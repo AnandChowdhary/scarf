@@ -232,9 +232,23 @@ struct ProjectTemplateInstaller: Sendable {
         let existingBefore = Set(HermesFileService(context: context).loadCronJobs().map(\.id))
         var createdNames: [String] = []
 
+        // Probe the install host once: `--deliver all` is a v0.14+ value, and
+        // forwarding it to an older host makes `hermes cron create` argparse-
+        // fail → the throw below aborts the WHOLE template install. Gate it on
+        // the host's capability (failed probe → .empty → conservative: drop).
+        // A specific platform (`discord`, …) is baseline and always forwarded.
+        let (versionOut, versionExit) = context.runHermes(["--version"], timeout: 10)
+        let caps = versionExit == 0 ? HermesCapabilities.parse(versionOut) : .empty
+
         for job in plan.cronJobs {
             var args = ["cron", "create", "--name", job.name]
-            if let deliver = job.deliver, !deliver.isEmpty { args += ["--deliver", deliver] }
+            if let deliver = job.deliver, !deliver.isEmpty {
+                if caps.supportsCronDeliver(deliver) {
+                    args += ["--deliver", deliver]
+                } else {
+                    Self.logger.warning("template cron '\(job.name, privacy: .public)': dropping --deliver \(deliver, privacy: .public) — install host predates v0.14 deliver=all; job created with default delivery")
+                }
+            }
             if let repeatCount = job.repeatCount { args += ["--repeat", String(repeatCount)] }
             for skill in job.skills ?? [] where !skill.isEmpty {
                 args += ["--skill", skill]
