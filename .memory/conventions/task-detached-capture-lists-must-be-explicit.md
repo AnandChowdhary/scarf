@@ -19,5 +19,5 @@ updated: 2026-06-13
 - [history] 2026-06-13 Cycle 1: `MCPServersViewModel.swift` 9 sites (96/118/136/148/165/207/240/265/279; correct pattern at L63), `PluginsViewModel.swift:110,140` (correct at L46), `RichChatInputBar.swift:535,574`. #history
 
 ## Relations
-- relates_to [[Core Engineering Constraints]]
+- relates_to [[Scarf Architecture Rules]]
 - relates_to [[Store cancellable handles for off-main remote work]]

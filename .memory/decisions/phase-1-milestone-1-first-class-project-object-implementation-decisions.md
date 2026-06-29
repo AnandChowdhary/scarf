@@ -11,6 +11,10 @@ tags:
 - architecture
 created: 2026-06-15
 updated: 2026-06-15
+source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
+reviewed: 2026-06-28
+reviewed_by: audit:claude-code (audit)
+source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Models/ScarfProject.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Models/ProjectDashboard.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ProjectStore.swift
 ---
 
 How Milestone 1 (the first-class `ScarfProject`) was actually built, and the non-obvious calls a future agent must know before touching the model, the registry, or the fleet/portfolio work. Built on `feat/projects` per the impl spec.
@@ -29,7 +33,5 @@ How Milestone 1 (the first-class `ScarfProject`) was actually built, and the non
 - [tests] ScarfCore: 637 pass incl. new `ScarfProjectTests` (4) + `ProjectStoreTests` (8). App: `ProjectAgentContextServiceTests` 13/13 (SECRET-SAFE + IDEMPOTENT held), `ProjectScaffolderTests` 3/3. See [[Fast test-iteration commands (swift test vs xcodebuild)]]. #testing
 
 ## Relations
-- relates_to [[First-Class Project Model (Phase 1)]]
-- relates_to [[Mini-App Bridge Contract (Phase 1)]]
 - relates_to [[ScarfCore tests inject a temp Hermes home via ServerContext.local(home:)]]
 - relates_to [[Fast test-iteration commands (swift test vs xcodebuild)]]

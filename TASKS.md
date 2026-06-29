@@ -59,10 +59,13 @@
 ## Doing
 
 - [ ] Hermes v0.17 — Tier 2: capability gates + tests + new platforms + config surfaces, bump target to v0.17 (id: t-8f0f7ac0) (added: 2026-06-21)
+- [ ] Refresh marketing site + README FAQ for v2.15 Projects (supersede PR #109) (id: t-83c4c692) (added: 2026-06-28)
 
 ## Done
 
 - [x] Refresh marketing site + README FAQ for v2.15 Projects (supersede PR #109) (id: t-83c4c692) (added: 2026-06-28)
+- [x] iOS (ScarfGo): project chat block omits cron/config/template — unify the AGENTS.md renderer in ScarfCore for byte-identical Mac/iOS parity (id: t-61415c65) (added: 2026-06-28) (priority: high)
+- [x] iOS (ScarfGo): project chats don't load AGENTS.md/CLAUDE.md — spawn `hermes acp` with cwd=project (mirror the Mac b421280/5538e30 fix) (id: t-72fc3790) (added: 2026-06-28) (priority: high)
 - [x] Add wiki.sh sync subcommand (strip frontmatter, wiki/ → .wiki-worktree/) (id: t-6c69add2) (added: 2026-06-28)
 - [x] Next release notes: add project context-file awareness line (t-42db11e9) (id: t-cea43144) (added: 2026-06-28) (priority: low)
 - [x] Cut v2.15.0 — Projects Grow Up (mini-apps, fleet, upgrade, cockpit) (id: t-af0690ff) (added: 2026-06-28) (priority: high)

@@ -33,7 +33,6 @@ tags:
 - relates_to [[ScarfGo iOS Companion App]]
 - relates_to [[Multi-Server Architecture (Scarf 2.0+)]]
 - relates_to [[decision-scarfgo-profile-switching-via-per-connection]]
-- relates_to [[never-run-synchronous-transport-i/o-on-the-mainactor-from-a-file-watcher-tick-or-view-body]]
 
 
 ## Verification + second-half fix (2026-06-25, live)

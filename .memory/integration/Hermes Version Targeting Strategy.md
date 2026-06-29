@@ -6,12 +6,12 @@ tags:
 - hermes
 - versioning
 - capability-gating
-source_sha: 1ebbf6c45e34bf8a4304b3b465026ff7216b112f
+source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
 source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/HermesCapabilities.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelCatalogService.swift, README.md, CLAUDE.md
-reviewed: 2026-05-29
+reviewed: 2026-06-28
 created: 2026-05-29
 updated: 2026-06-14
-reviewed_by: human
+reviewed_by: audit:claude-code (audit)
 ---
 
 ## Observations

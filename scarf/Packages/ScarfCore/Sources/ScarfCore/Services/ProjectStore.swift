@@ -176,6 +176,73 @@ public struct ProjectStore: Sendable {
         )
     }
 
+    // MARK: - Agent context block (shared Mac + iOS)
+
+    /// Gather the inputs for the Scarf-managed AGENTS.md block from
+    /// on-disk project state via the transport (works on Mac AND over
+    /// iOS SFTP). The cron / config-fields sub-strings flow through
+    /// `ProjectContextBlock`'s shared formatters so both platforms emit
+    /// byte-identical blocks for identical state.
+    public nonisolated func agentContextBlockInput(for project: ScarfProject) -> ProjectContextBlock.ManagedBlockInput {
+        let projectPath = project.rootPath
+        let tpl = templateInfo(projectPath: projectPath)
+        let cronLines = ProjectContextBlock.cronLines(
+            from: loadCronJobs(),
+            projectId: project.id,
+            templateId: tpl?.id
+        )
+        let slashNames = ProjectSlashCommandService(context: context)
+            .loadCommands(at: projectPath)
+            .map(\.name)
+        // Prefer the structured binding on the object; fall back to the
+        // canonical on-disk reader so a minimally-constructed record renders.
+        let kanbanTenant = project.board ?? KanbanTenantReader(context: context).tenant(forProjectPath: projectPath)
+        let lockFilePresent = project.templateLockRef != nil
+            || transport.fileExists(projectPath + "/.scarf/template.lock.json")
+        return ProjectContextBlock.ManagedBlockInput(
+            projectName: project.name,
+            projectPath: projectPath,
+            templateId: tpl?.id,
+            templateVersion: tpl?.version,
+            configFieldsLine: ProjectContextBlock.configFieldsLine(fields: configSchemaFields(projectPath: projectPath)),
+            cronLines: cronLines,
+            slashCommandNames: slashNames,
+            kanbanTenant: kanbanTenant,
+            lockFilePresent: lockFilePresent
+        )
+    }
+
+    /// Render the full Scarf-managed block for `project`. Single source of
+    /// truth for both apps' project-chat context injection.
+    public nonisolated func renderAgentContextBlock(for project: ScarfProject) -> String {
+        ProjectContextBlock.renderManagedBlock(agentContextBlockInput(for: project))
+    }
+
+    /// `(key, isSecret)` for each field in `<project>/.scarf/manifest.json`
+    /// → `config.schema`. Empty when absent/oversize/unparseable.
+    /// SECRET-SAFE: field NAMES + secret flag only, never values. Mirrors
+    /// the source the Mac's `ProjectAgentContextService.renderConfigFieldsLine`
+    /// reads (`manifest.config?.fields`, where `fields` decodes from the
+    /// JSON key `schema`).
+    private nonisolated func configSchemaFields(projectPath: String) -> [(key: String, isSecret: Bool)] {
+        let path = projectPath + "/.scarf/manifest.json"
+        guard transport.fileExists(path),
+              let data = try? transport.readFile(path),
+              data.count <= Self.maxJSONBytes
+        else { return [] }
+        struct Projection: Decodable {
+            struct Config: Decodable {
+                struct Field: Decodable { let key: String; let type: String }
+                let schema: [Field]?
+            }
+            let config: Config?
+        }
+        guard let p = try? JSONDecoder().decode(Projection.self, from: data),
+              let fields = p.config?.schema
+        else { return [] }
+        return fields.map { (key: $0.key, isSecret: $0.type == "secret") }
+    }
+
     // MARK: - Private writers
 
     private nonisolated func writeRecord(_ project: ScarfProject) throws {

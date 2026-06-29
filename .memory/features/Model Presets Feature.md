@@ -6,10 +6,12 @@ tags:
 - models
 - presets
 - acp
-source_sha: 8d2293330e574b9e3b4ff42f6fcd155af248ab59
+source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
 source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Models/ModelPreset.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelPresetService.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ProjectModelPresetReader.swift, scarf/scarf/Core/Services/ProjectModelPresetBinding.swift, scarf/scarf/Features/Models/Views/ModelPresetsView.swift
 created: 2026-05-29
 updated: 2026-05-29
+reviewed: 2026-06-28
+reviewed_by: audit:claude-code (audit)
 ---
 
 ## Observations

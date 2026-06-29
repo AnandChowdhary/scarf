@@ -198,11 +198,12 @@ import Foundation
     // MARK: - ProjectContextBlock surfacing
 
     @Test func contextBlockListsSlashCommandsWhenPresent() {
-        let block = ProjectContextBlock.renderMinimalBlock(
+        let block = ProjectContextBlock.renderManagedBlock(.init(
             projectName: "Demo",
             projectPath: "/tmp/demo",
+            configFieldsLine: "(none)",
             slashCommandNames: ["review", "deploy-staging"]
-        )
+        ))
         #expect(block.contains("Project slash commands:"))
         #expect(block.contains("`/review`"))
         #expect(block.contains("`/deploy-staging`"))
@@ -212,31 +213,28 @@ import Foundation
     }
 
     @Test func contextBlockOmitsSlashCommandLineWhenEmpty() {
-        let none = ProjectContextBlock.renderMinimalBlock(
+        let none = ProjectContextBlock.renderManagedBlock(.init(
             projectName: "Demo",
             projectPath: "/tmp/demo",
-            slashCommandNames: nil
-        )
-        #expect(!none.contains("Project slash commands:"))
-        let emptyArr = ProjectContextBlock.renderMinimalBlock(
-            projectName: "Demo",
-            projectPath: "/tmp/demo",
+            configFieldsLine: "(none)",
             slashCommandNames: []
-        )
-        #expect(!emptyArr.contains("Project slash commands:"))
+        ))
+        #expect(!none.contains("Project slash commands:"))
     }
 
     @Test func contextBlockIsIdempotent() {
-        let a = ProjectContextBlock.renderMinimalBlock(
+        let a = ProjectContextBlock.renderManagedBlock(.init(
             projectName: "Demo",
             projectPath: "/tmp/demo",
+            configFieldsLine: "(none)",
             slashCommandNames: ["b", "a"] // unsorted on input
-        )
-        let b = ProjectContextBlock.renderMinimalBlock(
+        ))
+        let b = ProjectContextBlock.renderManagedBlock(.init(
             projectName: "Demo",
             projectPath: "/tmp/demo",
+            configFieldsLine: "(none)",
             slashCommandNames: ["a", "b"] // pre-sorted
-        )
+        ))
         // Output is sorted internally — both inputs render identically.
         #expect(a == b)
     }

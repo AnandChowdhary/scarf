@@ -1483,16 +1483,17 @@ final class ChatController {
         pendingStartIntent = nil
     }
 
-    /// Open the SSH exec channel, send ACP `initialize`, then
-    /// `session/new` — so that by the time `state == .ready` the user
-    /// can type and hit send immediately.
-    func start() async {
-        if state == .connecting || state == .ready { return }
-        guard await passModelPreflight(intent: .fresh) else { return }
-        state = .connecting
-        vm.reset()
-        let client = ACPClient.forIOSApp(
+    /// Build an `ACPClient` for this controller's server, wired with the
+    /// shared Keychain key provider. `projectCwd` (when set) is threaded to
+    /// `forIOSApp` so `hermes acp` spawns IN the project dir and Hermes
+    /// loads its `AGENTS.md` / `CLAUDE.md` / `.cursorrules` (it reads
+    /// context files from the process cwd, not the ACP session cwd) — the
+    /// iOS counterpart to Mac's project-cwd spawn. Single source of truth
+    /// for the four chat-start paths (fresh / project / resume / reconnect).
+    private func makeClient(projectCwd: String? = nil) -> ACPClient {
+        ACPClient.forIOSApp(
             context: context,
+            projectCwd: projectCwd,
             keyProvider: {
                 let store = KeychainSSHKeyStore()
                 guard let key = try await store.load() else {
@@ -1504,6 +1505,17 @@ final class ChatController {
                 return key
             }
         )
+    }
+
+    /// Open the SSH exec channel, send ACP `initialize`, then
+    /// `session/new` — so that by the time `state == .ready` the user
+    /// can type and hit send immediately.
+    func start() async {
+        if state == .connecting || state == .ready { return }
+        guard await passModelPreflight(intent: .fresh) else { return }
+        state = .connecting
+        vm.reset()
+        let client = makeClient()
         self.client = client
 
         // Hand the VM a closure that can fetch the ACPClient's recent
@@ -2048,19 +2060,7 @@ final class ChatController {
                     guard !Task.isCancelled else { return }
                 }
 
-                let client = ACPClient.forIOSApp(
-                    context: context,
-                    keyProvider: {
-                        let store = KeychainSSHKeyStore()
-                        guard let key = try await store.load() else {
-                            throw SSHKeyStoreError.backendFailure(
-                                message: "No SSH key in Keychain — re-run onboarding.",
-                                osStatus: nil
-                            )
-                        }
-                        return key
-                    }
-                )
+                let client = makeClient(projectCwd: lastProjectPath)
 
                 do {
                     try await client.start()
@@ -2185,34 +2185,34 @@ final class ChatController {
                 self?.currentGitBranch = branch
             }
         }
-        // Synchronously load the slash command NAMES so we can list them
-        // in the AGENTS.md block (the agent needs to know what commands
-        // are available). This is a separate read from the async one
-        // above because the block has to land on disk BEFORE `hermes acp`
-        // boots — async loads might lose the race. Blocking load on a
-        // detached task to keep the MainActor responsive.
-        let slashNames: [String] = await Task.detached {
-            ProjectSlashCommandService(context: ctx)
-                .loadCommands(at: projectPath)
-                .map(\.name)
-        }.value
-        // Write the context block first. Non-fatal on failure — chat
-        // still starts, just without the managed block. We capture the
-        // failure (rather than swallowing via `try?`) so the user gets
-        // a yellow banner explaining the agent won't see project context
-        // for this session, with the underlying error in "Show details".
-        let block = ProjectContextBlock.renderMinimalBlock(
-            projectName: project.name,
-            projectPath: project.path,
-            slashCommandNames: slashNames
-        )
+        // Render + write the full Scarf-managed AGENTS.md block (cron,
+        // config fields, template, kanban, slash commands, platform
+        // reference) BEFORE `hermes acp` boots — it reads context from the
+        // process cwd at spawn. Non-fatal: a write failure surfaces a
+        // banner and the chat proceeds without the block.
+        await writeProjectContextBlock(projectPath: project.path, projectName: project.name)
+        await start(projectPath: project.path, projectName: project.name)
+    }
+
+    /// Render the full Scarf-managed block for `projectPath` and write it
+    /// over SFTP. Uses `ProjectStore.renderAgentContextBlock` so the block
+    /// is byte-identical to what the Mac writes for the same project state
+    /// (cron jobs included). MUST be called BEFORE the `hermes acp` spawn
+    /// so the block is on disk when Hermes reads context files at boot.
+    ///
+    /// Non-fatal: on failure we surface a yellow banner (so the user knows
+    /// the agent won't see project context this session) with the
+    /// underlying error in "Show details", but the chat still starts.
+    /// Shared by the new-project-chat and resume paths.
+    private func writeProjectContextBlock(projectPath: String, projectName: String) async {
+        let ctx = context
         let writeResult: Result<Void, Error> = await Task.detached {
+            let store = ProjectStore(context: ctx)
+            let scarfProject = store.load(projectPath: projectPath)
+                ?? store.derive(from: ProjectEntry(name: projectName, path: projectPath))
+            let block = store.renderAgentContextBlock(for: scarfProject)
             do {
-                try ProjectContextBlock.writeBlock(
-                    block,
-                    forProjectAt: projectPath,
-                    context: ctx
-                )
+                try ProjectContextBlock.writeBlock(block, forProjectAt: projectPath, context: ctx)
                 return .success(())
             } catch {
                 return .failure(error)
@@ -2226,7 +2226,6 @@ final class ChatController {
             vm.acpErrorHint = "Check that the SSH user can write to \(projectPath)/AGENTS.md."
             vm.acpErrorDetails = error.localizedDescription
         }
-        await start(projectPath: project.path, projectName: project.name)
     }
 
     /// Inline variant of `start()` that accepts a cwd + attribution
@@ -2245,19 +2244,7 @@ final class ChatController {
         }
         guard await passModelPreflight(intent: intent) else { return }
         state = .connecting
-        let client = ACPClient.forIOSApp(
-            context: context,
-            keyProvider: {
-                let store = KeychainSSHKeyStore()
-                guard let key = try await store.load() else {
-                    throw SSHKeyStoreError.backendFailure(
-                        message: "No SSH key in Keychain — re-run onboarding.",
-                        osStatus: nil
-                    )
-                }
-                return key
-            }
-        )
+        let client = makeClient(projectCwd: projectPath)
         self.client = client
         vm.acpStderrProvider = { [weak client] in
             await client?.recentStderr ?? ""
@@ -2379,20 +2366,16 @@ final class ChatController {
             }
         }
 
+        // Refresh the project's AGENTS.md block before the spawn so a
+        // resumed project chat picks up cron/config changes made since the
+        // chat was created (Hermes re-reads context at every `hermes acp`
+        // boot). Project-attributed sessions only.
+        if let resumePath = resolved?.path {
+            await writeProjectContextBlock(projectPath: resumePath, projectName: resolved?.name ?? "")
+        }
+
         state = .connecting
-        let client = ACPClient.forIOSApp(
-            context: context,
-            keyProvider: {
-                let store = KeychainSSHKeyStore()
-                guard let key = try await store.load() else {
-                    throw SSHKeyStoreError.backendFailure(
-                        message: "No SSH key in Keychain — re-run onboarding.",
-                        osStatus: nil
-                    )
-                }
-                return key
-            }
-        )
+        let client = makeClient(projectCwd: resolved?.path)
         self.client = client
         vm.acpStderrProvider = { [weak client] in
             await client?.recentStderr ?? ""
@@ -2410,15 +2393,24 @@ final class ChatController {
         startHealthMonitor(client: client)
 
         do {
-            let home = await context.resolvedUserHome()
+            // Project-scoped sessions resume with their project path as
+            // cwd (matching the reconnect path); others use the remote
+            // user's home. Hermes loads project context from the process
+            // cwd set at spawn (forIOSApp projectCwd), not from this.
+            let cwd: String
+            if let projectPath = resolved?.path {
+                cwd = projectPath
+            } else {
+                cwd = await context.resolvedUserHome()
+            }
             // Prefer `session/resume` for true resume semantics
             // (same session id preserved in state.db); fall back to
             // `session/load` if the remote doesn't know resume.
             let resolvedID: String
             do {
-                resolvedID = try await client.resumeSession(cwd: home, sessionId: sessionID)
+                resolvedID = try await client.resumeSession(cwd: cwd, sessionId: sessionID)
             } catch {
-                resolvedID = try await client.loadSession(cwd: home, sessionId: sessionID)
+                resolvedID = try await client.loadSession(cwd: cwd, sessionId: sessionID)
             }
             vm.setSessionId(resolvedID)
             loadDraft()
