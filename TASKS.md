@@ -62,6 +62,7 @@
 
 ## Done
 
+- [x] Refresh marketing site + README FAQ for v2.15 Projects (supersede PR #109) (id: t-83c4c692) (added: 2026-06-28)
 - [x] Add wiki.sh sync subcommand (strip frontmatter, wiki/ → .wiki-worktree/) (id: t-6c69add2) (added: 2026-06-28)
 - [x] Next release notes: add project context-file awareness line (t-42db11e9) (id: t-cea43144) (added: 2026-06-28) (priority: low)
 - [x] Cut v2.15.0 — Projects Grow Up (mini-apps, fleet, upgrade, cockpit) (id: t-af0690ff) (added: 2026-06-28) (priority: high)
