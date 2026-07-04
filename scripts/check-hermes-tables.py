@@ -139,7 +139,8 @@ def main():
             if pid in overlay_keys:
                 warnings.append(
                     f"[overlay-only] '{pid}' is now in models.dev; the Scarf overlay "
-                    f"is dormant fallback (harmless, candidate for cleanup)")
+                    f"is dormant fallback (deliberate — kept for stale-cache hosts, "
+                    f"see the entry's comment in ModelCatalogService.swift)")
             else:
                 failures.append(
                     f"[overlay-only] '{pid}' is not a Hermes overlay at all — stale entry")

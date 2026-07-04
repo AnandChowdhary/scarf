@@ -638,6 +638,12 @@ public struct ModelCatalogService: Sendable {
             subscriptionGated: false,
             docURL: nil
         ),
+        // Intentionally dormant on current caches: models.dev has since
+        // absorbed lmstudio, so loadProviders() prefers the catalog entry
+        // and this one only merges on hosts whose cache predates it
+        // (Scarf supports Hermes back to v0.6). Hermes v0.16 still ships
+        // it in HERMES_OVERLAYS; keep parity. check-hermes-tables.py
+        // WARNs on it by design.
         "lmstudio": HermesProviderOverlay(
             displayName: "LM Studio",
             // v0.12 promotes LM Studio from custom-endpoint alias to a
@@ -655,6 +661,9 @@ public struct ModelCatalogService: Sendable {
             subscriptionGated: false,
             docURL: nil
         ),
+        // Intentionally dormant on current caches — same story as
+        // lmstudio above: models.dev absorbed it; kept for stale-cache
+        // hosts and HERMES_OVERLAYS parity.
         "tencent-tokenhub": HermesProviderOverlay(
             displayName: "Tencent TokenHub",
             // Resolved from TOKENHUB_BASE_URL at runtime.
