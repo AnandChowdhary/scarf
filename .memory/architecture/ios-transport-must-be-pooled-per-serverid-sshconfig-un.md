@@ -11,6 +11,9 @@ tags:
 - transport
 - gh112
 - performance
+source_sha: 6a12139b218190d8a99ba679bd1a191c0bc13396
+source_paths: scripts/verify-ios-transport-pool.sh
+source_paths_inferred: true
 ---
 
 ## Observations

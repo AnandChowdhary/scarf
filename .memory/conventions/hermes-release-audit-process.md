@@ -10,6 +10,9 @@ tags:
 - capability-gating
 created: 2026-06-21
 updated: 2026-06-21
+source_sha: 6a12139b218190d8a99ba679bd1a191c0bc13396
+source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/HermesCapabilities.swift
+source_paths_inferred: true
 ---
 
 The repeatable process for auditing a new Hermes release against Scarf. Canonical procedure lives in the repo skill `.claude/skills/hermes-release-audit/SKILL.md`; this note is the memory-backend-discoverable summary. Done six times (v0.11 → v0.17).

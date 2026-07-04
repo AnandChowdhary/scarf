@@ -10,6 +10,9 @@ tags:
 - macos
 created: 2026-06-21
 updated: 2026-06-21
+source_sha: 6a12139b218190d8a99ba679bd1a191c0bc13396
+source_paths: scarf/scarf/Features/Projects/MiniApp/MiniAppInspectorSurface.swift
+source_paths_inferred: true
 ---
 
 A mini-app opens in a trailing slide-in OVERLAY (`scarf/scarf/Features/Projects/MiniApp/MiniAppInspectorSurface.swift`, bound in `ContentView` via `.overlay`), NOT SwiftUI `.inspector`.

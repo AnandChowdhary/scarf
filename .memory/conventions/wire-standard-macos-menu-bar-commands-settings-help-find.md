@@ -7,11 +7,13 @@ tags:
 - macos
 - conventions
 - audit-2026-06-13
-source_sha: f770fe49412e097d9b082179e1f96a83d3ebbc21
+source_sha: 6a12139b218190d8a99ba679bd1a191c0bc13396
 reviewed: 2026-06-15
 created: 2026-06-13
 updated: 2026-06-15
 reviewed_by: human
+source_paths: scarf/scarf/scarfApp.swift, scarf/scarf/Features/Sessions/Views/SessionsView.swift
+source_paths_inferred: true
 ---
 
 ## Observations

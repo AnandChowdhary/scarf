@@ -10,6 +10,9 @@ tags:
 - persistence
 created: 2026-06-21
 updated: 2026-06-21
+source_sha: 6a12139b218190d8a99ba679bd1a191c0bc13396
+source_paths: scarf/scarf/Core/SwiftUI/WindowFrameAutosave.swift
+source_paths_inferred: true
 ---
 
 macOS Scarf persists each window's frame (size + position) across launches MANUALLY — its own UserDefaults key + `setFrame` on appear — deliberately NOT AppKit's `setFrameAutosaveName`/`setFrameUsingName`, and NOT relying on SwiftUI's built-in autosave. See `scarf/scarf/Core/SwiftUI/WindowFrameAutosave.swift` (applied at the `WindowGroup` content via `.windowFrameAutosave("Scarf.Window.<serverID>")`).

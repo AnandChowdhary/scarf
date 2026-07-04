@@ -10,6 +10,9 @@ tags:
 - audit-2026-06-13
 created: 2026-06-13
 updated: 2026-06-13
+source_sha: 6a12139b218190d8a99ba679bd1a191c0bc13396
+source_paths: scarf/Scarf iOS/App/ScarfIOSApp.swift, scarf/scarf/scarfApp.swift
+source_paths_inferred: true
 ---
 
 ## Observations
