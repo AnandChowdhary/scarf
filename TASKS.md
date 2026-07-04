@@ -55,6 +55,7 @@
 - [ ] MCP per-server keepalive_interval editor field (v0.17) (id: t-07a9baa4) (added: 2026-06-21) (priority: low)
 - [ ] Photon / iMessage gateway platform support (v0.17) — decide support level (id: t-5ab57e6f) (added: 2026-06-21) (priority: low)
 - [ ] Gateway allowlist: google-chat is a no-op + wrong platform id (v0.17 = google_chat) (id: t-2d6888ea) (added: 2026-06-21)
+- [ ] Mismatch banner: offer "Choose model…" picker when prefix is unknown (id: t-79569a15) (added: 2026-07-04)
 
 ## Doing
 
