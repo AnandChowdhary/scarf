@@ -289,13 +289,25 @@ struct ChatView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                    if !mismatch.prefixIsKnownProvider {
+                        // The prefix isn't a provider Hermes has, so
+                        // "Use \(prefix)" would write a nonexistent
+                        // provider into config.yaml — offer only the
+                        // strip fix and point at the likely intent.
+                        Text("`\(mismatch.prefixProvider)` isn't a provider Hermes knows. If this model ID came from an aggregator (e.g. OpenRouter), set `model.provider` to that aggregator instead.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
                     HStack(spacing: 6) {
-                        Button("Use \(mismatch.prefixProvider)") {
-                            viewModel.alignProviderToModelPrefix(mismatch)
+                        if mismatch.prefixIsKnownProvider {
+                            Button("Use \(mismatch.prefixProvider)") {
+                                viewModel.alignProviderToModelPrefix(mismatch)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .help("Set model.provider = \(mismatch.prefixProvider) and model.default = \(mismatch.bareModel).")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .help("Set model.provider = \(mismatch.prefixProvider) and model.default = \(mismatch.bareModel).")
                         Button("Keep \(mismatch.activeProvider)") {
                             viewModel.stripPrefixFromModelDefault(mismatch)
                         }

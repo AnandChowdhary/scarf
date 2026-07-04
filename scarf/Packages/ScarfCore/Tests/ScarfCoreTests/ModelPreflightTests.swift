@@ -219,6 +219,72 @@ import Foundation
         #expect(ModelPreflight.detectMismatch(cfg) != nil)
     }
 
+    @Test func detectMismatchReturnsNilWhenPrefixIsAliasOfProvider() {
+        // Hermes ALIASES makes `claude` ↔ `anthropic` the same provider —
+        // a `claude/` prefix under provider `anthropic` (or vice versa)
+        // is equivalent, not mismatched.
+        var cfg = HermesConfig.empty
+        cfg.model = "claude/claude-sonnet-4.6"
+        cfg.provider = "anthropic"
+        #expect(ModelPreflight.detectMismatch(cfg) == nil)
+
+        cfg.model = "x-ai/grok-4"
+        cfg.provider = "xai"
+        #expect(ModelPreflight.detectMismatch(cfg) == nil)
+    }
+
+    @Test func detectMismatchReturnsNilWhenProviderIsAliasOfPrefix() {
+        // Alias resolution applies to both sides: provider `zhipu` is
+        // Hermes's alias for `zai`, so a `zai/` prefix matches it.
+        var cfg = HermesConfig.empty
+        cfg.model = "zai/glm-5"
+        cfg.provider = "zhipu"
+        #expect(ModelPreflight.detectMismatch(cfg) == nil)
+    }
+
+    // MARK: - detectMismatch(_:knownProviders:) — prefix validation
+
+    @Test func detectMismatchMarksUnknownPrefixWithRoster() {
+        // GH issue #121 follow-up: `foo/bar` under a direct provider is
+        // genuinely broken (banner fires), but `foo` isn't a provider
+        // Hermes has — the UI must not offer "Use foo".
+        var cfg = HermesConfig.empty
+        cfg.model = "foo/bar-model"
+        cfg.provider = "nous"
+        let mismatch = ModelPreflight.detectMismatch(cfg, knownProviders: ["anthropic", "xai", "nous"])
+        #expect(mismatch != nil)
+        #expect(mismatch?.prefixIsKnownProvider == false)
+    }
+
+    @Test func detectMismatchMarksKnownPrefixWithRoster() {
+        var cfg = HermesConfig.empty
+        cfg.model = "anthropic/claude-sonnet-4.6"
+        cfg.provider = "nous"
+        let mismatch = ModelPreflight.detectMismatch(cfg, knownProviders: ["anthropic", "nous"])
+        #expect(mismatch?.prefixIsKnownProvider == true)
+    }
+
+    @Test func detectMismatchResolvesAliasBeforeRosterLookup() {
+        // A `grok/` prefix isn't in the roster verbatim, but Hermes
+        // aliases it to `xai`, which is — the "Use grok" fix would
+        // work, so the prefix counts as known.
+        var cfg = HermesConfig.empty
+        cfg.model = "grok/grok-4"
+        cfg.provider = "nous"
+        let mismatch = ModelPreflight.detectMismatch(cfg, knownProviders: ["xai", "nous"])
+        #expect(mismatch?.prefixIsKnownProvider == true)
+    }
+
+    @Test func detectMismatchTrustsPrefixWithoutRoster() {
+        // No roster (catalog unavailable) → pre-roster behavior: the
+        // prefix is trusted and both fix buttons render.
+        var cfg = HermesConfig.empty
+        cfg.model = "foo/bar-model"
+        cfg.provider = "nous"
+        let mismatch = ModelPreflight.detectMismatch(cfg)
+        #expect(mismatch?.prefixIsKnownProvider == true)
+    }
+
     @Test func detectMismatchTrimsWhitespaceBeforeComparing() {
         // A stray newline in a hand-edited config.yaml shouldn't read
         // as a mismatch when the trimmed values agree.

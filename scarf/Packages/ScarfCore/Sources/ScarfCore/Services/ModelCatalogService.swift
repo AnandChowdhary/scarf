@@ -697,6 +697,117 @@ public struct ModelCatalogService: Sendable {
         ),
     ]
 
+    /// Provider-ID aliases — verbatim mirror of `ALIASES` in
+    /// hermes_cli/providers.py (minus identity entries). Maps
+    /// human-friendly / legacy names to canonical provider IDs, using
+    /// models.dev IDs where possible. Used by `canonicalProviderID(_:)`
+    /// so preflight checks compare what Hermes would actually resolve.
+    /// Reconcile on every Hermes bump alongside the other tables here.
+    public static let providerAliases: [String: String] = [
+        // openrouter
+        "openai": "openrouter",     // bare "openai" → route through aggregator
+        // zai
+        "glm": "zai",
+        "z-ai": "zai",
+        "z.ai": "zai",
+        "zhipu": "zai",
+        // xai
+        "x-ai": "xai",
+        "x.ai": "xai",
+        "grok": "xai",
+        "grok-oauth": "xai-oauth",
+        "x-ai-oauth": "xai-oauth",
+        "xai-grok-oauth": "xai-oauth",
+        // nvidia
+        "nim": "nvidia",
+        "nvidia-nim": "nvidia",
+        "build-nvidia": "nvidia",
+        "nemotron": "nvidia",
+        // kimi-for-coding (models.dev ID)
+        "kimi": "kimi-for-coding",
+        "kimi-coding": "kimi-for-coding",
+        "kimi-coding-cn": "kimi-for-coding",
+        "moonshot": "kimi-for-coding",
+        // stepfun
+        "step": "stepfun",
+        "stepfun-coding-plan": "stepfun",
+        // minimax-cn
+        "minimax-china": "minimax-cn",
+        "minimax_cn": "minimax-cn",
+        // anthropic
+        "claude": "anthropic",
+        "claude-code": "anthropic",
+        // github-copilot (models.dev ID)
+        "copilot": "github-copilot",
+        "github": "github-copilot",
+        "github-copilot-acp": "copilot-acp",
+        // opencode (models.dev ID for OpenCode Zen)
+        "opencode-zen": "opencode",
+        "zen": "opencode",
+        // opencode-go
+        "go": "opencode-go",
+        "opencode-go-sub": "opencode-go",
+        // kilo (models.dev ID for KiloCode)
+        "kilocode": "kilo",
+        "kilo-code": "kilo",
+        "kilo-gateway": "kilo",
+        // deepseek
+        "deep-seek": "deepseek",
+        // alibaba
+        "dashscope": "alibaba",
+        "aliyun": "alibaba",
+        "qwen": "alibaba",
+        "alibaba-cloud": "alibaba",
+        "alibaba_coding": "alibaba-coding-plan",
+        "alibaba-coding": "alibaba-coding-plan",
+        "alibaba_coding_plan": "alibaba-coding-plan",
+        // google-gemini-cli (OAuth + Code Assist)
+        "gemini-cli": "google-gemini-cli",
+        "gemini-oauth": "google-gemini-cli",
+        // huggingface
+        "hf": "huggingface",
+        "hugging-face": "huggingface",
+        "huggingface-hub": "huggingface",
+        // novita
+        "novita-ai": "novita",
+        "novitaai": "novita",
+        // xiaomi
+        "mimo": "xiaomi",
+        "xiaomi-mimo": "xiaomi",
+        // tencent
+        "tencent": "tencent-tokenhub",
+        "tokenhub": "tencent-tokenhub",
+        "tencent-cloud": "tencent-tokenhub",
+        "tencentmaas": "tencent-tokenhub",
+        // bedrock
+        "aws": "bedrock",
+        "aws-bedrock": "bedrock",
+        "amazon-bedrock": "bedrock",
+        "amazon": "bedrock",
+        // arcee
+        "arcee-ai": "arcee",
+        "arceeai": "arcee",
+        // gmi
+        "gmi-cloud": "gmi",
+        "gmicloud": "gmi",
+        // Local server aliases → virtual "local" concept (resolved via user config)
+        "lm-studio": "lmstudio",
+        "lm_studio": "lmstudio",
+        "ollama": "custom",  // bare "ollama" = local; use "ollama-cloud" for cloud
+        "vllm": "local",
+        "llamacpp": "local",
+        "llama.cpp": "local",
+        "llama-cpp": "local",
+    ]
+
+    /// Resolve aliases and normalize casing to a canonical provider ID —
+    /// mirrors `normalize_provider` in hermes_cli/providers.py. Does not
+    /// validate that the result names a known provider.
+    public static func canonicalProviderID(_ name: String) -> String {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return providerAliases[key] ?? key
+    }
+
     /// Display-name overrides applied at `loadProviders()` time. Used
     /// when Hermes renames a provider's display string without changing
     /// the wire ID — `alibaba` → "Qwen Cloud" in v0.14 is the only

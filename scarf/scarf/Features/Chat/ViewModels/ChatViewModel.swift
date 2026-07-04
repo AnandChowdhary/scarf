@@ -398,16 +398,52 @@ final class ChatViewModel {
         }
     }
 
+    /// Canonical provider IDs from the models.dev catalog + Hermes
+    /// overlays, loaded lazily the first time a model/provider
+    /// mismatch is detected and cached for the VM's lifetime. Feeds
+    /// `ModelPreflight.detectMismatch(_:knownProviders:)` so the
+    /// banner never offers to write a provider Hermes doesn't have.
+    /// Nil until first load; empty set means the load failed (treated
+    /// as "no roster" — the banner trusts the prefix as before).
+    private var knownProviderIDs: Set<String>?
+
     /// Re-reads config.yaml and refreshes the
     /// `model.default` / `model.provider` mismatch state. Off-MainActor
     /// because `loadConfig()` is a synchronous file read (and an SSH
     /// round-trip on remote contexts). Safe to call from `.task` or
     /// after a write that would have changed config.
+    ///
+    /// The provider roster load (`ModelCatalogService.loadProviders()`)
+    /// is deferred to the rare path where a mismatch was actually
+    /// detected — on remote contexts it can pull a multi-megabyte
+    /// catalog over SSH, which must not tax every diagnostics refresh.
     func refreshConfigDiagnostics() {
         let svc = fileService
+        let ctx = context
         Task.detached { [weak self] in
             let config = svc.loadConfig()
-            let mismatch = ModelPreflight.detectMismatch(config)
+            var mismatch = ModelPreflight.detectMismatch(config)
+            if mismatch != nil {
+                var known = await MainActor.run { [weak self] in self?.knownProviderIDs }
+                if known == nil {
+                    // Only trust the roster when the models.dev catalog
+                    // actually loaded — an overlay-only result (fresh
+                    // install, cache not yet written by Hermes) would
+                    // mark real providers like `anthropic` unknown.
+                    // Empty set = "catalog unavailable", cached so the
+                    // (possibly SSH-backed) read isn't retried every
+                    // refresh.
+                    let infos = ModelCatalogService(context: ctx).loadProviders()
+                    let loaded = infos.contains(where: { !$0.isOverlay })
+                        ? Set(infos.map(\.providerID))
+                        : Set()
+                    await MainActor.run { [weak self] in self?.knownProviderIDs = loaded }
+                    known = loaded
+                }
+                if let known, !known.isEmpty {
+                    mismatch = ModelPreflight.detectMismatch(config, knownProviders: known)
+                }
+            }
             let mode = config.approvalMode
             await MainActor.run { [weak self] in
                 self?.modelProviderMismatch = mismatch
