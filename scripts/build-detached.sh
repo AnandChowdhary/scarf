@@ -58,10 +58,30 @@ BUILD_LOG="$(mktemp -t "${APP_PRODUCT}-build-detached")"
 trap '[ "${KEEP_LOG:-0}" = 1 ] || rm -f "$BUILD_LOG"' EXIT   # kept on failure for inspection
 say() { printf '%s\n' "$*" >&2; }
 
-# Match the GUI's Xcode so SDK/Swift line up. (We always build into isolated DerivedData, so this
-# is toolchain parity, not the build.db guard.)
-if [ -z "${DEVELOPER_DIR:-}" ] && [ -n "$XCODE_APP" ] && [ -d "$XCODE_APP" ]; then
-  export DEVELOPER_DIR="$XCODE_APP"
+# Pick a real Xcode.app — NEVER the Command Line Tools (which can't run xcodebuild). We resolve it
+# via DEVELOPER_DIR (no sudo), so a build keeps working even after an Xcode swap leaves
+# `xcode-select` pointing at /Library/Developer/CommandLineTools. Preference: a caller-exported
+# DEVELOPER_DIR → the configured XCODE_APP → xcode-select's choice if it's a full Xcode → the first
+# Xcode.app found in /Applications.
+if [ -z "${DEVELOPER_DIR:-}" ]; then
+  if [ -n "$XCODE_APP" ] && [ -d "$XCODE_APP" ]; then
+    export DEVELOPER_DIR="$XCODE_APP"
+  else
+    case "$(xcode-select -p 2>/dev/null)" in
+      */Xcode*.app/Contents/Developer) : ;;                  # already a full Xcode — leave it
+      *)                                                      # CLT or unset → find a real Xcode.app
+        for _x in /Applications/Xcode.app /Applications/Xcode-*.app; do
+          [ -x "$_x/Contents/Developer/usr/bin/xcodebuild" ] && { export DEVELOPER_DIR="$_x"; break; }
+        done ;;
+    esac
+  fi
+fi
+# Fail early with an actionable message rather than a cryptic xcode-select error.
+if ! xcodebuild -version >/dev/null 2>&1; then
+  say "!! No usable Xcode found (xcode-select -p = $(xcode-select -p 2>/dev/null))."
+  say "   Point the CLI at your Xcode once:  sudo xcode-select -s /Applications/Xcode.app"
+  say "   …or set XCODE_APP in this script's CONFIG, or export DEVELOPER_DIR before running."
+  exit 1
 fi
 
 # ---- the one correct xcodebuild invocation for this project (action passed last) ----
@@ -144,17 +164,30 @@ render_progress() {
 #      leave alone. We identify the app by its own executable (…/Contents/MacOS/<APP_PRODUCT>) and
 #      quit by PID, waiting for exit BEFORE clobbering the bundle so the on-disk store isn't torn.
 quit_running_copies() {
-  local pid cmd victims=()
+  local pid cmd victims=() has_tmp=0
   while IFS= read -r pid; do
     [ -n "$pid" ] || continue
     cmd="$(ps -p "$pid" -o command= 2>/dev/null)"
     case "$cmd" in *"/Contents/MacOS/$APP_PRODUCT"*) ;; *) continue ;; esac          # this app's executable
-    case "$cmd" in *"/tmp/"*|*"/var/folders/"*) continue ;; esac                     # spare agent /tmp builds
+    case "$cmd" in *"/tmp/"*|*"/var/folders/"*) has_tmp=1; continue ;; esac          # spare agent /tmp builds
     victims+=("$pid")
   done < <(pgrep -x "$APP_PRODUCT" 2>/dev/null)
   [ ${#victims[@]} -gt 0 ] || return 0
   say "==> quitting ${#victims[@]} running copy(ies) of $APP_PRODUCT before launch (agent /tmp test builds left alone)…"
-  kill "${victims[@]}" 2>/dev/null || true                                          # SIGTERM
+  # Graceful FIRST: an Apple Event "quit" runs the app's normal termination so it FLUSHES
+  # UserDefaults and leaves cfprefsd's domain view coherent. A force-kill (below) skips that —
+  # the write reaches the plist but the daemon serves an empty domain, so the next launch reads
+  # defaults (this is why scan/auto-file settings appeared to "reset"). Target by bundle id (no
+  # "locate app" prompt), but ONLY when no /tmp agent copy is running, since an id-quit hits every
+  # instance. If a /tmp copy is up, skip straight to the PID-scoped kill that spares it.
+  if [ "$has_tmp" = 0 ] && [ -n "${BUNDLE_ID:-}" ]; then
+    osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
+    for _ in $(seq 1 12); do
+      local alive=0; for pid in "${victims[@]}"; do kill -0 "$pid" 2>/dev/null && alive=1; done
+      [ "$alive" = 0 ] && return 0; sleep 0.5
+    done
+  fi
+  kill "${victims[@]}" 2>/dev/null || true                                          # SIGTERM fallback
   for _ in $(seq 1 16); do
     local alive=0; for pid in "${victims[@]}"; do kill -0 "$pid" 2>/dev/null && alive=1; done
     [ "$alive" = 0 ] && return 0; sleep 0.5
@@ -199,7 +232,7 @@ say "==> building $SCHEME ($CONFIG) → isolated DerivedData $DERIVED"
 # ONLY_ACTIVE_ARCH=YES → build just this Mac's slice (not a universal binary); it's a local
 # dogfood copy, so half the compile for the same runtime behavior.
 _t0="$(date +%s)"
-if ! build -allowProvisioningUpdates ONLY_ACTIVE_ARCH=YES "INFOPLIST_KEY_CFBundleDisplayName=$DISPLAY_NAME"; then
+if ! build -allowProvisioningUpdates ONLY_ACTIVE_ARCH=YES "INFOPLIST_KEY_CFBundleDisplayName=$DISPLAY_NAME" ${EXTRA_XCODEBUILD_ARGS[@]+"${EXTRA_XCODEBUILD_ARGS[@]}"}; then
   KEEP_LOG=1
   say "!! BUILD FAILED — your currently-running copy (if any) was left untouched. Errors:"
   grep -E "error:|fatal error:" "$BUILD_LOG" | grep -v "GeneratedModuleMaps" | head -8 >&2 || true
