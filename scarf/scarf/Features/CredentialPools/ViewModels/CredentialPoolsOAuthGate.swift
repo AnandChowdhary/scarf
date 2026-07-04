@@ -11,7 +11,7 @@ import ScarfCore
 /// |---|---|---|
 /// | PKCE | ✅ Yes | anthropic, github-copilot |
 /// | Device-code | ❌ No — stalls silently | nous |
-/// | External OAuth | ❌ No — needs a terminal | openai-codex, qwen-oauth, google-gemini-cli |
+/// | External OAuth | ❌ No — needs a terminal | openai-codex, qwen-oauth |
 /// | External process | ❌ No — uses an agent bridge | copilot-acp |
 ///
 /// Routing a non-PKCE provider through the generic controller silently

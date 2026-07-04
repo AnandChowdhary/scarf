@@ -303,6 +303,8 @@ struct CronEditorView: View {
             deliver: emptyToNil(deliver),
             // Preserve runtime state fields from the existing job so
             // an edit doesn't reset last_run_at, failure counts, etc.
+            // Every field the editor doesn't own must be forwarded, or
+            // a save silently strips it from jobs.json.
             nextRunAt: existing?.nextRunAt,
             lastRunAt: existing?.lastRunAt,
             lastError: existing?.lastError,
@@ -311,7 +313,11 @@ struct CronEditorView: View {
             lastDeliveryError: existing?.lastDeliveryError,
             timeoutType: existing?.timeoutType,
             timeoutSeconds: existing?.timeoutSeconds,
-            silent: existing?.silent
+            silent: existing?.silent,
+            workdir: existing?.workdir,
+            contextFrom: existing?.contextFrom,
+            noAgent: existing?.noAgent,
+            attachToSession: existing?.attachToSession
         )
     }
 }

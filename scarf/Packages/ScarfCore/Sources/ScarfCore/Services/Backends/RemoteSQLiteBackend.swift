@@ -37,6 +37,7 @@ public actor RemoteSQLiteBackend: HermesQueryBackend {
     private(set) public var hasV07Schema = false
     private(set) public var hasV011Schema = false
     private(set) public var hasMessagesActiveColumn = false
+    private(set) public var hasCompactedColumn = false
     private(set) public var hasRewindCountColumn = false
     private(set) public var lastOpenError: String?
     private var isOpen = false
@@ -307,6 +308,9 @@ public actor RemoteSQLiteBackend: HermesQueryBackend {
         hasV011Schema = sessionsHasV011 && messagesHasV011
         // v0.16: messages has `active` column for soft-delete support.
         hasMessagesActiveColumn = messagesTable.contains("active")
+        // v0.18: messages has `compacted` column (in-place compaction
+        // soft-archive marker; search must include compacted=1 rows).
+        hasCompactedColumn = messagesTable.contains("compacted")
         // v0.16: sessions has `rewind_count` column.
         hasRewindCountColumn = sessionsTable.contains("rewind_count")
     }

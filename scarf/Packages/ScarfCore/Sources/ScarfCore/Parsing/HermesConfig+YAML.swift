@@ -403,13 +403,16 @@ public extension HermesConfig {
             // `SettingsViewModel.setOpenRouterResponseCache`.
             imageGenModel: str("image_gen.model", default: ""),
             openrouterResponseCacheEnabled: bool("openrouter.response_cache", default: false),
-            // Pre-v0.13 hosts wrote a single `web_tools.backend`. v0.13 split
-            // it into per-capability keys. Read all three so the round-trip
-            // never loses a value the user already set; the WebTools tab
-            // chooses which to render based on `hasWebToolsBackendSplit`.
-            webToolsBackend: str("web_tools.backend", default: "duckduckgo"),
-            webToolsSearchBackend: str("web_tools.search.backend", default: "duckduckgo"),
-            webToolsExtractBackend: str("web_tools.extract.backend", default: "reader"),
+            // Hermes reads the `web:` block: `web.backend` is the shared
+            // fallback (all supported hosts), `web.search_backend` /
+            // `web.extract_backend` are v0.13+ per-capability overrides
+            // ("" = inherit the shared fallback — Hermes semantics; the
+            // WebTools tab chooses rows via `hasWebToolsBackendSplit`).
+            // Scarf read `web_tools.*` until the v0.18 audit — dead keys
+            // Hermes never wrote, so the tab always showed defaults.
+            webToolsBackend: str("web.backend", default: ""),
+            webToolsSearchBackend: str("web.search_backend", default: ""),
+            webToolsExtractBackend: str("web.extract_backend", default: ""),
             // -- v0.15 additions -------------------------------------
             ntfy: ntfy,
             whatsappCloud: whatsappCloud,

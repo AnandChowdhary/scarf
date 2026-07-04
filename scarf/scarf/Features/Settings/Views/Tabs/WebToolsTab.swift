@@ -3,11 +3,11 @@ import ScarfCore
 import ScarfDesign
 
 /// Web Tools tab — search + extract backend pickers. Pre-v0.13 hosts
-/// see a single "Combined backend" row writing to the legacy
-/// `web_tools.backend` key. v0.13+ hosts see two rows writing to the
-/// per-capability split keys (`web_tools.search.backend` +
-/// `web_tools.extract.backend`); SearXNG appears in the search picker
-/// only because Hermes registers it as a search-only backend.
+/// see a single "Backend" row writing the shared `web.backend` key.
+/// v0.13+ hosts see two rows writing the per-capability override keys
+/// (`web.search_backend` + `web.extract_backend`; "" = inherit
+/// `web.backend`); SearXNG appears in the search picker only because
+/// Hermes registers it as a search-only backend.
 struct WebToolsTab: View {
     @Bindable var viewModel: SettingsViewModel
     @Environment(\.hermesCapabilities) private var capabilitiesStore

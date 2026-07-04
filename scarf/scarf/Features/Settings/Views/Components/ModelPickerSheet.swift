@@ -515,6 +515,8 @@ struct ModelPickerSheet: View {
             return "Uses an external process (e.g. a local agent bridge). Run `hermes auth` from a terminal to complete the link, then set the model ID you want to use."
         case .oauthDeviceCode:
             return "Sign in via device-code flow — run `hermes auth` from a terminal and follow the printed URL."
+        case .virtual:
+            return "No credentials needed — this is a local virtual provider. Enter the preset name you want to use (e.g. `default`)."
         default:
             return "This provider isn't in the models.dev catalog. Enter the model ID you want to use — Hermes will pass it through to the provider verbatim."
         }

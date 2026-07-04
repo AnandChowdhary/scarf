@@ -900,17 +900,16 @@ public struct HermesConfig: Sendable {
     /// final reply (provider/model/cost/turn count). Off by default;
     /// useful for cost auditing and screen-recording demos.
     public var runtimeMetadataFooter: Bool
-    /// Pre-v0.13: single combined Web Tools backend at `web_tools.backend`.
-    /// v0.13 split this into per-capability keys (see below). Kept readable
-    /// for round-trip compatibility on hosts that never migrated; v0.13+
-    /// hosts ignore this scalar and read the split keys instead.
+    /// `web.backend` — the shared Web Tools backend (all supported
+    /// hosts). v0.13+ hosts treat it as the fallback the per-capability
+    /// overrides below inherit from when unset.
     public var webToolsBackend: String
-    /// v0.13+: `web_tools.search.backend`. SearXNG is search-only and
-    /// can land here. Pre-v0.13 hosts default to the same value as the
-    /// combined backend.
+    /// v0.13+: `web.search_backend` — per-capability override for
+    /// `web_search`. SearXNG is search-only and can land here. "" means
+    /// inherit `web.backend`.
     public var webToolsSearchBackend: String
-    /// v0.13+: `web_tools.extract.backend`. Pre-v0.13 hosts default to
-    /// the same value as the combined backend.
+    /// v0.13+: `web.extract_backend` — per-capability override for
+    /// `web_extract`. "" means inherit `web.backend`.
     public var webToolsExtractBackend: String
 
     // -- Hermes v0.13 additions ----------------------------------------
@@ -1038,9 +1037,9 @@ public struct HermesConfig: Sendable {
         gatewayPlatforms: [String: GatewayPlatformSettings] = [:],
         imageGenModel: String = "",
         openrouterResponseCacheEnabled: Bool = false,
-        webToolsBackend: String = "duckduckgo",
-        webToolsSearchBackend: String = "duckduckgo",
-        webToolsExtractBackend: String = "reader",
+        webToolsBackend: String = "",
+        webToolsSearchBackend: String = "",
+        webToolsExtractBackend: String = "",
         ntfy: NtfySettings = .empty,
         whatsappCloud: WhatsAppCloudSettings = .empty,
         signal: SignalSettings = .empty,

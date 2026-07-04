@@ -206,9 +206,14 @@ final class SettingsViewModel {
     /// hosts read it for back-compat but the WebToolsTab gates writes
     /// on `hasWebToolsBackendSplit` so the tab only writes the split
     /// keys on v0.13.
-    func setWebToolsBackend(_ value: String) { setSetting("web_tools.backend", value: value) }
-    func setWebToolsSearchBackend(_ value: String) { setSetting("web_tools.search.backend", value: value) }
-    func setWebToolsExtractBackend(_ value: String) { setSetting("web_tools.extract.backend", value: value) }
+    // Hermes reads the `web:` block (tools/web_tools.py `_load_web_config()`):
+    // `web.backend` (shared fallback), `web.search_backend` / `web.extract_backend`
+    // (per-capability overrides). Scarf wrote `web_tools.*` until the v0.18 audit
+    // caught it — `config set` accepts any dotted key, so those writes landed in
+    // config.yaml as dead keys Hermes never read (silent no-op since ≤ v0.9).
+    func setWebToolsBackend(_ value: String) { setSetting("web.backend", value: value) }
+    func setWebToolsSearchBackend(_ value: String) { setSetting("web.search_backend", value: value) }
+    func setWebToolsExtractBackend(_ value: String) { setSetting("web.extract_backend", value: value) }
 
     // MARK: - Voice / TTS / STT
 

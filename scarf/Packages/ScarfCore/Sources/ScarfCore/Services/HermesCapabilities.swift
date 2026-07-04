@@ -409,7 +409,7 @@ public struct HermesCapabilities: Sendable, Equatable {
     /// gate for the whole wave — pre-v0.15 hosts keep the v0.12 board.
     public var hasKanbanV015: Bool { atLeastSemver(0, 15, 0) }
 
-    /// xAI Web Search as a `web_tools.search.backend` value (`xai`).
+    /// xAI Web Search as a `web.search_backend` value (`xai`).
     /// Reuses Grok OAuth / `XAI_API_KEY`; no new env var.
     public var hasXAIWebSearchBackend: Bool { atLeastSemver(0, 15, 0) }
 
@@ -511,6 +511,25 @@ public struct HermesCapabilities: Sendable, Equatable {
     /// (opt-in presence label) per-platform config keys (v0.17+).
     public var hasTelegramRichMessages: Bool { atLeastSemver(0, 17, 0) }
 
+    // MARK: v0.18 (v2026.7.1) flags
+    //
+    // v0.18's client-relevant surface is deliberately thin: the
+    // `messages.compacted` column is schema-detected (see
+    // `HermesQueryBackend.hasCompactedColumn`), and the provider-table
+    // changes (MoA overlay, google-gemini-cli → vertex) are
+    // catalog-sync changes that carry no flag by convention.
+
+    /// Per-job cron `attach_to_session` (bool) — mirrors a job's
+    /// delivery output into the target chat session's transcript,
+    /// overriding the global `cron.mirror_delivery` config (v0.18+).
+    /// Scarf round-trips the field on all hosts (unknown keys are
+    /// simply absent pre-v0.18); gate any future editor UI on this.
+    public var hasCronAttachToSession: Bool { atLeastSemver(0, 18, 0) }
+
+    /// `hermes mcp reauth [name|--all]` — refresh expired MCP OAuth
+    /// tokens without re-adding the server (v0.18+).
+    public var hasMCPReauth: Bool { atLeastSemver(0, 18, 0) }
+
     // MARK: Convenience predicates
 
     /// Whether the connected host is on the v0.13 line or newer. Convenience
@@ -541,6 +560,11 @@ public struct HermesCapabilities: Sendable, Equatable {
     /// for UI copy that toggles on the v0.16 → v0.17 boundary without
     /// proxying through a feature-specific flag.
     public var isV017OrLater: Bool { atLeastSemver(0, 17, 0) }
+
+    /// Whether the connected host is on the v0.18 line or newer. Convenience
+    /// for UI copy that toggles on the v0.17 → v0.18 boundary without
+    /// proxying through a feature-specific flag.
+    public var isV018OrLater: Bool { atLeastSemver(0, 18, 0) }
 
     private func atLeastSemver(_ major: Int, _ minor: Int, _ patch: Int) -> Bool {
         guard let s = semver else { return false }

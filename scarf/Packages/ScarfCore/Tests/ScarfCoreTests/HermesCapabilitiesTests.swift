@@ -526,4 +526,46 @@ import Foundation
     @Test func isV017OrLater_emptyFalse() {
         #expect(!HermesCapabilities.empty.isV017OrLater)
     }
+
+    // MARK: - v0.18 capability flags
+
+    @Test func v018FlagsAllOnForV018Host() {
+        let caps = HermesCapabilities.parseLine("Hermes Agent v0.18.0 (2026.7.1)")
+        #expect(caps.hasCronAttachToSession)
+        #expect(caps.hasMCPReauth)
+        #expect(caps.isV018OrLater)
+    }
+
+    @Test func v017HostHidesV018Flags() {
+        // Every v0.18 flag must stay off on a pristine v0.17 host so the UI
+        // degrades silently; v0.17 flags themselves remain on.
+        let caps = HermesCapabilities.parseLine("Hermes Agent v0.17.0 (2026.6.19)")
+        #expect(!caps.hasCronAttachToSession)
+        #expect(!caps.hasMCPReauth)
+        #expect(!caps.isV018OrLater)
+        // v0.17 surfaces stay alive on a v0.17 host.
+        #expect(caps.hasCuratorConsolidate)
+        #expect(caps.isV017OrLater)
+    }
+
+    @Test func v0_18_patchReleaseStillEnablesAllFlags() {
+        // A future v0.18.x patch should still enable every v0.18 flag —
+        // patches don't roll back capability gates.
+        let caps = HermesCapabilities.parseLine("Hermes Agent v0.18.1 (2026.7.8)")
+        #expect(caps.hasCronAttachToSession)
+        #expect(caps.hasMCPReauth)
+        #expect(caps.isV018OrLater)
+    }
+
+    @Test func isV018OrLater_v018HostTrue() {
+        #expect(HermesCapabilities.parseLine("Hermes Agent v0.18.0 (2026.7.1)").isV018OrLater)
+    }
+
+    @Test func isV018OrLater_v017HostFalse() {
+        #expect(!HermesCapabilities.parseLine("Hermes Agent v0.17.0 (2026.6.19)").isV018OrLater)
+    }
+
+    @Test func isV018OrLater_emptyFalse() {
+        #expect(!HermesCapabilities.empty.isV018OrLater)
+    }
 }

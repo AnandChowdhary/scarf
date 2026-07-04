@@ -39,6 +39,7 @@ public actor HermesDataService {
     private var hasV07Schema = false
     private var hasV011Schema = false
     private var hasMessagesActiveColumn = false
+    private var hasCompactedColumn = false
     private var hasRewindCountColumn = false
 
     /// Last error from `open()` / `refresh()`, user-presentable. `nil`
@@ -76,6 +77,7 @@ public actor HermesDataService {
         hasV07Schema = await backend.hasV07Schema
         hasV011Schema = await backend.hasV011Schema
         hasMessagesActiveColumn = await backend.hasMessagesActiveColumn
+        hasCompactedColumn = await backend.hasCompactedColumn
         hasRewindCountColumn = await backend.hasRewindCountColumn
         lastOpenError = await backend.lastOpenError
         return ok
@@ -87,6 +89,7 @@ public actor HermesDataService {
         hasV07Schema = await backend.hasV07Schema
         hasV011Schema = await backend.hasV011Schema
         hasMessagesActiveColumn = await backend.hasMessagesActiveColumn
+        hasCompactedColumn = await backend.hasCompactedColumn
         hasRewindCountColumn = await backend.hasRewindCountColumn
         lastOpenError = await backend.lastOpenError
         return ok
@@ -560,7 +563,21 @@ public actor HermesDataService {
         var msgCols = "m.id, m.session_id, m.role, m.content, m.tool_call_id, m.tool_calls, m.tool_name, m.timestamp, m.token_count, m.finish_reason"
         if hasV07Schema { msgCols += ", m.reasoning" }
         if hasV011Schema { msgCols += ", m.reasoning_content" }
-        let activeClause = hasMessagesActiveColumn ? " AND m.active = 1" : ""
+        // v0.18 in-place compaction keeps summarized-away rows
+        // discoverable: Hermes search_messages includes them
+        // (`active = 1 OR compacted = 1`), while rewind/undo rows
+        // (active=0, compacted=0) stay hidden. Mirror that so Scarf
+        // search matches `hermes sessions search` on the same DB.
+        // Transcript/activity fetches above stay active-only — Hermes
+        // reloads only the active set there too.
+        let activeClause: String
+        if hasMessagesActiveColumn {
+            activeClause = hasCompactedColumn
+                ? " AND (m.active = 1 OR m.compacted = 1)"
+                : " AND m.active = 1"
+        } else {
+            activeClause = ""
+        }
         let sql = """
             SELECT \(msgCols)
             FROM messages_fts fts

@@ -595,10 +595,16 @@ public struct ModelCatalogService: Sendable {
             subscriptionGated: false,
             docURL: nil
         ),
-        "google-gemini-cli": HermesProviderOverlay(
-            displayName: "Google Gemini CLI",
-            baseURL: "cloudcode-pa://google",
-            authType: .oauthExternal,
+        // v0.18: MoA (Mixture of Agents) — a virtual local provider that
+        // fans a prompt out to multiple advisor models and aggregates.
+        // No credentials (auth_type "virtual"); model IDs are preset
+        // names, not catalog slugs. Replaced `google-gemini-cli`, which
+        // v0.18 removed in favor of the models.dev-backed `vertex`
+        // provider (Google Vertex AI, OAuth2 SA/ADC).
+        "moa": HermesProviderOverlay(
+            displayName: "Mixture of Agents",
+            baseURL: "moa://local",
+            authType: .virtual,
             subscriptionGated: false,
             docURL: nil
         ),
@@ -770,9 +776,11 @@ public struct ModelCatalogService: Sendable {
         "alibaba_coding": "alibaba-coding-plan",
         "alibaba-coding": "alibaba-coding-plan",
         "alibaba_coding_plan": "alibaba-coding-plan",
-        // google-gemini-cli (OAuth + Code Assist)
-        "gemini-cli": "google-gemini-cli",
-        "gemini-oauth": "google-gemini-cli",
+        // v0.18 removed google-gemini-cli (and its gemini-cli /
+        // gemini-oauth aliases) in favor of the models.dev-backed
+        // `vertex` provider (Google Vertex AI, OAuth2 SA/ADC). Vertex
+        // needs no entry here: its aliases live in models.py's picker
+        // table, not providers.py ALIASES, which this dict mirrors.
         // huggingface
         "hf": "huggingface",
         "hugging-face": "huggingface",
@@ -887,5 +895,8 @@ public struct HermesProviderOverlay: Sendable {
         case oauthDeviceCode
         case oauthExternal
         case externalProcess
+        /// No credentials at all — the provider is a local virtual
+        /// construct (e.g. `moa`, whose "models" are preset names).
+        case virtual
     }
 }

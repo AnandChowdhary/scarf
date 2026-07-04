@@ -34,6 +34,7 @@ public actor LocalSQLiteBackend: HermesQueryBackend {
     private(set) public var hasV07Schema = false
     private(set) public var hasV011Schema = false
     private(set) public var hasMessagesActiveColumn = false
+    private(set) public var hasCompactedColumn = false
     private(set) public var hasRewindCountColumn = false
     private(set) public var lastOpenError: String?
 
@@ -158,15 +159,18 @@ public actor LocalSQLiteBackend: HermesQueryBackend {
             }
         }
 
-        // Check for v0.16+ `messages.active` column.
+        // Check for the v0.16+ `messages.active` and v0.18+
+        // `messages.compacted` columns in one pass.
         var msgActiveStmt: OpaquePointer?
         if sqlite3_prepare_v2(db, "PRAGMA table_info(messages)", -1, &msgActiveStmt, nil) == SQLITE_OK {
             defer { sqlite3_finalize(msgActiveStmt) }
             while sqlite3_step(msgActiveStmt) == SQLITE_ROW {
-                if let name = sqlite3_column_text(msgActiveStmt, 1),
-                   String(cString: name) == "active" {
-                    hasMessagesActiveColumn = true
-                    break
+                if let name = sqlite3_column_text(msgActiveStmt, 1) {
+                    switch String(cString: name) {
+                    case "active":    hasMessagesActiveColumn = true
+                    case "compacted": hasCompactedColumn = true
+                    default:          break
+                    }
                 }
             }
         }

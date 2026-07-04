@@ -6,7 +6,7 @@ import ScarfCore
 /// Tests that ``CredentialPoolsOAuthGate`` steers each known provider to
 /// the right OAuth flow. The regression this prevents: a user hitting the
 /// "Start OAuth" button for nous / openai-codex / qwen-oauth /
-/// google-gemini-cli / copilot-acp and watching the UI stall silently.
+/// copilot-acp and watching the UI stall silently.
 @Suite struct CredentialPoolsGatingTests {
 
     /// Synthesize a ModelCatalogService over a minimal fixture cache so
@@ -50,12 +50,10 @@ import ScarfCore
         } else {
             Issue.record("qwen-oauth should route to .useCLI")
         }
-        // `google-gemini-cli` is .oauthExternal.
-        if case .useCLI = CredentialPoolsOAuthGate.resolve(providerID: "google-gemini-cli", catalog: catalog) {
-            // ok
-        } else {
-            Issue.record("google-gemini-cli should route to .useCLI")
-        }
+        // `moa` is .virtual (v0.18) — no credentials at all, so it must
+        // NOT route to the CLI gate. (google-gemini-cli, the old
+        // .oauthExternal case here, was removed in Hermes v0.18.)
+        #expect(CredentialPoolsOAuthGate.resolve(providerID: "moa", catalog: catalog) == .ok)
         // `copilot-acp` is .externalProcess.
         if case .useCLI = CredentialPoolsOAuthGate.resolve(providerID: "copilot-acp", catalog: catalog) {
             // ok

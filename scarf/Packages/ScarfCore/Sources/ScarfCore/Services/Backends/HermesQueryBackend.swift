@@ -45,6 +45,14 @@ public protocol HermesQueryBackend: Sendable {
     /// to avoid "no such column" errors.
     var hasMessagesActiveColumn: Bool { get async }
 
+    /// True iff the connected DB has the v0.18 `messages.compacted`
+    /// column. In-place compaction soft-archives the summarized-away
+    /// rows as `active=0, compacted=1` (distinct from rewind/undo's
+    /// `active=0, compacted=0`), and Hermes search includes them — so
+    /// search filters widen to `(active = 1 OR compacted = 1)` when
+    /// this column exists. Detected one-time at `open()`.
+    var hasCompactedColumn: Bool { get async }
+
     /// True iff the connected DB has the v0.16 `sessions.rewind_count`
     /// column (count of how many times a session was rewound). Detected
     /// one-time at `open()` — the column only exists in v0.16+, so older

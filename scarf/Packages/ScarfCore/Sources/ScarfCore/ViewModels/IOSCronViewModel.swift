@@ -173,31 +173,3 @@ public final class IOSCronViewModel {
     }
 }
 
-// MARK: - HermesCronJob helpers
-
-public extension HermesCronJob {
-    /// Return a copy with a different `enabled` flag. Used by the iOS
-    /// Cron list's toggle. All other fields pass through unchanged.
-    func withEnabled(_ newEnabled: Bool) -> HermesCronJob {
-        HermesCronJob(
-            id: id,
-            name: name,
-            prompt: prompt,
-            skills: skills,
-            model: model,
-            schedule: schedule,
-            enabled: newEnabled,
-            state: state,
-            deliver: deliver,
-            nextRunAt: nextRunAt,
-            lastRunAt: lastRunAt,
-            lastError: lastError,
-            preRunScript: preRunScript,
-            deliveryFailures: deliveryFailures,
-            lastDeliveryError: lastDeliveryError,
-            timeoutType: timeoutType,
-            timeoutSeconds: timeoutSeconds,
-            silent: silent
-        )
-    }
-}

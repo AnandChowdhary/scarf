@@ -580,6 +580,58 @@ import Foundation
         let sql = await mock.queryLog[0].sql
         #expect(sql.contains("AND active = 1"))
     }
+
+    // MARK: - messages.compacted search widening (v0.18)
+
+    @Test func searchMessagesWithCompactedColumnIncludesCompactedRows() async {
+        // v0.18 in-place compaction marks summarized-away rows
+        // active=0/compacted=1 and Hermes search includes them — Scarf
+        // search must match on the same DB.
+        let mock = MockHermesQueryBackend()
+        await mock.setHasMessagesActiveColumn(true)
+        await mock.setHasCompactedColumn(true)
+        let service = HermesDataService(context: context, backend: mock)
+        _ = await service.open()
+
+        _ = await service.searchMessages(query: "test")
+
+        let sql = await mock.queryLog[0].sql
+        #expect(sql.contains("AND (m.active = 1 OR m.compacted = 1)"))
+        #expect(!sql.contains("AND m.active = 1 "))
+    }
+
+    @Test func searchMessagesWithoutCompactedColumnKeepsNarrowFilter() async {
+        // v0.16–v0.17 DBs have active but not compacted — referencing
+        // m.compacted there would be a "no such column" error.
+        let mock = MockHermesQueryBackend()
+        await mock.setHasMessagesActiveColumn(true)
+        await mock.setHasCompactedColumn(false)
+        let service = HermesDataService(context: context, backend: mock)
+        _ = await service.open()
+
+        _ = await service.searchMessages(query: "test")
+
+        let sql = await mock.queryLog[0].sql
+        #expect(sql.contains("AND m.active = 1"))
+        #expect(!sql.contains("compacted"))
+    }
+
+    @Test func transcriptFetchesStayActiveOnlyWithCompactedColumn() async {
+        // Hermes reloads only the active set for transcripts — compacted
+        // rows are summarized away and must NOT resurface in the chat
+        // view, only in search.
+        let mock = MockHermesQueryBackend()
+        await mock.setHasMessagesActiveColumn(true)
+        await mock.setHasCompactedColumn(true)
+        let service = HermesDataService(context: context, backend: mock)
+        _ = await service.open()
+
+        _ = await service.fetchMessagesOutcome(sessionId: "s1", limit: 25, before: nil)
+
+        let sql = await mock.queryLog[0].sql
+        #expect(sql.contains("AND active = 1"))
+        #expect(!sql.contains("compacted"))
+    }
 }
 
 #endif // canImport(SQLite3)

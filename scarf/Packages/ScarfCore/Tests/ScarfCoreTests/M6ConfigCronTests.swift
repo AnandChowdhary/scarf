@@ -413,17 +413,50 @@ import Foundation
             schedule: CronSchedule(kind: "cron"),
             enabled: true,
             state: "scheduled",
-            deliver: "discord:general"
+            deliver: "discord:general",
+            workdir: "/tmp/project",
+            contextFrom: ["other-job"],
+            noAgent: true,
+            attachToSession: true
         )
         #expect(job.enabled)
         let toggled = job.withEnabled(false)
         #expect(toggled.enabled == false)
-        // Every other field round-trips.
+        // Every other field round-trips — withEnabled() silently dropped
+        // workdir/contextFrom/noAgent until the v0.18 audit, permanently
+        // stripping them from jobs.json on an iOS enable-toggle.
         #expect(toggled.id == job.id)
         #expect(toggled.name == job.name)
         #expect(toggled.prompt == job.prompt)
         #expect(toggled.skills == job.skills)
         #expect(toggled.deliver == job.deliver)
+        #expect(toggled.workdir == job.workdir)
+        #expect(toggled.contextFrom == job.contextFrom)
+        #expect(toggled.noAgent == job.noAgent)
+        #expect(toggled.attachToSession == job.attachToSession)
+    }
+
+    @Test func hermesCronJobAttachToSessionRoundTrip() throws {
+        // v0.18 `attach_to_session` — Hermes only persists the key when
+        // explicitly set, so nil must encode to an ABSENT key (writing
+        // false would change job behavior on save).
+        let json = Data("""
+        {"id":"j2","name":"N","prompt":"p","schedule":{"kind":"cron"},
+         "enabled":true,"state":"scheduled","attach_to_session":true}
+        """.utf8)
+        let job = try JSONDecoder().decode(HermesCronJob.self, from: json)
+        #expect(job.attachToSession == true)
+        let reencoded = try JSONDecoder().decode(
+            HermesCronJob.self, from: JSONEncoder().encode(job))
+        #expect(reencoded.attachToSession == true)
+
+        let unset = HermesCronJob(
+            id: "j3", name: "N", prompt: "p",
+            schedule: CronSchedule(kind: "cron"),
+            enabled: true, state: "scheduled"
+        )
+        let encoded = String(decoding: try JSONEncoder().encode(unset), as: UTF8.self)
+        #expect(!encoded.contains("attach_to_session"))
     }
 
     @Test func cronJobsFileMemberwise() {

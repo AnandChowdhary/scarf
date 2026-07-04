@@ -34,6 +34,12 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
     /// explicit v0.13+ default. Capability-gated on `hasCronNoAgent`
     /// at all write call sites.
     public nonisolated let noAgent: Bool?
+    /// Hermes v0.18+ — optional per-job mirror of the delivery output
+    /// into the target chat session's transcript. `nil` = unset (falls
+    /// back to the global `cron.mirror_delivery` config; Hermes only
+    /// persists the key when explicitly set). Scarf round-trips it but
+    /// has no editor UI yet.
+    public nonisolated let attachToSession: Bool?
 
     public enum CodingKeys: String, CodingKey {
         case id, name, prompt, skills, model, schedule, enabled, state, deliver, silent
@@ -48,6 +54,7 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
         case workdir
         case contextFrom = "context_from"
         case noAgent = "no_agent"
+        case attachToSession = "attach_to_session"
     }
 
     /// Memberwise init. Swift doesn't synthesize one for us because
@@ -74,7 +81,8 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
         silent: Bool? = nil,
         workdir: String? = nil,
         contextFrom: [String]? = nil,
-        noAgent: Bool? = nil
+        noAgent: Bool? = nil,
+        attachToSession: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -97,6 +105,7 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
         self.workdir = workdir
         self.contextFrom = contextFrom
         self.noAgent = noAgent
+        self.attachToSession = attachToSession
     }
 
     public nonisolated init(from decoder: any Decoder) throws {
@@ -122,6 +131,40 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
         self.workdir           = try c.decodeIfPresent(String.self, forKey: .workdir)
         self.contextFrom       = try c.decodeIfPresent([String].self, forKey: .contextFrom)
         self.noAgent           = try c.decodeIfPresent(Bool.self, forKey: .noAgent)
+        self.attachToSession   = try c.decodeIfPresent(Bool.self, forKey: .attachToSession)
+    }
+
+    /// Return a copy with a different `enabled` flag. Used by the iOS
+    /// Cron list's toggle. Lives here, next to the field list, so a new
+    /// field can't be added to the struct without this copy staring the
+    /// author in the face — every field must be forwarded, or a toggle
+    /// round-trip silently strips it from jobs.json (workdir/contextFrom/
+    /// noAgent were dropped this way until the v0.18 audit caught it).
+    public nonisolated func withEnabled(_ newEnabled: Bool) -> HermesCronJob {
+        HermesCronJob(
+            id: id,
+            name: name,
+            prompt: prompt,
+            skills: skills,
+            model: model,
+            schedule: schedule,
+            enabled: newEnabled,
+            state: state,
+            deliver: deliver,
+            nextRunAt: nextRunAt,
+            lastRunAt: lastRunAt,
+            lastError: lastError,
+            preRunScript: preRunScript,
+            deliveryFailures: deliveryFailures,
+            lastDeliveryError: lastDeliveryError,
+            timeoutType: timeoutType,
+            timeoutSeconds: timeoutSeconds,
+            silent: silent,
+            workdir: workdir,
+            contextFrom: contextFrom,
+            noAgent: noAgent,
+            attachToSession: attachToSession
+        )
     }
 
     public nonisolated func encode(to encoder: any Encoder) throws {
@@ -147,6 +190,7 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
         try c.encodeIfPresent(workdir, forKey: .workdir)
         try c.encodeIfPresent(contextFrom, forKey: .contextFrom)
         try c.encodeIfPresent(noAgent, forKey: .noAgent)
+        try c.encodeIfPresent(attachToSession, forKey: .attachToSession)
     }
 
     public nonisolated var stateIcon: String {
