@@ -19,6 +19,16 @@
   <a href="https://www.buymeacoffee.com/awizemann"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="28"></a>
 </p>
 
+## What's New in 2.15.1
+
+A focused patch for anyone running Hermes on an **aggregator provider** (OpenRouter, OpenCode, KiloCode, Hugging Face, NovitaAI).
+
+- **No more false "Model/provider mismatch" banner on aggregator configs** — OpenRouter model IDs like `xiaomi/mimo-v2.5` are `org/model` namespaced, and Scarf's preflight misread the slash as a stale provider prefix; both of the banner's one-click "fixes" would have broken a working `config.yaml`. The check now skips aggregators (including Hermes's bare-`openai` → OpenRouter alias). ([#121](https://github.com/awizemann/scarf/issues/121))
+- **The banner's fix buttons are validated** — alias-equivalent prefixes (`claude/…` vs `anthropic`, `x-ai/…` vs `xai`) no longer read as mismatches, and a prefix that isn't any provider Hermes knows can no longer be written into `config.yaml`; the genuine stale-prefix protection is unchanged.
+- **Under the hood:** Scarf's hand-mirrored Hermes provider tables are now gated by a mechanical sync check (`scripts/check-hermes-tables.py`), verified against the exact Hermes v0.16.0 tag.
+
+See the full [v2.15.1 release notes](https://github.com/awizemann/scarf/releases/tag/v2.15.1).
+
 ## What's New in 2.15.0
 
 **Projects grow up** — the biggest Projects update since v2.3. A project becomes a first-class object with its own mission-control pane, and gains three new powers. (Skips 2.14; this is a feature release, not a Hermes-compat one.)
