@@ -61,6 +61,7 @@
 
 - [ ] Hermes v0.17 — Tier 2: capability gates + tests + new platforms + config surfaces, bump target to v0.17 (id: t-8f0f7ac0) (added: 2026-06-21)
 - [ ] Refresh marketing site + README FAQ for v2.15 Projects (supersede PR #109) (id: t-83c4c692) (added: 2026-06-28)
+- [ ] Cut v2.15.1 release (GH #121 preflight fixes) (id: t-80b4c05b) (added: 2026-07-04)
 
 ## Done
 
