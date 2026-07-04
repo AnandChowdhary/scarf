@@ -73,15 +73,35 @@ public enum ModelPreflight: Sendable {
         public let bareModel: String
     }
 
+    /// Providers Hermes defines with `is_aggregator = True`
+    /// (hermes_cli/providers.py). Their model IDs are natively
+    /// `org/model` namespaced (e.g. openrouter's `xiaomi/mimo-v2.5`),
+    /// so a slash in `model.default` is part of the model ID — never a
+    /// stale provider prefix. Reconcile on every Hermes bump alongside
+    /// the ModelCatalogService provider tables (GH issue #121).
+    static let aggregatorProviders: Set<String> = [
+        "openrouter", "opencode", "opencode-go", "kilo", "huggingface", "novita",
+    ]
+
+    /// Hermes ALIASES entries that resolve to an aggregator — bare
+    /// `openai` routes through openrouter (hermes_cli/providers.py).
+    private static let aggregatorAliases: [String: String] = [
+        "openai": "openrouter",
+    ]
+
     /// Detect a `model.default` / `model.provider` mismatch. Returns
     /// `nil` when there's no provider prefix on `model.default`, when
-    /// either field is unset, or when the prefix matches the provider.
-    /// Uses case-insensitive comparison — Hermes accepts both
-    /// `Anthropic/...` and `anthropic/...` casings in the wild.
+    /// either field is unset, when the prefix matches the provider, or
+    /// when the provider is an aggregator (whose model IDs contain
+    /// slashes natively). Uses case-insensitive comparison — Hermes
+    /// accepts both `Anthropic/...` and `anthropic/...` casings in the
+    /// wild.
     public static func detectMismatch(_ config: HermesConfig) -> Mismatch? {
         let modelDefault = config.model.trimmingCharacters(in: .whitespacesAndNewlines)
         let activeProvider = config.provider.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isUnset(modelDefault), !isUnset(activeProvider) else { return nil }
+        let canonical = aggregatorAliases[activeProvider.lowercased()] ?? activeProvider.lowercased()
+        guard !aggregatorProviders.contains(canonical) else { return nil }
         guard let slash = modelDefault.firstIndex(of: "/") else { return nil }
         let prefix = String(modelDefault[..<slash])
         let bare = String(modelDefault[modelDefault.index(after: slash)...])

@@ -171,6 +171,54 @@ import Foundation
         #expect(mismatch?.bareModel == "anthropic/claude-sonnet-4.6")
     }
 
+    @Test func detectMismatchReturnsNilForAggregatorProviders() {
+        // GH issue #121: OpenRouter model IDs are natively org/model
+        // namespaced — `xiaomi/mimo-v2.5` under provider `openrouter`
+        // is a valid, working config. The banner must not fire (both
+        // of its fix buttons would corrupt the config).
+        var cfg = HermesConfig.empty
+        cfg.model = "xiaomi/mimo-v2.5"
+        cfg.provider = "openrouter"
+        #expect(ModelPreflight.detectMismatch(cfg) == nil)
+    }
+
+    @Test func detectMismatchReturnsNilForAllAggregatorProviders() {
+        // Every Hermes `is_aggregator = True` provider gets the same
+        // treatment — slashes are model namespace, not provider prefix.
+        for provider in ModelPreflight.aggregatorProviders {
+            var cfg = HermesConfig.empty
+            cfg.model = "moonshotai/kimi-k2"
+            cfg.provider = provider
+            #expect(ModelPreflight.detectMismatch(cfg) == nil, "false mismatch for \(provider)")
+        }
+    }
+
+    @Test func detectMismatchReturnsNilForBareOpenAIAlias() {
+        // Hermes aliases bare `openai` → `openrouter`, so a config
+        // carrying provider `openai` is aggregator-routed too.
+        var cfg = HermesConfig.empty
+        cfg.model = "xiaomi/mimo-v2.5"
+        cfg.provider = "openai"
+        #expect(ModelPreflight.detectMismatch(cfg) == nil)
+    }
+
+    @Test func detectMismatchAggregatorSkipIsCaseInsensitive() {
+        var cfg = HermesConfig.empty
+        cfg.model = "xiaomi/mimo-v2.5"
+        cfg.provider = "OpenRouter"
+        #expect(ModelPreflight.detectMismatch(cfg) == nil)
+    }
+
+    @Test func detectMismatchStillFiresForNonAggregatorProviders() {
+        // The original dogfooding failure mode must keep working: a
+        // stale `anthropic/` prefix under direct provider `nous` is a
+        // real mismatch that kills chats at first prompt.
+        var cfg = HermesConfig.empty
+        cfg.model = "anthropic/claude-sonnet-4.6"
+        cfg.provider = "nous"
+        #expect(ModelPreflight.detectMismatch(cfg) != nil)
+    }
+
     @Test func detectMismatchTrimsWhitespaceBeforeComparing() {
         // A stray newline in a hand-edited config.yaml shouldn't read
         // as a mismatch when the trimmed values agree.
