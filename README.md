@@ -19,6 +19,18 @@
   <a href="https://www.buymeacoffee.com/awizemann"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="28"></a>
 </p>
 
+## What's New in 2.16.0
+
+Scarf now targets **Hermes v0.18.0** (v2026.7.1) — and the audit fixed two long-standing bugs along the way.
+
+- **Search stays in lockstep with v0.18 in-place compaction** — Hermes v0.18 can compact a session in place, soft-archiving the summarized messages while keeping them searchable. Scarf detects the new `messages.compacted` column and widens search to match Hermes exactly; `/undo`-rewound rows stay hidden, and the chat transcript still shows only the live conversation.
+- **The Web Tools tab actually works now** — it had been writing `web_tools.*` config keys Hermes never reads (the real block is `web.*`), so every backend choice was a silent no-op. Both the write and read sides now use the real keys; if you'd set backends before, re-pick them once.
+- **Cron jobs no longer lose fields** — toggling a job in ScarfGo or saving an edit silently stripped `workdir`, `context_from`, and `no_agent` from jobs.json. Every field now round-trips, including v0.18's new per-job `attach_to_session`.
+- **New providers:** MoA (Mixture of Agents — Hermes's multi-advisor virtual provider, no credentials needed) joins the picker; Google Vertex AI replaces the retired Gemini CLI OAuth provider.
+- **Under the hood:** full eight-surface audit against the tagged v0.18 source — ACP wire, CLI verbs, config keys, and gateway platforms all verified stable; provider tables pass the mechanical sync gate; 15 new tests.
+
+See the full [v2.16.0 release notes](https://github.com/awizemann/scarf/releases/tag/v2.16.0).
+
 ## What's New in 2.15.1
 
 A focused patch for anyone running Hermes on an **aggregator provider** (OpenRouter, OpenCode, KiloCode, Hugging Face, NovitaAI).
