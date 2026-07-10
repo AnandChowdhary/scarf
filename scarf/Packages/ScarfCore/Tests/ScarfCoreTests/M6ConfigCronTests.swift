@@ -417,7 +417,8 @@ import Foundation
             workdir: "/tmp/project",
             contextFrom: ["other-job"],
             noAgent: true,
-            attachToSession: true
+            attachToSession: true,
+            extra: ["enabled_toolsets": .array([.string("files")])]
         )
         #expect(job.enabled)
         let toggled = job.withEnabled(false)
@@ -434,6 +435,7 @@ import Foundation
         #expect(toggled.contextFrom == job.contextFrom)
         #expect(toggled.noAgent == job.noAgent)
         #expect(toggled.attachToSession == job.attachToSession)
+        #expect(toggled.extra == job.extra)
     }
 
     @Test func hermesCronJobAttachToSessionRoundTrip() throws {
@@ -457,6 +459,90 @@ import Foundation
         )
         let encoded = String(decoding: try JSONEncoder().encode(unset), as: UTF8.self)
         #expect(!encoded.contains("attach_to_session"))
+    }
+
+    /// Strip null-valued keys recursively. Known optional fields decode
+    /// explicit nulls to nil and re-encode them as absent keys (Hermes
+    /// reads via .get(), so null == absent); comparison must not count
+    /// that as a diff. Unknown keys keep their nulls via `extra`.
+    private func stripNulls(_ value: Any) -> Any {
+        if let dict = value as? [String: Any] {
+            var out: [String: Any] = [:]
+            for (k, v) in dict where !(v is NSNull) {
+                out[k] = stripNulls(v)
+            }
+            return out
+        }
+        if let arr = value as? [Any] {
+            return arr.map(stripNulls)
+        }
+        return value
+    }
+
+    @Test func hermesCronJobLosslessRoundTripV0182() throws {
+        // A jobs.json entry shaped exactly like Hermes v0.18.2 persists it
+        // (cron/jobs.py create_job dict + the delta's run_claim). The
+        // v0.18.2 audit found Scarf's rewrite stripped every key it didn't
+        // model — enabled_toolsets, repeat, provider routing, claim guards —
+        // and that `pre_run_script`/`expression` were keys Hermes never
+        // wrote (real keys: `script`, `expr`, plus interval `minutes`).
+        let original = Data("""
+        {"id":"job-1","name":"Digest","prompt":"do it","skills":["daily"],
+         "skill":"daily","model":"anthropic/claude-sonnet-5","provider":"openrouter",
+         "provider_snapshot":{"provider":"openrouter","auth":"api_key"},
+         "model_snapshot":"anthropic/claude-sonnet-5","base_url":null,
+         "script":"echo pre","no_agent":false,"context_from":null,
+         "schedule":{"kind":"interval","minutes":30,"display":"every 30m"},
+         "schedule_display":"every 30m","repeat":{"times":5,"completed":2},
+         "enabled":true,"state":"scheduled","paused_at":null,"paused_reason":null,
+         "created_at":"2026-07-08T09:00:00+00:00","next_run_at":"2026-07-10T09:00:00+00:00",
+         "last_run_at":null,"last_status":null,"last_error":null,
+         "last_delivery_error":null,"deliver":"origin",
+         "origin":{"platform":"slack","chat_id":"C123"},
+         "enabled_toolsets":["files","terminal"],"workdir":"/tmp/project",
+         "attach_to_session":true,
+         "run_claim":{"at":"2026-07-10T09:00:01+00:00","by":"mac-studio"},
+         "fire_claim":null}
+        """.utf8)
+
+        let job = try JSONDecoder().decode(HermesCronJob.self, from: original)
+        // Hermes's real key for the pre-run script is `script`.
+        #expect(job.preRunScript == "echo pre")
+        #expect(job.schedule.minutes == 30)
+
+        let reencoded = try JSONEncoder().encode(job.withEnabled(false).withEnabled(true))
+        let a = stripNulls(try JSONSerialization.jsonObject(with: original)) as! NSDictionary
+        let b = stripNulls(try JSONSerialization.jsonObject(with: reencoded)) as! NSDictionary
+        #expect(a == b)
+
+        // Explicit nulls on UNKNOWN keys survive byte-for-byte (they live
+        // in `extra`; Hermes distinguishes wrote-null from never-wrote for
+        // fields like paused_at only cosmetically, but don't churn them).
+        let text = String(decoding: reencoded, as: UTF8.self)
+        #expect(text.contains("\"paused_at\""))
+        #expect(text.contains("\"run_claim\""))
+        #expect(!text.contains("pre_run_script"))
+    }
+
+    @Test func cronLegacyScarfKeysDecodeButReencodeCanonical() throws {
+        // jobs.json files Scarf itself wrote through v2.15 can carry
+        // `pre_run_script` and `expression` — keys current Hermes never
+        // reads. Decode them as fallbacks, but always re-encode the
+        // canonical `script` / `expr` so the scheduler can run the job.
+        let json = Data("""
+        {"id":"j","name":"N","prompt":"p","enabled":true,"state":"scheduled",
+         "pre_run_script":"echo legacy",
+         "schedule":{"kind":"cron","expression":"0 9 * * 1-5"}}
+        """.utf8)
+        let job = try JSONDecoder().decode(HermesCronJob.self, from: json)
+        #expect(job.preRunScript == "echo legacy")
+        #expect(job.schedule.expression == "0 9 * * 1-5")
+
+        let text = String(decoding: try JSONEncoder().encode(job), as: UTF8.self)
+        #expect(text.contains("\"script\":\"echo legacy\""))
+        #expect(!text.contains("pre_run_script"))
+        #expect(text.contains("\"expr\":\"0 9 * * 1-5\""))
+        #expect(!text.contains("\"expression\""))
     }
 
     @Test func cronJobsFileMemberwise() {

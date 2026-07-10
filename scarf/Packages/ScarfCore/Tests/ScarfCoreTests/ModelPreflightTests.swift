@@ -209,6 +209,19 @@ import Foundation
         #expect(ModelPreflight.detectMismatch(cfg) == nil)
     }
 
+    @Test func detectMismatchReturnsNilForCustomProviders() {
+        // Hermes treats every `custom:*` endpoint as an aggregator
+        // (providers.py is_aggregator) and never second-guesses
+        // `custom`/`custom:*` configs (#48305) — the user's own server
+        // defines the model namespace, so a slash is part of the ID.
+        for provider in ["custom", "custom:my-vllm", "Custom:LAN"] {
+            var cfg = HermesConfig.empty
+            cfg.model = "meta-llama/llama-4-maverick"
+            cfg.provider = provider
+            #expect(ModelPreflight.detectMismatch(cfg) == nil, "false mismatch for \(provider)")
+        }
+    }
+
     @Test func detectMismatchStillFiresForNonAggregatorProviders() {
         // The original dogfooding failure mode must keep working: a
         // stale `anthropic/` prefix under direct provider `nous` is a

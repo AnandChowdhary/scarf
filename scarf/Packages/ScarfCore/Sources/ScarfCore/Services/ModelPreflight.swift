@@ -115,6 +115,12 @@ public enum ModelPreflight: Sendable {
         guard !isUnset(modelDefault), !isUnset(activeProvider) else { return nil }
         let canonicalActive = ModelCatalogService.canonicalProviderID(activeProvider)
         guard !aggregatorProviders.contains(canonicalActive) else { return nil }
+        // Custom endpoints serve whatever model IDs the user's own server
+        // exposes — a slash is never a stale provider prefix. Hermes makes
+        // `custom:*` an aggregator outright (providers.py is_aggregator)
+        // and refuses to second-guess `custom`/`custom:*` configs (#48305).
+        guard canonicalActive != "custom",
+              !canonicalActive.hasPrefix("custom:") else { return nil }
         guard let slash = modelDefault.firstIndex(of: "/") else { return nil }
         let prefix = String(modelDefault[..<slash])
         let bare = String(modelDefault[modelDefault.index(after: slash)...])

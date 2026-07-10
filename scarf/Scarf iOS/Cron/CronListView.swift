@@ -285,11 +285,17 @@ struct CronEditorView: View {
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
             return t.isEmpty ? nil : t
         }
+        // Carry the existing schedule's unedited machine fields (interval
+        // minutes, unmodeled keys) only while the kind is unchanged — after
+        // a kind switch they describe a schedule that no longer exists.
+        let sameKind = existing?.schedule.kind == scheduleKind
         let schedule = CronSchedule(
             kind: scheduleKind,
             runAt: emptyToNil(scheduleRunAt),
             display: emptyToNil(scheduleDisplay),
-            expression: emptyToNil(scheduleExpression)
+            expression: emptyToNil(scheduleExpression),
+            minutes: sameKind ? existing?.schedule.minutes : nil,
+            extra: sameKind ? (existing?.schedule.extra ?? [:]) : [:]
         )
         return HermesCronJob(
             id: id,
@@ -317,7 +323,8 @@ struct CronEditorView: View {
             workdir: existing?.workdir,
             contextFrom: existing?.contextFrom,
             noAgent: existing?.noAgent,
-            attachToSession: existing?.attachToSession
+            attachToSession: existing?.attachToSession,
+            extra: existing?.extra ?? [:]
         )
     }
 }

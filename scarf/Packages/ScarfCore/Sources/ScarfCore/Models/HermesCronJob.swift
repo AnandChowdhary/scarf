@@ -40,13 +40,27 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
     /// persists the key when explicitly set). Scarf round-trips it but
     /// has no editor UI yet.
     public nonisolated let attachToSession: Bool?
+    /// Every jobs.json key this model doesn't declare, preserved verbatim
+    /// (including explicit nulls) so a Scarf rewrite can never strip state
+    /// the Hermes scheduler owns. v0.18.2 audit: Hermes persists ~15 such
+    /// fields today — `enabled_toolsets`, `repeat`, `provider`, `base_url`,
+    /// `run_claim`/`fire_claim`, snapshots, … — and the list grows per
+    /// release. Generic passthrough kills the whole strip-on-toggle bug
+    /// class (workdir/contextFrom/noAgent in v0.18, run_claim in v0.18.2).
+    public nonisolated let extra: [String: JSONValue]
 
-    public enum CodingKeys: String, CodingKey {
+    public enum CodingKeys: String, CodingKey, CaseIterable {
         case id, name, prompt, skills, model, schedule, enabled, state, deliver, silent
         case nextRunAt = "next_run_at"
         case lastRunAt = "last_run_at"
         case lastError = "last_error"
-        case preRunScript = "pre_run_script"
+        // Hermes has only ever persisted the pre-run script as "script"
+        // (cron/jobs.py `"script": normalized_script` since v0.11). The
+        // "pre_run_script" key Scarf used through v2.15 never existed
+        // upstream — decode it as a legacy fallback for jobs.json files
+        // Scarf itself wrote, but always encode "script".
+        case preRunScript = "script"
+        case legacyPreRunScript = "pre_run_script"
         case deliveryFailures = "delivery_failures"
         case lastDeliveryError = "last_delivery_error"
         case timeoutType = "timeout_type"
@@ -82,7 +96,8 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
         workdir: String? = nil,
         contextFrom: [String]? = nil,
         noAgent: Bool? = nil,
-        attachToSession: Bool? = nil
+        attachToSession: Bool? = nil,
+        extra: [String: JSONValue] = [:]
     ) {
         self.id = id
         self.name = name
@@ -106,6 +121,7 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
         self.contextFrom = contextFrom
         self.noAgent = noAgent
         self.attachToSession = attachToSession
+        self.extra = extra
     }
 
     public nonisolated init(from decoder: any Decoder) throws {
@@ -123,6 +139,7 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
         self.lastRunAt         = try c.decodeIfPresent(String.self, forKey: .lastRunAt)
         self.lastError         = try c.decodeIfPresent(String.self, forKey: .lastError)
         self.preRunScript      = try c.decodeIfPresent(String.self, forKey: .preRunScript)
+            ?? c.decodeIfPresent(String.self, forKey: .legacyPreRunScript)
         self.deliveryFailures  = try c.decodeIfPresent(Int.self, forKey: .deliveryFailures)
         self.lastDeliveryError = try c.decodeIfPresent(String.self, forKey: .lastDeliveryError)
         self.timeoutType       = try c.decodeIfPresent(String.self, forKey: .timeoutType)
@@ -132,6 +149,18 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
         self.contextFrom       = try c.decodeIfPresent([String].self, forKey: .contextFrom)
         self.noAgent           = try c.decodeIfPresent(Bool.self, forKey: .noAgent)
         self.attachToSession   = try c.decodeIfPresent(Bool.self, forKey: .attachToSession)
+
+        // Sweep every key we didn't decode above into `extra`, explicit
+        // nulls included, so encode(to:) can put them back untouched.
+        let known = Set(
+            CodingKeys.allCases.map(\.rawValue)
+        )
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        var extras: [String: JSONValue] = [:]
+        for key in raw.allKeys where !known.contains(key.stringValue) {
+            extras[key.stringValue] = try raw.decode(JSONValue.self, forKey: key)
+        }
+        self.extra = extras
     }
 
     /// Return a copy with a different `enabled` flag. Used by the iOS
@@ -163,7 +192,8 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
             workdir: workdir,
             contextFrom: contextFrom,
             noAgent: noAgent,
-            attachToSession: attachToSession
+            attachToSession: attachToSession,
+            extra: extra
         )
     }
 
@@ -191,6 +221,11 @@ public struct HermesCronJob: Identifiable, Sendable, Codable {
         try c.encodeIfPresent(contextFrom, forKey: .contextFrom)
         try c.encodeIfPresent(noAgent, forKey: .noAgent)
         try c.encodeIfPresent(attachToSession, forKey: .attachToSession)
+
+        var raw = encoder.container(keyedBy: AnyCodingKey.self)
+        for (key, value) in extra {
+            try raw.encode(value, forKey: AnyCodingKey(stringValue: key))
+        }
     }
 
     public nonisolated var stateIcon: String {
@@ -223,25 +258,41 @@ public struct CronSchedule: Sendable, Codable {
     public nonisolated let kind: String
     public nonisolated let runAt: String?
     public nonisolated let display: String?
+    /// Cron expression for `kind == "cron"`. Hermes persists this as
+    /// `expr` (cron/jobs.py parse_schedule); the `expression` key Scarf
+    /// wrote through v2.15 is decoded as a legacy fallback only — current
+    /// Hermes reads `schedule["expr"]` unconditionally, so encoding
+    /// anything else produces a job the scheduler can't run.
     public nonisolated let expression: String?
+    /// Interval length for `kind == "interval"` — required by the Hermes
+    /// scheduler; dropping it on rewrite breaks every recurring job.
+    public nonisolated let minutes: Int?
+    /// Unmodeled schedule keys, preserved verbatim (see HermesCronJob.extra).
+    public nonisolated let extra: [String: JSONValue]
 
-    public enum CodingKeys: String, CodingKey {
+    public enum CodingKeys: String, CodingKey, CaseIterable {
         case kind
         case runAt = "run_at"
         case display
-        case expression
+        case expression = "expr"
+        case legacyExpression = "expression"
+        case minutes
     }
 
     public nonisolated init(
         kind: String,
         runAt: String? = nil,
         display: String? = nil,
-        expression: String? = nil
+        expression: String? = nil,
+        minutes: Int? = nil,
+        extra: [String: JSONValue] = [:]
     ) {
         self.kind = kind
         self.runAt = runAt
         self.display = display
         self.expression = expression
+        self.minutes = minutes
+        self.extra = extra
     }
 
     public nonisolated init(from decoder: any Decoder) throws {
@@ -250,6 +301,16 @@ public struct CronSchedule: Sendable, Codable {
         self.runAt      = try c.decodeIfPresent(String.self, forKey: .runAt)
         self.display    = try c.decodeIfPresent(String.self, forKey: .display)
         self.expression = try c.decodeIfPresent(String.self, forKey: .expression)
+            ?? c.decodeIfPresent(String.self, forKey: .legacyExpression)
+        self.minutes    = try c.decodeIfPresent(Int.self, forKey: .minutes)
+
+        let known = Set(CodingKeys.allCases.map(\.rawValue))
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        var extras: [String: JSONValue] = [:]
+        for key in raw.allKeys where !known.contains(key.stringValue) {
+            extras[key.stringValue] = try raw.decode(JSONValue.self, forKey: key)
+        }
+        self.extra = extras
     }
 
     public nonisolated func encode(to encoder: any Encoder) throws {
@@ -258,6 +319,12 @@ public struct CronSchedule: Sendable, Codable {
         try c.encodeIfPresent(runAt, forKey: .runAt)
         try c.encodeIfPresent(display, forKey: .display)
         try c.encodeIfPresent(expression, forKey: .expression)
+        try c.encodeIfPresent(minutes, forKey: .minutes)
+
+        var raw = encoder.container(keyedBy: AnyCodingKey.self)
+        for (key, value) in extra {
+            try raw.encode(value, forKey: AnyCodingKey(stringValue: key))
+        }
     }
 }
 
