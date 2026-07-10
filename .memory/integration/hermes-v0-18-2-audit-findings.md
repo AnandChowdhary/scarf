@@ -1,0 +1,23 @@
+---
+title: Hermes v0.18.2 Audit Findings
+type: note
+permalink: scarf/integration/hermes-v0-18-2-audit-findings
+created: 2026-07-10
+updated: 2026-07-10
+---
+
+Source-verified audit of the Hermes v0.18.0 → v0.18.2 delta (v2026.7.1 → v2026.7.7.2, ~712 commits; v0.18.1 = uncurated rollup with NO curated release notes, v0.18.2 = WhatsApp Baileys npm unpin) vs Scarf at v0.18.0 parity (9338c59). Audited 2026-07-10 via 8 parallel per-surface agents against a read-only worktree at v2026.7.7.2 + hand verification of every data-loss claim.
+
+## Observations
+- [verdict] Light cycle with one forced fix. state.db schema DID change upstream (SCHEMA_VERSION 17→19: sessions.display_name/origin_json/expiry_finalized, new internal gateway_routing table, idx_messages_active_null) but ZERO columns Scarf queries are affected — no schema detection added. ACP wire delta is one cosmetic f-string removal (acp_adapter/tools.py:620) — nothing new reaches the client. #verdict
+- [upgrade-forced] Cron `run_claim` — new transient per-job jobs.json field (cron/jobs.py, one-shot cross-process double-execution guard #59229, stamped while claimed/running, cleared by mark_job_run). Scarf's full-file rewrite stripped it. Covered by the lossless round-trip fix (0a33b15). #upgrade-forced
+- [preexisting-cron] The big find: at v2026.7.1 Hermes already persisted ~15 job fields Scarf never modeled — skill, provider, provider_snapshot, model_snapshot, base_url, script, schedule_display, repeat{times,completed}, paused_at, paused_reason, created_at, last_status, origin, enabled_toolsets, fire_claim (cron/jobs.py:981-1025 at v2026.7.1). Every iOS toggle/edit stripped them ALL (IOSCronViewModel persistJobs re-encodes the whole file): repeat-limited jobs became run-forever, enabled_toolsets security restrictions vanished, per-job provider/base_url routing lost. Verified live: the user's real jobs.json (3 jobs) carried 31 distinct keys incl. all of these. #preexisting #bug
+- [preexisting-keys] Two Scarf keys NEVER matched Hermes: `pre_run_script` (Hermes has only ever persisted `script` — git log -S confirms "pre_run_script" never existed in cron/jobs.py) and CronSchedule `expression` (Hermes persists `expr` for cron kind + `minutes` for interval kind; `expression` was the original 2025-era key, renamed upstream long ago; current Hermes reads schedule["expr"] unconditionally, so legacy-"expression" files are already broken upstream). Scarf's preRunScript field was dead since it was written; toggling an interval/cron job destroyed its schedule payload. #preexisting #bug
+- [no-op-list] Deliberate NO-OPs for the 0.18.0→0.18.2 delta (don't re-litigate): CLI — all 43 Scarf invocation sites survive, argparse stable (sessions export path arg now optional, compatible; auth --manual-paste removed, Scarf never used it); providers — check-hermes-tables.py exit 0 vs v2026.7.7.2, ALIASES/is_aggregator/overlays byte-stable, model churn (claude-fable-5, sakana fugu-ultra, nemotron refresh) flows via models.dev cache; gateway — platform roster unchanged, new channel_overrides/write_sessions_json/stt_echo_transcripts keys are Hermes-side (Scarf writes per-key, nothing dropped), session-reset default changed "both"→"none" (informational only); MCP/skills/curator — new lifecycle keys (idle_timeout_seconds/max_lifetime_seconds/skip_preflight) + mcp add --connect-timeout safe (Scarf writes MCP via CLI + per-key setters, no YAML rewrite), curator status output unchanged, skills roster unchanged; config — new compression.codex_* keys + model.extra_headers + 1Password secrets block safe for the same per-key-write reason; security commits all server-side (config-write fail-closed guard, dashboard sensitive-filename widening, cron profile-secret scoping). #no-ops
+- [candidates] Roadmap candidates surfaced (tasked separately, not shipped): sessions.display_name as friendlier gateway-session title (schema-detect); `hermes curator usage` telemetry (0.18.1+, would need own gate — do NOT gate on isV018OrLater, the verb is absent at 0.18.0); 1Password read-only Secrets display; compression Codex knobs in Settings. #candidates
+- [tickets] GitHub review same cycle: #121 fixed+shipped v2.15.1 (recommend close); #113 root cause reconfirmed vs 0.18.2 source — ACP image path is correct end-to-end since v2026.4.30 (ImageContent schema: data + mimeType alias matches Scarf's wire shape; _image_block_to_openai_part converts to image_url), failure is Hermes image_routing for non-vision models (t-77ec00/t-31img stand); #112 tracker for t-ios-cfg-get; #61 large-DB epic; #45 TestFlight roadmap. #tickets
+
+## Relations
+- extends [[Hermes v0.18.0 Audit Findings]]
+- relates_to [[Hermes v0.18 Compatibility Decisions]]
+- implements [[Hermes Release Audit Process]]

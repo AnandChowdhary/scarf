@@ -12,9 +12,6 @@ tags:
 - security
 created: 2026-06-16
 updated: 2026-06-16
-source_sha: 6a12139b218190d8a99ba679bd1a191c0bc13396
-source_paths: scarf/scarfTests/MiniAppAgentSessionTests.swift
-source_paths_inferred: true
 ---
 
 Every ACP consumer must derive turn-completion from `sendPrompt`'s return; the event stream does not carry it. Missing this shipped a hung happy-path in the M2 mini-app agent channel. Branch `feat/projects`.

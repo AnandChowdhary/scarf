@@ -4,8 +4,8 @@ type: note
 permalink: scarf/decisions/aggregator-providers-must-skip-the-model-provider-mismatch
 created: 2026-07-03
 updated: 2026-07-04
-source_sha: 6a12139b218190d8a99ba679bd1a191c0bc13396
-source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelPreflight.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelCatalogService.swift, scarf/scarf/Features/Chat/ViewModels/ChatViewModel.swift, scarf/scarf/Features/Chat/Views/ChatView.swift, scarf/Packages/ScarfCore/Tests/ScarfCoreTests/ModelPreflightTests.swift
+source_sha: cc5d3945a2d0813c6559f9a538a83425582641c2
+source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelPreflight.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelCatalogService.swift, scarf/scarf/Features/Chat/ViewModels/ChatViewModel.swift, scarf/scarf/Features/Chat/Views/ChatView.swift, scripts/check-hermes-tables.py
 source_paths_inferred: false
 reviewed: 2026-07-04
 reviewed_by: claude-fable-5
@@ -34,3 +34,8 @@ reviewed_by: claude-fable-5
 - [fact] The vendored Hermes checkout at ~/Developer/ScarfBox/Vendor/hermes-agent sits exactly on the `v2026.6.5` tag (commit 3c231eb39, "chore: release v0.16.0"), clean tree — the mirrored tables match Scarf's v0.16.0 target precisely, not a newer working copy. #verified
 - [decision] `scripts/check-hermes-tables.py` now mechanically diffs the three hand-mirrored tables against hermes_cli/providers.py (AST-parsed, no imports): providerAliases ↔ ALIASES incl. changed mappings, aggregatorProviders ↔ is_aggregator overlays, overlayOnlyProviders ↔ overlays absent from models.dev. Missing entries FAIL (exit 1); Scarf overlays that models.dev has since absorbed only WARN (dormant fallback — loadProviders() lets the catalog entry win). Wired into the hermes-release-audit skill (surface table + Step 6). #decision
 - [decision] Dormant overlays are KEPT deliberately (d04d5bf): `lmstudio` and `tencent-tokenhub` are now in models.dev so their overlayOnlyProviders entries only merge on stale-cache hosts — but Scarf supports Hermes back to v0.6, Hermes v0.16 still ships both in HERMES_OVERLAYS, and the model-ID validator's overlay fall-through (ModelCatalogService.swift ~L385) was designed for exactly this catalog evolution. Entries are annotated in-source; check-hermes-tables.py WARNs on them by design — a WARN there is policy, not drift. #decision
+
+
+## v0.17 re-verification (2026-07-04, post-v2.15.1 cut)
+- [fact] check-hermes-tables.py also passes against the ACTUAL Hermes target tag v2026.6.19 (v0.17.0) via `git show v2026.6.19:hermes_cli/providers.py` — ALIASES and aggregator overlay data are byte-identical v0.16→v0.17, so v2.15.1 shipped correct tables despite the vendored checkout sitting on v0.16.0. #verified
+- [gotcha] Hermes v0.17 changed `is_aggregator()` behavior: it now normalizes aliases first and returns True for any `custom:`-prefixed provider. ModelPreflight's aggregator skip does NOT mirror the custom: rule — a custom provider (e.g. LiteLLM proxy) serving org/model IDs can still raise the false mismatch banner on Scarf while Hermes accepts the config. Follow-up task t-ed3700b2. #gotcha

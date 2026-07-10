@@ -1,0 +1,40 @@
+---
+title: Hermes v0.18 Compatibility Decisions
+type: note
+permalink: scarf/decisions/hermes-v0-18-compatibility-decisions
+created: 2026-07-04
+updated: 2026-07-10
+tags:
+- hermes
+- v018
+- compatibility
+- capabilities
+- decisions
+---
+
+Implemented on branch `feat/hermes-v018-parity` (commit 9338c59, 2026-07-04), built on [[Hermes v0.18.0 Audit Findings]]. Verified: Debug build green, 796/796 ScarfCore tests, touched app suites (CredentialPoolsGatingTests, ToolGatewayTests) green, `scripts/check-hermes-tables.py` exits 0 against the v2026.7.1 tag. Adversarial 8-angle review ran; two findings fixed pre-commit (memberwise web-default mismatch; withEnabled moved onto the model), two deliberate skips recorded below.
+
+## Observations
+- [decision] Scarf targets Hermes v0.18.0 (v2026.7.1) as of 2026-07-04. The compacted-search surface is SCHEMA-detected (`hasCompactedColumn` via PRAGMA/table_info in both SQLite backends), not version-gated — same mechanism as v0.16's `messages.active`. Search widens to `(m.active = 1 OR m.compacted = 1)` only when the column exists; transcript/activity queries stay active-only on purpose (Hermes reloads only the active set — compacted rows are summarized away and must not resurface in the chat view, only in search). Tests pin both behaviors. #decision
+- [decision] Provider tables: `moa` overlay added with new AuthType case `.virtual` (no credentials; model IDs are preset names — ModelPickerSheet shows a bespoke instruction, CredentialPoolsOAuthGate resolves .ok). `google-gemini-cli` overlay + gemini-cli/gemini-oauth aliases REMOVED unconditionally per the catalog-sync convention (like the v0.15 Vercel removal) — pre-v0.18 hosts lose the picker entry. Vertex needs NO Scarf entry: it's models.dev-backed (`google-vertex` in cache); its aliases live in Hermes models.py's picker table, which Scarf does NOT mirror — check-hermes-tables.py gates providerAliases against providers.py ALIASES only (adding the models.py vertex aliases made the script FAIL; reverted). #decision
+- [decision] `attach_to_session` (v0.18 per-job cron field) is a pure round-trip passthrough — decode/encode with nil→absent-key (Hermes only persists when explicitly set; encoding false would change job behavior). No editor UI this cycle; gate any future UI on `hasCronAttachToSession`. Also added `hasMCPReauth` + `isV018OrLater` with the standard 6-test cluster. #decision
+- [fixed] Pre-existing bug 1 — Web Tools tab was a DOUBLE-sided silent no-op since ≤v0.9: wrote and read dead `web_tools.*` keys while Hermes reads `web.backend`/`web.search_backend`/`web.extract_backend` (flat, under `web:`; split keys exist since ~v0.13-14, documented in config.py DEFAULT_CONFIG at v0.16). Fixed both sides; "" now means unset/inherit (matches Hermes fallback semantics; PickerRow renders "(none)"). DELIBERATE NO-MIGRATE of stale web_tools.* values: they were never in effect, silently activating them could change a working env-fallback setup, and Scarf writes per-key via `config set` so stale keys stay inert in config.yaml. #fixed
+- [fixed] Pre-existing bug 2 — cron field-drop class: `withEnabled()` (iOS enable toggle) and `CronEditorView.buildJob()` omitted workdir/contextFrom/noAgent → any toggle/edit permanently stripped them from jobs.json. Both now forward every field; `withEnabled()` MOVED from IOSCronViewModel into HermesCronJob.swift next to the field list so the next field addition can't miss it. M6 test now asserts all pass-through fields. #fixed
+- [gotcha] `hermes config set` accepts ANY dotted key with zero validation (config.py set_config_value ~:7519) — a wrong key path exits 0 and writes a dead block. When adding Settings writes, verify the key against the Hermes READER (grep `load_config().get(...)`), never against `config set` succeeding. This is how web_tools.* survived five audit cycles. #gotcha
+- [skipped] Review finding deliberately skipped: consolidating the 6 activeClause sites into shared helpers — search vs transcript intent genuinely differs (m.-prefixed vs bare columns, widen vs narrow), tests pin both, and the inline pattern matches the existing 5 sites. Revisit if v0.19 changes the filter again. #decision
+- [process] `hermes config get` does NOT exist (only show/edit/set/path/env-path/check/migrate) — live probes must use `config show` or read config.yaml directly. #gotcha
+
+## Relations
+- supersedes [[Hermes v0.17 Compatibility Decisions]]
+- implements [[Hermes Capability Gating Pattern]]
+- relates_to [[Hermes v0.18.0 Audit Findings]]
+- relates_to [[Hermes Release Audit Process]]
+
+
+## v0.18.2 delta addendum (2026-07-10, branch feat/hermes-v0182-parity, commit 0a33b15)
+
+- [decision] Cron jobs.json round-trip is now LOSSLESS BY CONSTRUCTION: HermesCronJob + CronSchedule sweep every unmodeled key (explicit nulls included) into an `extra: [String: JSONValue]` dict on decode and re-emit it on encode. This replaces the add-a-named-passthrough-field-per-release pattern (attach_to_session was the last of that line) — the v0.18.2 audit found ~15 already-persisted fields the named approach had missed, and this kills the strip-on-toggle bug class permanently. New model fields are now only needed when Scarf wants to READ/EDIT a value, never merely to survive a rewrite. #decision
+- [decision] Key remaps shipped: preRunScript encodes to `script` (decodes legacy `pre_run_script` written by Scarf ≤2.15), CronSchedule.expression encodes to `expr` (decodes legacy `expression`), new `minutes: Int?` for interval schedules. A file carrying BOTH canonical+legacy spellings re-encodes canonical-only — DELIBERATE (adversarial review flagged it): the legacy keys are dead upstream, and preserving them via the extras sweep would emit duplicate/conflicting keys forever. CodingKeys.allCases (incl. the legacy cases) is the extras-exclusion set, so legacy keys are consumed, not swept. #decision
+- [decision] ModelPreflight mismatch banner also skips `custom` and `custom:*` providers, mirroring Hermes is_aggregator (providers.py:492, custom: → always aggregator) and the never-second-guess-custom rule (#48305). Closes the t-ed3700b2 board item; same false-positive class as GH#121. #decision
+- [decision] NO new capability flags for 0.18.1/0.18.2 — nothing user-facing gates on the patches; the target string is "v0.18 line, verified through v0.18.2". If `hermes curator usage` ever ships in Scarf it needs its OWN gate (verb absent at 0.18.0 — gating on isV018OrLater would break). #decision
+- [gotcha] Verified: 799/799 ScarfCore tests, macOS + iOS Debug builds, and a byte-equivalence round-trip of the user's real ~/.hermes/cron/jobs.json (3 jobs, 31 distinct keys) through the simulated iOS toggle path (temp test, deleted after run). #done

@@ -10,9 +10,6 @@ tags:
 - audit-2026-06-13
 created: 2026-06-13
 updated: 2026-06-13
-source_sha: 6a12139b218190d8a99ba679bd1a191c0bc13396
-source_paths: scarf/scarf/Features/Kanban/Views/KanbanCardView.swift, scarf/scarf/Features/Sessions/Views/SessionsView.swift, scarf/scarf/Features/Projects/Views/ProjectSessionsView.swift, scarf/scarf/Features/Settings/Views/Components/ModelPickerSheet.swift
-source_paths_inferred: true
 ---
 
 ## Observations
