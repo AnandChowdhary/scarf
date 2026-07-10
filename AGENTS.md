@@ -43,14 +43,22 @@ and `wiki/`.
 of observations and relations. Search it before assuming; it is the source of truth for past
 decisions and learnings.
 - Search: invoke `search_memories(query: "<text>", project: "scarf")` via MCP.
-- Record durable facts/decisions as you work: `write_memory(title, content, folder, project: "scarf")`
-  (they're committed with the repo and visible to every session).
-- Grammar (the hybrid shape): optional prose context, then `## Observations` with 1–5 atomic
-  facts (`- [category] fact text #tag`), then `## Relations` (`- relation_type [[Target Note]]`).
-  Observations are the tooling contract — consolidation, semantic search, and task auto-import
-  read them; a prose-only note degrades silently in all three. Put `[[links]]` in Relations
-  bullets (prose links are invisible to the graph). Long-form documents → the wiki tier;
-  distill their facts into the memory note.
+- Record durable facts/decisions as you work with `write_memory` — pass the structure as
+  FIRST-CLASS ARGUMENTS, not hand-written markdown: `observations: ["- [category] fact #tag", …]`
+  (1–5 atomic facts) and `relations: [{"relation": "relates_to", "target": "Other Note"}, …]`;
+  `content` is OPTIONAL short prose context (a few lines), never the place for the facts. The
+  tool composes the hybrid note and validates the bullets (a malformed one is rejected with a
+  fixable reason). `project: "scarf"`, committed with the repo, visible to every session.
+- Why structure, not prose: observations are the tooling contract — consolidation, semantic
+  search, and task auto-import read them; a prose-only note degrades silently in all three, and
+  Consolidate has to spend an LLM pass distilling later what you could state now for free. Put
+  `[[links]]` in `relations` (prose links are invisible to the graph). Use the canonical
+  categories — decision, fact, gotcha, constraint, convention, todo, idea, done — so data-layer queries that
+  group by `[category]` don't fragment; a freeform one still saves, with a nudge.
+- Long-form DOCUMENTS (guides, research, specs) → the wiki tier at write time: `write_memory(project:
+  "scarf-wiki", …)` for the full prose page, and keep only its distilled facts in the
+  memory note with a `documented_in` relation to the page. A memory note is atomic facts + a little
+  context, never a document.
 - **Filenames are `dashed-slug.md`** — lowercase, hyphen-separated, derived deterministically
   from the title. The display title comes from frontmatter `title:` (always), with the
   prettified filename as a fallback. So title `"GitHub Status Service"` → file
