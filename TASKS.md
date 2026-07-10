@@ -56,15 +56,20 @@
 - [ ] Photon / iMessage gateway platform support (v0.17) — decide support level (id: t-5ab57e6f) (added: 2026-06-21) (priority: low)
 - [ ] Gateway allowlist: google-chat is a no-op + wrong platform id (v0.17 = google_chat) (id: t-2d6888ea) (added: 2026-06-21)
 - [ ] Mismatch banner: offer "Choose model…" picker when prefix is unknown (id: t-79569a15) (added: 2026-07-04)
+- [ ] Cut Scarf v2.16.0 (Hermes v0.18 parity release) (id: t-b86288c6) (added: 2026-07-04)
+- [ ] Hermes 0.18.x roadmap candidates: sessions.display_name gateway-session titles (schema-detect), curator usage telemetry (needs own gate — verb absent at 0.18.0), 1Password read-only Secrets display, compression Codex knobs (id: t-49826b5f) (added: 2026-07-10) (priority: low)
 
 ## Doing
 
 - [ ] Hermes v0.17 — Tier 2: capability gates + tests + new platforms + config surfaces, bump target to v0.17 (id: t-8f0f7ac0) (added: 2026-06-21)
 - [ ] Refresh marketing site + README FAQ for v2.15 Projects (supersede PR #109) (id: t-83c4c692) (added: 2026-06-28)
-- [ ] Cut v2.15.1 release (GH #121 preflight fixes) (id: t-80b4c05b) (added: 2026-07-04)
 
 ## Done
 
+- [x] ModelPreflight: treat custom: providers as aggregators (Hermes v0.17 rule) (id: t-ed3700b2) (added: 2026-07-04)
+- [x] Cron jobs.json lossless round-trip: preserve unknown keys, remap preRunScript→script, model run_claim (Hermes 0.18.2 audit) (id: t-2fff51e4) (added: 2026-07-10) (priority: high)
+- [x] Hermes v0.18.0 parity: compacted-search gate, vertex/moa provider tables, cron attach_to_session + pre-existing web_tools/withEnabled bug fixes (id: t-1f860d6c) (added: 2026-07-04)
+- [x] Cut v2.15.1 release (GH #121 preflight fixes) (id: t-80b4c05b) (added: 2026-07-04)
 - [x] Refresh marketing site + README FAQ for v2.15 Projects (supersede PR #109) (id: t-83c4c692) (added: 2026-06-28)
 - [x] iOS (ScarfGo): project chat block omits cron/config/template — unify the AGENTS.md renderer in ScarfCore for byte-identical Mac/iOS parity (id: t-61415c65) (added: 2026-06-28) (priority: high)
 - [x] iOS (ScarfGo): project chats don't load AGENTS.md/CLAUDE.md — spawn `hermes acp` with cwd=project (mirror the Mac b421280/5538e30 fix) (id: t-72fc3790) (added: 2026-06-28) (priority: high)
