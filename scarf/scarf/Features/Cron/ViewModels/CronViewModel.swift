@@ -214,7 +214,7 @@ final class CronViewModel {
     // MARK: - Private
 
     private func runAndReload(_ arguments: [String], success: String) {
-        Task.detached { [fileService] in
+        Task.detached { [fileService, self] in
             let result = fileService.runHermesCLI(args: arguments, timeout: 60)
             await MainActor.run {
                 if result.exitCode == 0 {

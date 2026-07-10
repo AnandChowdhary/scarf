@@ -59,7 +59,7 @@ final class ProfilesViewModel {
     /// resolver cache on success so the next `context.paths` access
     /// picks up the new home directory.
     func switchTo(_ profile: HermesProfile) {
-        Task.detached { [fileService] in
+        Task.detached { [fileService, self] in
             let result = fileService.runHermesCLI(args: ["profile", "use", profile.name], timeout: 60)
             await MainActor.run {
                 if result.exitCode == 0 {
@@ -84,7 +84,7 @@ final class ProfilesViewModel {
     /// data. Failures fall back to a "restart manually" toast.
     @MainActor
     func switchAndRelaunch(_ profile: HermesProfile) {
-        Task.detached { [fileService] in
+        Task.detached { [fileService, self] in
             let result = fileService.runHermesCLI(args: ["profile", "use", profile.name], timeout: 30)
             await MainActor.run {
                 guard result.exitCode == 0 else {
@@ -143,7 +143,7 @@ final class ProfilesViewModel {
     }
 
     private func runAndReload(_ args: [String], success: String) {
-        Task.detached { [fileService] in
+        Task.detached { [fileService, self] in
             let result = fileService.runHermesCLI(args: args, timeout: 60)
             await MainActor.run {
                 self.message = result.exitCode == 0 ? success : "Failed: \(result.output.prefix(120))"

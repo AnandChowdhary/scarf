@@ -367,7 +367,7 @@ final class SettingsViewModel {
 
     func runBackup() {
         backupInProgress = true
-        Task.detached { [fileService] in
+        Task.detached { [fileService, self] in
             let result = fileService.runHermesCLI(args: ["backup"], timeout: 300)
             let zipPath = Self.extractZipPath(from: result.output)
             await MainActor.run {
@@ -406,7 +406,7 @@ final class SettingsViewModel {
     /// where `<path>` is a remote filesystem path.
     func runRestore(fromPath path: String) {
         backupInProgress = true
-        Task.detached { [fileService] in
+        Task.detached { [fileService, self] in
             let result = fileService.runHermesCLI(args: ["import", path], timeout: 300)
             await MainActor.run {
                 self.backupInProgress = false

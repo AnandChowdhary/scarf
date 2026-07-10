@@ -445,8 +445,9 @@ final class ChatViewModel {
                 }
             }
             let mode = config.approvalMode
+            let resolvedMismatch = mismatch
             await MainActor.run { [weak self] in
-                self?.modelProviderMismatch = mismatch
+                self?.modelProviderMismatch = resolvedMismatch
                 self?.approvalMode = mode
             }
         }
@@ -1166,7 +1167,7 @@ final class ChatViewModel {
         // existing AGENTS.md without touching template content).
         let contextForPrep = context
         let prepLogger = logger
-        Task { @MainActor in
+        Task { @MainActor [self] in
             if let projectPath {
                 // Synchronous file I/O (ProjectDashboardService.loadRegistry +
                 // ProjectAgentContextService.refresh, which itself walks the

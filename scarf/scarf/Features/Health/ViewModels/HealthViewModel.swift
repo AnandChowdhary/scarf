@@ -546,7 +546,7 @@ final class HealthViewModel {
     func runDebugShare() {
         isSharingDebug = true
         actionMessage = "Uploading debug report…"
-        Task.detached { [fileService] in
+        Task.detached { [fileService, self] in
             let result = fileService.runHermesCLI(args: ["debug", "share"], timeout: 120)
             await MainActor.run {
                 self.isSharingDebug = false

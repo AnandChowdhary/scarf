@@ -158,7 +158,7 @@ final class ScarfMiniAppBridge: NSObject, WKScriptMessageHandlerWithReply {
                 reply(nil, "internal_error: no agent session bound")
                 return
             }
-            Task {
+            Task { [self] in
                 await agentSession.setEventSink { [weak self] event in
                     // Deliver to main in FIFO order. The actor emits events
                     // serially in wire order; a per-event `Task { @MainActor }`

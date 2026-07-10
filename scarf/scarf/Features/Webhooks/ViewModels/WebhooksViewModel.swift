@@ -82,7 +82,7 @@ final class WebhooksViewModel {
     }
 
     func test(_ webhook: HermesWebhook) {
-        Task.detached { [fileService] in
+        Task.detached { [fileService, self] in
             let result = fileService.runHermesCLI(args: ["webhook", "test", webhook.name], timeout: 30)
             await MainActor.run {
                 self.message = result.exitCode == 0 ? "Test fired — check logs" : "Test failed"
@@ -94,7 +94,7 @@ final class WebhooksViewModel {
     }
 
     private func runAndReload(_ args: [String], success: String) {
-        Task.detached { [fileService] in
+        Task.detached { [fileService, self] in
             let result = fileService.runHermesCLI(args: args, timeout: 60)
             await MainActor.run {
                 self.message = result.exitCode == 0 ? success : "Failed"
