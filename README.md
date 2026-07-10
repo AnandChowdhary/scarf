@@ -21,13 +21,14 @@
 
 ## What's New in 2.16.0
 
-Scarf now targets **Hermes v0.18.0** (v2026.7.1) — and the audit fixed two long-standing bugs along the way.
+Scarf now targets the **Hermes v0.18 line** — audited against v0.18.0 (v2026.7.1) and re-audited against the v0.18.1/v0.18.2 patches — and the audits fixed long-standing bugs along the way.
 
 - **Search stays in lockstep with v0.18 in-place compaction** — Hermes v0.18 can compact a session in place, soft-archiving the summarized messages while keeping them searchable. Scarf detects the new `messages.compacted` column and widens search to match Hermes exactly; `/undo`-rewound rows stay hidden, and the chat transcript still shows only the live conversation.
 - **The Web Tools tab actually works now** — it had been writing `web_tools.*` config keys Hermes never reads (the real block is `web.*`), so every backend choice was a silent no-op. Both the write and read sides now use the real keys; if you'd set backends before, re-pick them once.
-- **Cron jobs no longer lose fields** — toggling a job in ScarfGo or saving an edit silently stripped `workdir`, `context_from`, and `no_agent` from jobs.json. Every field now round-trips, including v0.18's new per-job `attach_to_session`.
+- **Cron jobs round-trip losslessly** — editing a job in ScarfGo used to rebuild it from an incomplete model, silently stripping repeat counts, per-job tool restrictions, provider routing, and (new in v0.18.2) the scheduler's `run_claim` double-execution guard. Scarf now preserves every key it doesn't model, so future Hermes job fields can never be stripped again — and the pre-run script + cron expression now use the keys Hermes actually reads (`script`, `expr`).
+- **No false mismatch banner on custom endpoints** — `custom`/`custom:*` providers serve their own model namespace, so a slash in the model ID no longer triggers the "model/provider mismatch" banner (same class as 2.15.1's aggregator fix, [#121](https://github.com/awizemann/scarf/issues/121)).
 - **New providers:** MoA (Mixture of Agents — Hermes's multi-advisor virtual provider, no credentials needed) joins the picker; Google Vertex AI replaces the retired Gemini CLI OAuth provider.
-- **Under the hood:** full eight-surface audit against the tagged v0.18 source — ACP wire, CLI verbs, config keys, and gateway platforms all verified stable; provider tables pass the mechanical sync gate; 15 new tests.
+- **Under the hood:** full eight-surface audit against the tagged v0.18.0 source, repeated against the v0.18.2 rollup (~712 commits) — ACP wire, CLI verbs, config keys, state.db columns, and gateway platforms all verified stable; provider tables pass the mechanical sync gate against both tags; 18 new tests, 799/799 green.
 
 See the full [v2.16.0 release notes](https://github.com/awizemann/scarf/releases/tag/v2.16.0).
 
