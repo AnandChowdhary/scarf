@@ -530,13 +530,13 @@
 				CODE_SIGN_ENTITLEMENTS = "Scarf iOS/Scarf_iOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 50;
-				DEVELOPMENT_TEAM = 3Q6X2L86C4;
+				DEVELOPMENT_TEAM = UYNVFZ8S2F;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Scarf iOS/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = ScarfGo;
+				INFOPLIST_KEY_CFBundleDisplayName = Clawdia;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "ScarfGo uses the microphone when you choose Voice mode in Hermes chat.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Clawdia uses the microphone when you choose Voice mode in Hermes chat.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -548,7 +548,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.16.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.scarfgo.app;
+				PRODUCT_BUNDLE_IDENTIFIER = so.sycamore.clawdia;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -573,13 +573,13 @@
 				CODE_SIGN_ENTITLEMENTS = "Scarf iOS/Scarf_iOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 50;
-				DEVELOPMENT_TEAM = 3Q6X2L86C4;
+				DEVELOPMENT_TEAM = UYNVFZ8S2F;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Scarf iOS/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = ScarfGo;
+				INFOPLIST_KEY_CFBundleDisplayName = Clawdia;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "ScarfGo uses the microphone when you choose Voice mode in Hermes chat.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Clawdia uses the microphone when you choose Voice mode in Hermes chat.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -591,7 +591,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.16.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.scarfgo.app;
+				PRODUCT_BUNDLE_IDENTIFIER = so.sycamore.clawdia;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
