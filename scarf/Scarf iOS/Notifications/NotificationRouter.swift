@@ -17,7 +17,7 @@ import ScarfIOS
 /// What this file ships now (ready to light up):
 /// - Foreground presentation: show the banner + play default sound.
 /// - Response handling: "default" (user tapped the notification)
-///   routes to the Chat tab with the target sessionID preloaded via
+///   routes to the Text tab with the target sessionID preloaded via
 ///   the ScarfGoCoordinator. "Approve" / "Deny" categories send the
 ///   response over a one-shot ACPClient connection and exit.
 /// - Local notification scheduling helper for in-app UX that doesn't
@@ -52,7 +52,7 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
     weak var coordinator: ScarfGoCoordinator?
 
     /// Foreground presentation: always show banners for now. A future
-    /// refinement could suppress when the Chat tab is already visible
+    /// refinement could suppress when the Text or Voice tab is already visible
     /// for the target session (the user is already looking at it).
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -88,12 +88,12 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
 
         switch response.actionIdentifier {
         case UNNotificationDefaultActionIdentifier:
-            // User tapped the banner. Route to Chat tab on the target
+            // User tapped the banner. Route to Text on the target
             // session if one is included.
             if let sessionID {
                 coordinator?.resumeSession(sessionID)
             } else {
-                coordinator?.selectedTab = .chat
+                coordinator?.selectedTab = .text
             }
         case "APPROVE_PERMISSION":
             logger.info("user approved pending permission from notification")

@@ -24,10 +24,11 @@ Usage: scripts/verify-ios-voice-e2e.sh [--live] [--device <simulator-udid>]
 
 Without --live, runs the hermetic iOS voice/protocol regression suite.
 
-With --live, also performs an API-backed UI round trip against the server and
-OpenAI key already saved in the selected simulator. The app synthesizes the
-test phrase internally and feeds its PCM into the production Realtime path, so
-no person needs to speak and laptop room acoustics do not affect the result.
+With --live, also auditions the Settings voice preview and performs an
+API-backed UI round trip against the server and OpenAI key already saved in the
+selected simulator. The app synthesizes the test phrase internally and feeds
+its PCM into the production Realtime path, so no person needs to speak and
+laptop room acoustics do not affect the result.
 
 The live run sends one real Hermes message and uses the OpenAI Realtime API.
 EOF
@@ -94,6 +95,7 @@ xcodebuild \
   -destination "$DESTINATION" \
   -resultBundlePath "$RESULTS_DIR/live.xcresult" \
   test \
+  -only-testing:'Scarf iOSUITests/Scarf_iOSUITests/testLiveRealtimeVoiceSettingsPreview' \
   -only-testing:'Scarf iOSUITests/Scarf_iOSUITests/testLiveVoiceRoundTripFromSyntheticSpeech'
 
 printf '\nVoice verification passed (hermetic + live Realtime/Hermes round trip).\n'

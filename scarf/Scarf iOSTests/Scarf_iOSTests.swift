@@ -148,6 +148,15 @@ struct Scarf_iOSTests {
         #expect(instructions.contains("verbatim"))
     }
 
+    @Test func realtimeVoicePreviewUsesAStableSpokenSample() {
+        let sample = IOSRealtimeVoicePreviewController.sampleText
+
+        #expect(sample.contains("Clawdia"))
+        #expect(sample.contains("voice"))
+        #expect(sample.contains("pace"))
+        #expect(sample.hasSuffix("."))
+    }
+
     @Test func voicePreferencesValidatePersistedValues() throws {
         let suite = "Scarf_iOSTests.voice.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -265,9 +274,23 @@ struct Scarf_iOSTests {
 
         coordinator.receiveSystemEntry(request)
 
-        #expect(coordinator.selectedTab == .chat)
+        #expect(coordinator.selectedTab == .text)
         #expect(coordinator.takeSystemEntry() == request)
         #expect(coordinator.takeSystemEntry() == nil)
+    }
+
+    @MainActor
+    @Test func coordinatorRoutesHandsFreeSystemEntriesToVoice() throws {
+        let coordinator = ScarfGoCoordinator(serverID: ServerID())
+
+        coordinator.receiveSystemEntry(.init(kind: .startConversation))
+        #expect(coordinator.selectedTab == .voice)
+
+        coordinator.receiveSystemEntry(.init(kind: .projectConversation, value: "Sycamore"))
+        #expect(coordinator.selectedTab == .voice)
+
+        coordinator.receiveSystemEntry(.init(kind: .captureIdea, value: "Ship it"))
+        #expect(coordinator.selectedTab == .text)
     }
 
     @MainActor

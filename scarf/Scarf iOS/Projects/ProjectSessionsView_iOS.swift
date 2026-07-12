@@ -5,7 +5,7 @@ import ScarfDesign
 /// iOS twin of the Mac per-project Sessions tab. Reuses the
 /// ScarfCore-side `ProjectSessionsViewModel` (promoted from the Mac
 /// target in v2.5) so attribution + filtering semantics stay
-/// identical. The "New Chat" button routes into the Chat tab via
+/// identical. The "New Chat" button routes into the Text tab via
 /// `ScarfGoCoordinator.startChatInProject(path:)`; row taps route via
 /// `coordinator.resumeSession(_:)`, the same primitive
 /// `DashboardView` already uses.

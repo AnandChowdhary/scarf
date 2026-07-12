@@ -1180,6 +1180,106 @@ final class IOSRealtimePCMStreamPlayer {
     }
 }
 
+/// Settings-only audition path for the current Realtime voice preferences.
+/// It deliberately uses an out-of-band `response.create` through the same
+/// renderer and PCM player as conversation speech, so the preview reflects
+/// the actual voice, speed, style, and custom guidance without touching ACP.
+@MainActor
+@Observable
+final class IOSRealtimeVoicePreviewController {
+    enum State: Equatable {
+        case idle
+        case connecting
+        case playing
+    }
+
+    static let sampleText = "Hi, I’m Clawdia. This is a preview of my voice, pace, and speaking style."
+
+    private(set) var state: State = .idle
+    private(set) var errorMessage: String?
+
+    private let client = IOSRealtimeClient()
+    private let player = IOSRealtimePCMStreamPlayer()
+    private var operationTask: Task<Void, Never>?
+    private var activePreviewID: UUID?
+
+    var isActive: Bool { state != .idle }
+
+    func toggle(preferences: IOSRealtimeVoicePreferences) {
+        if isActive {
+            stop()
+        } else {
+            start(preferences: preferences)
+        }
+    }
+
+    func start(preferences: IOSRealtimeVoicePreferences) {
+        stop()
+        errorMessage = nil
+        state = .connecting
+        let previewID = UUID()
+        activePreviewID = previewID
+
+        let textStream = AsyncStream<String> { continuation in
+            continuation.yield(Self.sampleText)
+            continuation.finish()
+        }
+
+        operationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                guard let apiKey = try IOSRealtimeAPIKeyStore.load() else {
+                    throw IOSRealtimeVoiceError.missingAPIKey
+                }
+                try player.start()
+                try await client.speak(
+                    apiKey: apiKey,
+                    textStream: textStream,
+                    preferences: preferences
+                ) { [weak self] chunk in
+                    await self?.enqueue(chunk, previewID: previewID)
+                }
+                await player.finish()
+                finish(previewID: previewID)
+            } catch is CancellationError {
+                finish(previewID: previewID)
+            } catch {
+                fail(error, previewID: previewID)
+            }
+        }
+    }
+
+    func stop() {
+        activePreviewID = nil
+        operationTask?.cancel()
+        operationTask = nil
+        player.stop()
+        state = .idle
+        IOSRealtimeAudioSession.deactivate()
+    }
+
+    private func enqueue(_ chunk: Data, previewID: UUID) {
+        guard activePreviewID == previewID else { return }
+        state = .playing
+        player.enqueue(chunk)
+    }
+
+    private func finish(previewID: UUID) {
+        guard activePreviewID == previewID else { return }
+        activePreviewID = nil
+        operationTask = nil
+        player.stop()
+        state = .idle
+        IOSRealtimeAudioSession.deactivate()
+    }
+
+    private func fail(_ error: Error, previewID: UUID) {
+        guard activePreviewID == previewID else { return }
+        errorMessage = error.localizedDescription
+        finish(previewID: previewID)
+    }
+}
+
 @MainActor
 final class IOSRealtimeWaitingSoundPlayer {
     private static let logger = Logger(

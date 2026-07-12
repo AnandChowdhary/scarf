@@ -45,13 +45,14 @@ final class Scarf_iOSUITests: XCTestCase {
         }
 
         XCTAssertTrue(
-            app.navigationBars["Chat"].waitForExistence(timeout: 20),
-            "Clawdia did not reach Chat using the simulator's configured server."
+            app.navigationBars["Text"].waitForExistence(timeout: 20),
+            "Clawdia did not reach Text using the simulator's configured server."
         )
 
-        let composerMode = app.segmentedControls["clawdia.composer.mode"]
-        XCTAssertTrue(composerMode.waitForExistence(timeout: 20))
-        composerMode.buttons["Voice"].tap()
+        let voiceTab = app.tabBars.buttons["Voice"]
+        XCTAssertTrue(voiceTab.waitForExistence(timeout: 20))
+        voiceTab.tap()
+        XCTAssertTrue(app.navigationBars["Voice"].waitForExistence(timeout: 10))
 
         let microphone = app.buttons["clawdia.voice.microphone"]
         XCTAssertTrue(
@@ -93,6 +94,62 @@ final class Scarf_iOSUITests: XCTestCase {
         app.buttons["clawdia.voice.conversation.end"].tap()
 
         keepScreenshot(named: "Clawdia voice E2E passed", from: app)
+    }
+
+    @MainActor
+    func testLiveRealtimeVoiceSettingsPreview() throws {
+        let app = XCUIApplication()
+        app.launch()
+        addTeardownBlock { app.terminate() }
+
+        let serversTitle = app.navigationBars["Servers"]
+        if serversTitle.waitForExistence(timeout: 5) {
+            let configuredServer = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS '@'")
+            ).firstMatch
+            XCTAssertTrue(
+                configuredServer.waitForExistence(timeout: 3),
+                "The live preview gate requires a server already configured in this simulator."
+            )
+            configuredServer.tap()
+        }
+
+        XCTAssertTrue(app.navigationBars["Text"].waitForExistence(timeout: 20))
+        let systemTab = app.tabBars.buttons["System"]
+        XCTAssertTrue(systemTab.waitForExistence(timeout: 10))
+        systemTab.tap()
+
+        let settings = app.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
+
+        let preview = app.buttons["clawdia.settings.realtime-voice.preview"]
+        for _ in 0..<10 where !preview.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(
+            preview.isHittable,
+            "Realtime Voice preview was not reachable in Settings."
+        )
+        preview.tap()
+
+        let previewError = app.staticTexts["clawdia.settings.realtime-voice.preview-error"]
+        let playing = app.staticTexts["clawdia.settings.realtime-voice.preview-playing"]
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            if previewError.exists {
+                XCTFail("Realtime Voice preview failed: \(previewError.label)")
+                return
+            }
+            if playing.exists {
+                keepScreenshot(named: "Clawdia Realtime voice preview", from: app, after: 0.8)
+                preview.tap()
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        XCTFail("Realtime Voice preview never began playing.")
     }
 
     @MainActor

@@ -269,7 +269,7 @@ struct DashboardView: View {
                         "No sessions",
                         systemImage: "clock.badge.questionmark",
                         description: Text(sessionProjectFilter == nil
-                            ? "No sessions to show yet — start a chat from the Chat tab."
+                            ? "No sessions to show yet — start a conversation from Text or Voice."
                             : "No sessions for that project yet. Try another filter or start a chat in that project.")
                     )
                     .listRowSeparator(.hidden)

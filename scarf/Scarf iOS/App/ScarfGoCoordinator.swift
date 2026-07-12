@@ -8,7 +8,7 @@ import ScarfIOS
 ///
 /// v2.5 expands the surface to include project handoff: tapping
 /// "New Chat" inside a Project Detail view sets `pendingProjectChat`
-/// and routes to the Chat tab, where ChatController consumes it and
+/// and routes to the Text tab, where ChatController consumes it and
 /// dispatches `resetAndStartInProject(_:)` (same wiring the in-Chat
 /// project picker sheet already uses).
 @Observable
@@ -18,7 +18,7 @@ final class ScarfGoCoordinator {
     /// Which tab ScarfGoTabRoot should present. Changing this from
     /// anywhere in the tree re-selects the tab. Bound as `selection:`
     /// on the root TabView.
-    var selectedTab: Tab = .chat
+    var selectedTab: Tab = .text
 
     /// The server whose profile selection this coordinator owns. Used
     /// to key the per-server selection store.
@@ -62,7 +62,7 @@ final class ScarfGoCoordinator {
     /// ChatController after it honours the request.
     var pendingResumeSessionID: String?
 
-    /// If non-nil, the Chat tab should start an in-project session at
+    /// If non-nil, the Text tab should start an in-project session at
     /// this absolute remote path on next appear instead of a quick
     /// chat. Consumed (cleared) by ChatController after it kicks off
     /// `resetAndStartInProject(_:)`. Mirrors Mac's
@@ -113,31 +113,36 @@ final class ScarfGoCoordinator {
     }
 
     enum Tab: Hashable {
-        case dashboard, projects, chat, skills, system
+        case dashboard, text, voice, skills, system
     }
 
-    /// Convenience: route to Chat and queue a resume. Dashboard rows
+    /// Convenience: route to Text and queue a resume. Dashboard rows
     /// call this on tap. Clearing `pendingResumeSessionID` is the
     /// consumer's responsibility — in ChatController's case, right
     /// after the resume flow wins (success or failure).
     func resumeSession(_ id: String) {
         pendingResumeSessionID = id
-        selectedTab = .chat
+        selectedTab = .text
     }
 
-    /// Convenience: route to Chat and queue a project-scoped session
+    /// Convenience: route to Text and queue a project-scoped session
     /// start at `path`. Project Detail's "New Chat" toolbar button
     /// calls this. Clearing `pendingProjectChat` is the consumer's
     /// responsibility (ChatController) once `resetAndStartInProject`
     /// has been dispatched.
     func startChatInProject(path: String) {
         pendingProjectChat = path
-        selectedTab = .chat
+        selectedTab = .text
     }
 
     func receiveSystemEntry(_ request: ClawdiaSystemEntryRequest) {
         pendingSystemEntryRequest = request
-        selectedTab = .chat
+        switch request.kind {
+        case .startConversation, .projectConversation:
+            selectedTab = .voice
+        case .continueLastSession, .captureIdea:
+            selectedTab = .text
+        }
     }
 
     func takeSystemEntry() -> ClawdiaSystemEntryRequest? {

@@ -2,7 +2,7 @@ import SwiftUI
 import ScarfCore
 import ScarfDesign
 
-/// Top-level Projects tab. Lists registered Scarf projects from
+/// Contextual Projects browser. Lists registered Scarf projects from
 /// `~/.hermes/scarf/projects.json`. Folder groupings + archive flags
 /// from the v2.3 registry schema are honored — archived projects are
 /// hidden, top-level projects render flat, and any non-empty folder

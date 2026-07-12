@@ -29,6 +29,7 @@ struct SettingsView: View {
     private var realtimeVoiceStyle = IOSRealtimeSpeakingStyle.natural.rawValue
     @AppStorage(IOSRealtimeVoicePreferences.customInstructionsKey)
     private var realtimeVoiceCustomInstructions = ""
+    @State private var realtimeVoicePreview = IOSRealtimeVoicePreviewController()
 
     /// Drives v0.13 read-only surfaces (features-active badge,
     /// platforms-section additions). Defensive `?? .empty` resolves
@@ -105,6 +106,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showV013FeaturesSheet) {
             V013FeaturesSheet()
+        }
+        .onDisappear {
+            realtimeVoicePreview.stop()
         }
     }
 
@@ -327,7 +331,38 @@ struct SettingsView: View {
             )
             .lineLimit(2...5)
 
+            Button {
+                realtimeVoicePreview.toggle(preferences: currentRealtimeVoicePreferences)
+            } label: {
+                HStack(spacing: 10) {
+                    if realtimeVoicePreview.state == .connecting {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: realtimeVoicePreview.isActive ? "stop.fill" : "play.fill")
+                    }
+                    Text(realtimeVoicePreview.isActive ? "Stop preview" : "Preview voice")
+                    Spacer()
+                    if realtimeVoicePreview.state == .playing {
+                        Text("Playing")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("clawdia.settings.realtime-voice.preview-playing")
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("clawdia.settings.realtime-voice.preview")
+
+            if let error = realtimeVoicePreview.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(ScarfColor.danger)
+                    .accessibilityIdentifier("clawdia.settings.realtime-voice.preview-error")
+            }
+
             Button("Restore Realtime voice defaults") {
+                realtimeVoicePreview.stop()
                 realtimeVoice = IOSRealtimeVoice.marin.rawValue
                 realtimeVoiceSpeed = 1
                 realtimeVoiceStyle = IOSRealtimeSpeakingStyle.natural.rawValue
@@ -336,8 +371,17 @@ struct SettingsView: View {
         } header: {
             Text("Realtime Voice (Clawdia)")
         } footer: {
-            Text("Voice and speed are OpenAI Realtime controls. Speaking style and custom guidance are best-effort instructions. Changes apply to the next spoken reply.")
+            Text("Preview uses the OpenAI key saved from Voice and reflects the controls above. Voice and speed are OpenAI Realtime controls; speaking style and custom guidance are best-effort instructions. Changes apply to the next spoken reply.")
         }
+    }
+
+    private var currentRealtimeVoicePreferences: IOSRealtimeVoicePreferences {
+        IOSRealtimeVoicePreferences(
+            voice: IOSRealtimeVoice(rawValue: realtimeVoice) ?? .marin,
+            speed: realtimeVoiceSpeed,
+            style: IOSRealtimeSpeakingStyle(rawValue: realtimeVoiceStyle) ?? .natural,
+            customInstructions: realtimeVoiceCustomInstructions
+        )
     }
 
     @ViewBuilder

@@ -1,24 +1,19 @@
 import SwiftUI
+import UIKit
 import ScarfCore
 import ScarfIOS
 import ScarfDesign
 
-/// ScarfGo's primary navigation surface. v2.5 expands the original
-/// 4-tab layout (Chat | Dashboard | Memory | More) to 5 primary tabs
-/// with Chat in the mathematical center:
+/// Clawdia's primary navigation surface. Text and Voice are separate
+/// destinations backed by one shared Hermes conversation:
 ///
-///     Dashboard | Projects | Chat | Skills | System
+///     Dashboard | Text | Voice | Skills | System
 ///
-/// "Chat in the middle" is the v2.5 product ask — chat is the action
-/// users come back for, so it's the most thumb-reachable slot on a
-/// phone-sized device. We stay on Apple's native `TabView` instead of
-/// drawing a custom raised center button: 5 tabs is exactly the iPhone
-/// system maximum (no auto-collapse to "More"), and `.sidebarAdaptable`
-/// continues to give us a real sidebar on iPad / macCatalyst for free.
-/// Memory drops out of primary slots and lives inside the renamed
-/// "System" tab (was "More"). Skills graduates from a System sub-row
-/// into its own primary tab to match v2.5's full Mac parity for skills
-/// (Installed / Browse Hub / Updates).
+/// Voice occupies the center position for thumb reach. Projects remains
+/// available through System and contextual chat project selection, but no
+/// longer competes with the two core conversation modes in the tab bar.
+/// We stay on Apple's native `TabView`; `.sidebarAdaptable` continues to
+/// provide the system's larger-device navigation treatment for free.
 ///
 /// Each tab wraps its feature view in its own `NavigationStack` so push
 /// navigation (Cron editor, Memory detail, Project detail, etc.) stays
@@ -39,8 +34,8 @@ struct ScarfGoTabRoot: View {
     )!
 
     /// One coordinator per server-connected session. Cross-tab
-    /// signalling (Dashboard row → Chat tab resume, Project Detail
-    /// → in-project chat handoff, notification deep-link → Chat) flows
+    /// signalling (Dashboard row → Text resume, Project Detail
+    /// → in-project Text handoff, notification deep-link → Text) flows
     /// through here. Also owns the selected Hermes profile (#120).
     @State private var coordinator: ScarfGoCoordinator
 
@@ -106,13 +101,26 @@ struct ScarfGoTabRoot: View {
                     let projects = ProjectDashboardService(context: context).loadRegistry().projects
                     ClawdiaProjectEntityCache.save(projects)
                 }
+                updateIdleTimer()
             }
             // Funnel scene-phase transitions through the coordinator so
             // tab view-models (notably ChatController) can react even
             // when their tab isn't currently on-screen.
             .onChange(of: scenePhase) { _, newPhase in
                 coordinator.setScenePhase(newPhase)
+                updateIdleTimer()
             }
+            .onChange(of: coordinator.selectedTab) { _, _ in
+                updateIdleTimer()
+            }
+            .onDisappear {
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+    }
+
+    private func updateIdleTimer() {
+        UIApplication.shared.isIdleTimerDisabled = scenePhase == .active
+            && coordinator.selectedTab == .voice
     }
 
     /// The 5-tab tree, re-identified by the selected profile so a switch
@@ -130,10 +138,61 @@ struct ScarfGoTabRoot: View {
         // SSH channel contention.
         let cfg = effectiveConfig
         let ctx = cfg.toServerContext(id: serverID)
-        return TabView(selection: $coordinator.selectedTab) {
+        return ProfileScopedTabs(
+            config: cfg,
+            key: key,
+            coordinator: coordinator,
+            onSoftDisconnect: onSoftDisconnect,
+            onForget: onForget
+        )
+        // Rebuild the whole tab subtree when the selected profile changes
+        // so every feature view (and its view-model) reconstructs against
+        // the new profile's HERMES_HOME (#120). This includes the shared
+        // Text/Voice chat controller.
+        .id(coordinator.selectedProfile ?? HermesProfileScope.defaultProfileName)
+        .environment(\.serverContext, ctx)
+        .environment(\.scarfGoCoordinator, coordinator)
+        .environment(capabilities)
+        .hermesCapabilities(capabilities)
+    }
+}
+
+/// Owns the profile-scoped tab models. Text and Voice receive the same
+/// controller instances so changing presentation never creates a second
+/// ACP session or loses the transcript currently on screen.
+private struct ProfileScopedTabs: View {
+    let config: IOSServerConfig
+    let key: SSHKeyBundle
+    let coordinator: ScarfGoCoordinator
+    let onSoftDisconnect: @MainActor @Sendable () async -> Void
+    let onForget: @MainActor @Sendable () async -> Void
+
+    @State private var chatController: ChatController
+    @State private var voiceController: IOSRealtimeVoiceController
+
+    init(
+        config: IOSServerConfig,
+        key: SSHKeyBundle,
+        coordinator: ScarfGoCoordinator,
+        onSoftDisconnect: @escaping @MainActor @Sendable () async -> Void,
+        onForget: @escaping @MainActor @Sendable () async -> Void
+    ) {
+        self.config = config
+        self.key = key
+        self.coordinator = coordinator
+        self.onSoftDisconnect = onSoftDisconnect
+        self.onForget = onForget
+        let context = config.toServerContext(id: ChatView.sharedContextID)
+        _chatController = State(initialValue: ChatController(context: context))
+        _voiceController = State(initialValue: IOSRealtimeVoiceController())
+    }
+
+    var body: some View {
+        @Bindable var coordinator = coordinator
+        TabView(selection: $coordinator.selectedTab) {
             // 1 — Dashboard: stats + recent sessions.
             NavigationStack {
-                DashboardView(config: cfg, key: key, onSoftDisconnect: onSoftDisconnect)
+                DashboardView(config: config, key: key, onSoftDisconnect: onSoftDisconnect)
             }
             .tabItem {
                 Label("Dashboard", systemImage: "gauge.with.needle")
@@ -141,33 +200,43 @@ struct ScarfGoTabRoot: View {
             .tag(ScarfGoCoordinator.Tab.dashboard)
             .accessibilityLabel("Dashboard tab")
 
-            // 2 — Projects: registered projects → per-project dashboard,
-            // site, and sessions. Read-only registry on iOS — add /
-            // rename / archive happens in the Mac app.
+            // 2 — Text: full transcript plus the keyboard composer.
             NavigationStack {
-                ProjectsListView(config: cfg)
+                ChatView(
+                    config: config,
+                    key: key,
+                    presentationMode: .text,
+                    controller: chatController,
+                    voiceController: voiceController
+                )
             }
             .tabItem {
-                Label("Projects", systemImage: "square.grid.2x2")
+                Label("Text", systemImage: "text.bubble.fill")
             }
-            .tag(ScarfGoCoordinator.Tab.projects)
-            .accessibilityLabel("Projects tab")
+            .tag(ScarfGoCoordinator.Tab.text)
+            .accessibilityLabel("Text tab")
 
-            // 3 — Chat: the reason the app is on your phone. Centered
-            // among the 5 tabs for thumb reach + visual prominence.
+            // 3 — Voice: the same transcript/session with the continuous,
+            // background-capable voice composer. Centered for thumb reach.
             NavigationStack {
-                ChatView(config: cfg, key: key)
+                ChatView(
+                    config: config,
+                    key: key,
+                    presentationMode: .voice,
+                    controller: chatController,
+                    voiceController: voiceController
+                )
             }
             .tabItem {
-                Label("Chat", systemImage: "bubble.left.and.bubble.right.fill")
+                Label("Voice", systemImage: "waveform")
             }
-            .tag(ScarfGoCoordinator.Tab.chat)
-            .accessibilityLabel("Chat tab")
+            .tag(ScarfGoCoordinator.Tab.voice)
+            .accessibilityLabel("Voice tab")
 
             // 4 — Skills: Installed | Browse Hub | Updates, mirroring
             // the Mac app's 3-tab skills surface.
             NavigationStack {
-                SkillsView(config: cfg)
+                SkillsView(config: config)
             }
             .tabItem {
                 Label("Skills", systemImage: "lightbulb")
@@ -182,7 +251,7 @@ struct ScarfGoTabRoot: View {
             // matter here because we never overflow.
             NavigationStack {
                 SystemTab(
-                    config: cfg,
+                    config: config,
                     onSoftDisconnect: onSoftDisconnect,
                     onForget: onForget
                 )
@@ -193,18 +262,26 @@ struct ScarfGoTabRoot: View {
             .tag(ScarfGoCoordinator.Tab.system)
             .accessibilityLabel("System tab")
         }
-        // Rebuild the whole tab subtree when the selected profile changes
-        // so every feature view (and its view-model) reconstructs against
-        // the new profile's HERMES_HOME (#120). This is the scoped,
-        // no-relaunch analogue of the Mac app's switch-and-relaunch.
-        .id(coordinator.selectedProfile ?? HermesProfileScope.defaultProfileName)
         // Pulls the sidebar-on-iPad affordance into the same code path
         // as the bottom-bar-on-iPhone one. No-op on iPhone today.
         .tabViewStyle(.sidebarAdaptable)
-        .environment(\.serverContext, ctx)
-        .environment(\.scarfGoCoordinator, coordinator)
-        .environment(capabilities)
-        .hermesCapabilities(capabilities)
+        .onAppear {
+            synchronizeConversationPresentation(for: coordinator.selectedTab)
+        }
+        .onChange(of: coordinator.selectedTab) { _, selectedTab in
+            synchronizeConversationPresentation(for: selectedTab)
+        }
+    }
+
+    private func synchronizeConversationPresentation(for tab: ScarfGoCoordinator.Tab) {
+        switch tab {
+        case .text:
+            voiceController.selectMode(.text)
+        case .voice:
+            voiceController.selectMode(.voice)
+        case .dashboard, .skills, .system:
+            break
+        }
     }
 }
 
@@ -263,6 +340,13 @@ private struct SystemTab: View {
             }
 
             Section("Features") {
+                NavigationLink {
+                    ProjectsListView(config: config)
+                } label: {
+                    Label("Projects", systemImage: "square.grid.2x2")
+                }
+                .scarfGoCompactListRow()
+                .listRowBackground(ScarfColor.backgroundSecondary)
                 NavigationLink {
                     MemoryListView(config: config)
                 } label: {

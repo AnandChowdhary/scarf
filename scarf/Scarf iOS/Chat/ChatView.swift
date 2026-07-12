@@ -25,12 +25,13 @@ import PhotosUI
 struct ChatView: View {
     let config: IOSServerConfig
     let key: SSHKeyBundle
+    let presentationMode: IOSRealtimeVoiceController.ComposerMode
 
     @Environment(\.scarfGoCoordinator) private var coordinator
     @Environment(\.serverContext) private var envContext
     @Environment(\.hermesCapabilities) private var capabilitiesStore
-    @State private var controller: ChatController
-    @State private var voiceController = IOSRealtimeVoiceController()
+    @Bindable private var controller: ChatController
+    @Bindable private var voiceController: IOSRealtimeVoiceController
     @State private var showProjectPicker = false
     @State private var showSlashCommandsSheet = false
     /// Drives the inline slash-command autocomplete above the composer.
@@ -106,17 +107,24 @@ struct ChatView: View {
     /// blocking access to the toolbar nav button on small phones.)
     @FocusState private var composerFocused: Bool
 
-    init(config: IOSServerConfig, key: SSHKeyBundle) {
+    init(
+        config: IOSServerConfig,
+        key: SSHKeyBundle,
+        presentationMode: IOSRealtimeVoiceController.ComposerMode,
+        controller: ChatController,
+        voiceController: IOSRealtimeVoiceController
+    ) {
         self.config = config
         self.key = key
-        let ctx = config.toServerContext(id: Self.sharedContextID)
-        _controller = State(initialValue: ChatController(context: ctx))
+        self.presentationMode = presentationMode
+        _controller = Bindable(wrappedValue: controller)
+        _voiceController = Bindable(wrappedValue: voiceController)
     }
 
     /// Same UUID DashboardView uses, so the transport's cached SSH
     /// connection (if still open) can be reused when the user hops
     /// between Chat and Dashboard.
-    private static let sharedContextID: ServerID = ServerID(
+    static let sharedContextID: ServerID = ServerID(
         uuidString: "00000000-0000-0000-0000-0000000000A1"
     )!
 
@@ -138,13 +146,22 @@ struct ChatView: View {
             composer
         }
         .background(ScarfColor.backgroundPrimary.ignoresSafeArea())
-        .navigationTitle("Chat")
+        .navigationTitle(presentationMode.rawValue)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // Principal: "Chat" title + small folder chip below when
             // the current session is project-attributed. iOS-native
             // equivalent of Mac's SessionInfoBar project-chip pattern.
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if presentationMode == .voice {
+                    Button {
+                        voiceController.apiKeyDraft = ""
+                        voiceController.showsCredentialSheet = true
+                    } label: {
+                        Image(systemName: "key")
+                    }
+                    .accessibilityLabel("Manage OpenAI API key")
+                }
                 Button {
                     showProjectPicker = true
                 } label: {
@@ -179,9 +196,18 @@ struct ChatView: View {
             controller.vm.publishCapabilities(capabilitiesStore?.capabilities ?? .empty)
         }
         .task {
+            // Native TabView may mount both Text and Voice children up front.
+            // Only the selected presentation owns initial ACP startup; both
+            // children observe the same controller after that. Without this
+            // gate, two concurrent `start()` calls can both pass preflight
+            // before either changes the controller state.
+            let selectedPresentation: ScarfGoCoordinator.Tab = presentationMode == .text
+                ? .text
+                : .voice
+            guard coordinator?.selectedTab == selectedPresentation else { return }
             // Dashboard row taps set `pendingResumeSessionID`, Project
             // Detail's "New Chat" sets `pendingProjectChat`. Both fire
-            // a tab switch to .chat alongside the value set; we
+            // a tab switch to .text alongside the value set; we
             // consume + clear here on first appear. Resume wins over
             // project-chat if both somehow get set in a single hop —
             // but in practice the coordinator never sets both at once.
@@ -198,16 +224,9 @@ struct ChatView: View {
             }
         }
         .onAppear {
-            updateVoiceIdleTimer()
             updateVoiceBackgroundActivity()
         }
-        .onDisappear {
-            UIApplication.shared.isIdleTimerDisabled = false
-        }
-        .onChange(of: voiceController.mode) { _, _ in
-            updateVoiceIdleTimer()
-            updateVoiceBackgroundActivity()
-        }
+        .onChange(of: voiceController.mode) { _, _ in updateVoiceBackgroundActivity() }
         .onChange(of: voiceController.phase) { _, _ in
             updateVoiceBackgroundActivity()
         }
@@ -250,13 +269,10 @@ struct ChatView: View {
             guard let phase = coordinator?.scenePhase else { return }
             let continuesVoiceConversation = voiceController.shouldContinueInBackground
             if phase != .active {
-                UIApplication.shared.isIdleTimerDisabled = false
                 if !continuesVoiceConversation {
                     voiceController.resetVoiceTurn()
                     resetVoicePressState()
                 }
-            } else {
-                updateVoiceIdleTimer()
             }
             if phase != .background || !continuesVoiceConversation {
                 Task { await controller.handleScenePhase(phase) }
@@ -326,13 +342,6 @@ struct ChatView: View {
             .presentationDetents([.height(220), .large])
             .presentationDragIndicator(.visible)
         }
-    }
-
-    /// Voice mode is designed for hands-free use. Keep the display awake only
-    /// while this screen is visible and active; every exit path restores the
-    /// system's normal auto-lock behavior.
-    private func updateVoiceIdleTimer() {
-        UIApplication.shared.isIdleTimerDisabled = voiceController.mode == .voice
     }
 
     private func updateVoiceBackgroundActivity() {
@@ -695,8 +704,7 @@ struct ChatView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: ScarfSpace.s2) {
-            composerModePicker
-            if voiceController.mode == .text, showSlashMenu {
+            if presentationMode == .text, showSlashMenu {
                 IOSSlashCommandMenu(
                     commands: filteredSlashCommands,
                     agentHasCommands: !controller.vm.availableCommands.isEmpty,
@@ -717,11 +725,11 @@ struct ChatView: View {
                 .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 2)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
-            if voiceController.mode == .text,
+            if presentationMode == .text,
                (!controller.attachments.isEmpty || isEncodingAttachment || attachmentError != nil) {
                 attachmentStrip
             }
-            if voiceController.mode == .text {
+            if presentationMode == .text {
                 composerRow
             } else {
                 voiceComposer
@@ -748,37 +756,6 @@ struct ChatView: View {
             ingestPickerItems(items)
         }
         #endif
-    }
-
-    private var composerModePicker: some View {
-        HStack(spacing: ScarfSpace.s2) {
-            Picker(
-                "Composer mode",
-                selection: Binding(
-                    get: { voiceController.mode },
-                    set: { voiceController.selectMode($0) }
-                )
-            ) {
-                ForEach(IOSRealtimeVoiceController.ComposerMode.allCases) { mode in
-                    Label(mode.rawValue, systemImage: mode == .text ? "keyboard" : "waveform")
-                        .tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("clawdia.composer.mode")
-
-            if voiceController.mode == .voice {
-                Button {
-                    voiceController.apiKeyDraft = ""
-                    voiceController.showsCredentialSheet = true
-                } label: {
-                    Image(systemName: "key")
-                        .frame(width: 36, height: 32)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Manage OpenAI API key")
-            }
-        }
     }
 
     private var voiceComposer: some View {
@@ -1032,6 +1009,12 @@ struct ChatView: View {
     }
 
     private func startVoiceConversation(pushToTalk: Bool = false) {
+        guard voiceController.hasAPIKey else {
+            voiceController.apiKeyDraft = ""
+            voiceController.showsCredentialSheet = true
+            return
+        }
+        voiceController.selectMode(.voice)
         voiceController.startConversation(pushToTalk: pushToTalk) { transcript in
             voiceController.noteHermesSend(sessionID: controller.vm.sessionId)
             controller.draft = transcript

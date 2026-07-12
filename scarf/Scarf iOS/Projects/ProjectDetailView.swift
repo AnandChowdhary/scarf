@@ -10,7 +10,7 @@ import ScarfDesign
 /// `visibleTabs` logic in `ProjectsView.swift`.
 ///
 /// "New Chat" toolbar button calls `ScarfGoCoordinator.startChatInProject`
-/// which sets `pendingProjectChat` and routes to the Chat tab.
+/// which sets `pendingProjectChat` and routes to the Text tab.
 /// `ChatController` consumes `pendingProjectChat` on next appear and
 /// dispatches `resetAndStartInProject(_:)` — same wiring the existing
 /// in-Chat picker sheet uses.
@@ -90,7 +90,7 @@ struct ProjectDetailView: View {
                     Label("New Chat", systemImage: "message.badge.filled.fill")
                 }
                 .accessibilityLabel("Start new chat in \(project.name)")
-                .accessibilityHint("Opens the Chat tab and begins a session scoped to this project")
+                .accessibilityHint("Opens Text and begins a session scoped to this project")
             }
         }
         .task(id: project.id) { await loadDashboard() }
