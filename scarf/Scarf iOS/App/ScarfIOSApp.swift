@@ -70,7 +70,10 @@ struct ScarfIOSApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(model: root)
-                .task { await root.load() }
+                .task {
+                    ClawdiaSystemEntryRouter.shared.attach(rootModel: root)
+                    await root.load()
+                }
                 .task {
                     // Best-effort notification setup. Harmless if the
                     // user denies — we just don't get push. The Push
@@ -190,6 +193,15 @@ final class RootModel {
                 // straight to onboarding with a new ID reserved so
                 // completion writes under the right slot.
                 state = .onboarding(forNewServer: ServerID())
+            } else if ClawdiaSystemEntryStore.pendingRequest() != nil,
+                      all.count == 1,
+                      let (id, config) = all.first,
+                      let key = try? await keyStore.load(for: id) {
+                // A Siri/Shortcut invocation should not strand the user on a
+                // redundant server picker when there is only one possible
+                // destination. Multiple-server setups still require an
+                // explicit choice and leave the durable request queued.
+                state = .connected(id, config, key)
             } else {
                 state = .serverList
             }
@@ -211,6 +223,18 @@ final class RootModel {
     /// immediately.
     func refreshServers() async {
         servers = (try? await configStore.listAll()) ?? [:]
+    }
+
+    /// Called by the App Intent router when a system entry arrives while the
+    /// app is already sitting on the server list. Cold launch is handled by
+    /// `load()` above; this covers warm Siri/Spotlight invocations.
+    func connectForPendingSystemEntryIfPossible() async {
+        guard ClawdiaSystemEntryStore.pendingRequest() != nil,
+              case .serverList = state,
+              servers.count == 1,
+              let id = servers.keys.first
+        else { return }
+        await connect(to: id)
     }
 
     /// Start onboarding for a new server. The UI passes us the

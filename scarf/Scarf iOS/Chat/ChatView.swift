@@ -185,7 +185,9 @@ struct ChatView: View {
             // consume + clear here on first appear. Resume wins over
             // project-chat if both somehow get set in a single hop —
             // but in practice the coordinator never sets both at once.
-            if let sessionID = coordinator?.pendingResumeSessionID {
+            if let systemEntry = coordinator?.takeSystemEntry() {
+                await consumeSystemEntry(systemEntry)
+            } else if let sessionID = coordinator?.pendingResumeSessionID {
                 coordinator?.pendingResumeSessionID = nil
                 await controller.startResuming(sessionID: sessionID)
             } else if let projectPath = coordinator?.pendingProjectChat {
@@ -209,6 +211,9 @@ struct ChatView: View {
         .onChange(of: voiceController.phase) { _, _ in
             updateVoiceBackgroundActivity()
         }
+        .onChange(of: voiceController.isDriveModeActive) { _, _ in
+            updateVoiceBackgroundActivity()
+        }
         // React to coordinator changes that happen while Chat is
         // already mounted (e.g., user is in Chat, taps Projects, opens
         // a project detail, taps "New Chat" — coordinator flips the
@@ -223,6 +228,10 @@ struct ChatView: View {
             guard let projectPath = new else { return }
             coordinator?.pendingProjectChat = nil
             Task { await consumePendingProjectChat(projectPath) }
+        }
+        .onChange(of: coordinator?.pendingSystemEntryRequest?.id) { _, new in
+            guard new != nil, let request = coordinator?.takeSystemEntry() else { return }
+            Task { await consumeSystemEntry(request) }
         }
         // React to network reachability transitions. The service
         // updates its `transitionTick` on every `.satisfied <->
@@ -349,6 +358,65 @@ struct ChatView: View {
             )
         }.value
         await controller.resetAndStartInProject(entry)
+    }
+
+    /// Fulfil a Siri/Shortcuts/Spotlight/Action-button handoff by reusing the
+    /// same controller paths as direct in-app actions. The durable request is
+    /// cleared only after its action has been dispatched.
+    private func consumeSystemEntry(_ request: ClawdiaSystemEntryRequest) async {
+        defer { coordinator?.completeSystemEntry(request.id) }
+
+        switch request.kind {
+        case .startConversation:
+            await controller.resetAndStartNewSession()
+            enterDriveModeIfAvailable()
+
+        case .continueLastSession:
+            let ctx = config.toServerContext(id: Self.sharedContextID)
+            if let sessionID = await HermesDataService(context: ctx)
+                .fetchMostRecentlyActiveSessionId() {
+                await controller.startResuming(sessionID: sessionID)
+            } else {
+                await controller.resetAndStartNewSession()
+                controller.vm.transientHint = "No earlier Clawdia session was found, so Clawdia started a new one."
+            }
+
+        case .projectConversation:
+            let requestedName = request.value ?? ""
+            let ctx = config.toServerContext(id: Self.sharedContextID)
+            let project = await Task.detached {
+                let projects = ProjectDashboardService(context: ctx).loadRegistry().projects
+                return ClawdiaProjectResolver.resolve(named: requestedName, in: projects)
+            }.value
+
+            if let project {
+                await controller.resetAndStartInProject(project)
+            } else {
+                await controller.resetAndStartNewSession()
+                controller.vm.transientHint = requestedName.isEmpty
+                    ? "Clawdia couldn't determine which project you requested."
+                    : "No registered project matched “\(requestedName)”. Clawdia started a new chat instead."
+            }
+            enterDriveModeIfAvailable()
+
+        case .captureIdea:
+            let idea = request.value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            await controller.resetAndStartNewSession()
+            guard !idea.isEmpty, controller.state == .ready else {
+                if idea.isEmpty {
+                    controller.vm.transientHint = "Clawdia didn't receive any idea text."
+                }
+                return
+            }
+            controller.draft = "Capture this idea: \(idea)"
+            await controller.send()
+        }
+    }
+
+    private func enterDriveModeIfAvailable() {
+        voiceController.selectMode(.voice)
+        guard voiceController.hasAPIKey, controller.state == .ready else { return }
+        startDriveMode()
     }
 
     // MARK: - Subviews
@@ -486,7 +554,7 @@ struct ChatView: View {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 40))
                 .foregroundStyle(.tertiary)
-            Text("Ask Hermes something")
+            Text("Ask Clawdia something")
                 .font(.headline)
                 .foregroundStyle(ScarfColor.foregroundMuted)
             Text("Connected to \(config.displayName)")
@@ -513,7 +581,7 @@ struct ChatView: View {
             Text("Session resumed")
                 .font(.headline)
                 .foregroundStyle(ScarfColor.foregroundMuted)
-            Text("Hermes has the context for this session, but the transcript isn't cached locally. Send a message to continue.")
+            Text("Clawdia has the context for this session, but the transcript isn't cached locally. Send a message to continue.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -714,6 +782,8 @@ struct ChatView: View {
 
     private var voiceComposer: some View {
         VStack(spacing: ScarfSpace.s3) {
+            driveModeControl
+
             Text(voiceController.statusTitle)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(ScarfColor.foregroundPrimary)
@@ -765,7 +835,7 @@ struct ChatView: View {
             .accessibilityHint(voiceController.statusSubtitle)
             .accessibilityAction { voicePrimaryAccessibilityAction() }
 
-            Text("gpt-realtime audio · Hermes agent · continuous conversation")
+            Text("gpt-realtime audio · Clawdia · continuous conversation")
                 .font(.caption2)
                 .foregroundStyle(ScarfColor.foregroundMuted)
 
@@ -775,11 +845,59 @@ struct ChatView: View {
                     .foregroundStyle(ScarfColor.danger)
                     .multilineTextAlignment(.center)
             }
+
+            if let notice = voiceController.driveModeNotice {
+                Label(notice, systemImage: "car.fill")
+                    .font(.caption)
+                    .foregroundStyle(ScarfColor.info)
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity)
         .frame(minHeight: 320)
         .padding(.top, ScarfSpace.s2)
         .padding(.bottom, ScarfSpace.s3)
+    }
+
+    @ViewBuilder
+    private var driveModeControl: some View {
+        if voiceController.isDriveModeActive {
+            HStack(spacing: ScarfSpace.s2) {
+                Label("Drive Mode", systemImage: "car.fill")
+                    .font(.headline)
+                    .foregroundStyle(ScarfColor.success)
+                Spacer()
+                if voiceController.phase == .paused {
+                    Button("Resume") {
+                        voiceController.resumeDriveMode()
+                    }
+                    .buttonStyle(.bordered)
+                }
+                Button("End Drive Mode", role: .destructive) {
+                    voiceController.endDriveMode()
+                    resetVoicePressState()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(ScarfColor.danger)
+            }
+            .padding(ScarfSpace.s2)
+            .background(ScarfColor.success.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else {
+            Button {
+                startDriveMode()
+            } label: {
+                Label("Start Drive Mode", systemImage: "car.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(controller.state != .ready || voiceController.phase != .idle)
+
+            Text("Hands-free conversation through screen lock · ends after 10 minutes idle")
+                .font(.caption2)
+                .foregroundStyle(ScarfColor.foregroundMuted)
+                .multilineTextAlignment(.center)
+        }
     }
 
     private var voiceButtonSymbol: String {
@@ -788,15 +906,17 @@ struct ChatView: View {
         case .speaking: return "speaker.wave.3.fill"
         case .preparing, .transcribing, .waitingForHermes: return "waveform"
         case .idle: return "mic.fill"
+        case .paused: return "play.fill"
         }
     }
 
     private var voiceButtonHelp: String {
         switch voiceController.phase {
-        case .recording: return "Stop recording and send to Hermes"
+        case .recording: return "Stop recording and send to Clawdia"
         case .speaking: return "Stop spoken response"
         case .preparing, .transcribing, .waitingForHermes: return voiceController.statusTitle
         case .idle: return "Start voice message"
+        case .paused: return "Resume Drive Mode"
         }
     }
 
@@ -805,6 +925,7 @@ struct ChatView: View {
         case .recording: return ScarfColor.danger
         case .idle, .speaking: return ScarfColor.accent
         case .preparing, .transcribing, .waitingForHermes: return ScarfColor.backgroundTertiary
+        case .paused: return ScarfColor.warning
         }
     }
 
@@ -824,7 +945,7 @@ struct ChatView: View {
     private func beginVoicePressIfNeeded() {
         guard !voiceTouchActive, controller.state == .ready else { return }
         switch voiceController.phase {
-        case .idle, .preparing, .recording, .speaking:
+        case .idle, .preparing, .recording, .speaking, .paused:
             break
         case .transcribing, .waitingForHermes:
             return
@@ -859,6 +980,8 @@ struct ChatView: View {
                 voiceController.finishRecording()
             case .speaking:
                 voiceController.stopSpeaking()
+            case .paused:
+                voiceController.resumeDriveMode()
             case .idle, .transcribing, .waitingForHermes:
                 break
             }
@@ -884,6 +1007,8 @@ struct ChatView: View {
             voiceController.finishRecording()
         case .speaking:
             voiceController.stopSpeaking()
+        case .paused:
+            voiceController.resumeDriveMode()
         case .transcribing, .waitingForHermes:
             break
         }
@@ -891,6 +1016,14 @@ struct ChatView: View {
 
     private func startVoiceRecording() {
         voiceController.startRecording { transcript in
+            voiceController.noteHermesSend(sessionID: controller.vm.sessionId)
+            controller.draft = transcript
+            await controller.send()
+        }
+    }
+
+    private func startDriveMode() {
+        voiceController.startDriveMode { transcript in
             voiceController.noteHermesSend(sessionID: controller.vm.sessionId)
             controller.draft = transcript
             await controller.send()
@@ -911,7 +1044,7 @@ struct ChatView: View {
                 } header: {
                     Text("OpenAI API key")
                 } footer: {
-                    Text("Stored only in this device's Keychain. OpenAI Realtime handles transcription and speech; your conversation and agent tools still run through Hermes.")
+                    Text("Stored only in this device's Keychain. OpenAI Realtime handles transcription and speech; your conversation and agent tools still run through Clawdia.")
                 }
 
                 if voiceController.hasAPIKey {
@@ -1475,7 +1608,7 @@ private struct IOSVoiceWaveform: View {
     let level: Float
     let phase: IOSRealtimeVoiceController.Phase
 
-    private var isAnimated: Bool { phase != .idle }
+    private var isAnimated: Bool { phase != .idle && phase != .paused }
 
     private var intensity: CGFloat {
         switch phase {
@@ -1484,6 +1617,7 @@ private struct IOSVoiceWaveform: View {
         case .transcribing: return 0.18
         case .waitingForHermes: return 0.22
         case .recording, .speaking: return CGFloat(max(0.08, level))
+        case .paused: return 0.08
         }
     }
 
@@ -3450,7 +3584,7 @@ private struct IOSModelPreflightSheet: View {
                     TextField("e.g. claude-sonnet-4.6, hermes-3", text: $model)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    Text("Hermes will pass these through verbatim. Leave model blank if you're using Nous Portal — Hermes picks its default.")
+                    Text("Clawdia will pass these through verbatim. Leave model blank if you're using Nous Portal — Clawdia picks its default.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

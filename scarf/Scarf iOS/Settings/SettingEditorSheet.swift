@@ -171,7 +171,7 @@ struct SettingSpec: Identifiable, Hashable {
         SettingSpec(
             key: "model.provider",
             displayName: "Provider",
-            helpText: "Which backend Hermes routes prompts to. Switch to a provider you're authenticated against.",
+            helpText: "Which backend Clawdia routes prompts to. Switch to a provider you're authenticated against.",
             kind: .text
         ),
         SettingSpec(

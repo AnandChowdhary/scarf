@@ -21,6 +21,14 @@ struct SettingsView: View {
     /// behavior as Mac.
     @AppStorage(RichChatViewModel.loadHistoricalToolResultsKey)
     private var loadHistoricalToolResults: Bool = false
+    @AppStorage(IOSRealtimeVoicePreferences.voiceKey)
+    private var realtimeVoice = IOSRealtimeVoice.marin.rawValue
+    @AppStorage(IOSRealtimeVoicePreferences.speedKey)
+    private var realtimeVoiceSpeed = 1.0
+    @AppStorage(IOSRealtimeVoicePreferences.styleKey)
+    private var realtimeVoiceStyle = IOSRealtimeSpeakingStyle.natural.rawValue
+    @AppStorage(IOSRealtimeVoicePreferences.customInstructionsKey)
+    private var realtimeVoiceCustomInstructions = ""
 
     /// Drives v0.13 read-only surfaces (features-active badge,
     /// platforms-section additions). Defensive `?? .empty` resolves
@@ -63,6 +71,7 @@ struct SettingsView: View {
                 terminalSection
                 memorySection
                 voiceSection
+                realtimeVoiceSection
                 securitySection
                 compressionSection
                 loggingSection
@@ -276,6 +285,58 @@ struct SettingsView: View {
             LabeledContent("TTS provider", value: vm.config.voice.ttsProvider)
             yesNoRow("STT enabled", vm.config.voice.sttEnabled)
             LabeledContent("STT provider", value: vm.config.voice.sttProvider)
+        }
+    }
+
+    @ViewBuilder
+    private var realtimeVoiceSection: some View {
+        Section {
+            Picker("Voice", selection: $realtimeVoice) {
+                ForEach(IOSRealtimeVoice.allCases) { voice in
+                    Text(voice.isRecommended ? "\(voice.displayName) · recommended" : voice.displayName)
+                        .tag(voice.rawValue)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Speaking speed")
+                    Spacer()
+                    Text(realtimeVoiceSpeed.formatted(.number.precision(.fractionLength(2))) + "×")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Slider(
+                    value: $realtimeVoiceSpeed,
+                    in: IOSRealtimeVoicePreferences.minimumSpeed...IOSRealtimeVoicePreferences.maximumSpeed,
+                    step: 0.05
+                )
+                .accessibilityValue(realtimeVoiceSpeed.formatted(.number.precision(.fractionLength(2))) + " times")
+            }
+
+            Picker("Speaking style", selection: $realtimeVoiceStyle) {
+                ForEach(IOSRealtimeSpeakingStyle.allCases) { style in
+                    Text(style.displayName).tag(style.rawValue)
+                }
+            }
+
+            TextField(
+                "Optional guidance, e.g. dry humor and short pauses",
+                text: $realtimeVoiceCustomInstructions,
+                axis: .vertical
+            )
+            .lineLimit(2...5)
+
+            Button("Restore Realtime voice defaults") {
+                realtimeVoice = IOSRealtimeVoice.marin.rawValue
+                realtimeVoiceSpeed = 1
+                realtimeVoiceStyle = IOSRealtimeSpeakingStyle.natural.rawValue
+                realtimeVoiceCustomInstructions = ""
+            }
+        } header: {
+            Text("Realtime Voice (Clawdia)")
+        } footer: {
+            Text("Voice and speed are OpenAI Realtime controls. Speaking style and custom guidance are best-effort instructions. Changes apply to the next spoken reply.")
         }
     }
 

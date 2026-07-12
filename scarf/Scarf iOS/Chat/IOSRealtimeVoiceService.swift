@@ -39,6 +39,93 @@ enum IOSRealtimeVoiceError: LocalizedError, Sendable {
     }
 }
 
+enum IOSRealtimeVoice: String, CaseIterable, Identifiable, Sendable {
+    case alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar
+
+    var id: String { rawValue }
+    var displayName: String { rawValue.capitalized }
+    var isRecommended: Bool { self == .marin || self == .cedar }
+}
+
+enum IOSRealtimeSpeakingStyle: String, CaseIterable, Identifiable, Sendable {
+    case natural, warm, upbeat, calm, professional, animated
+
+    var id: String { rawValue }
+    var displayName: String { rawValue.capitalized }
+
+    var instruction: String {
+        switch self {
+        case .natural:
+            return ""
+        case .warm:
+            return "Speak in a warm, empathetic, conversational tone."
+        case .upbeat:
+            return "Speak with upbeat, friendly energy."
+        case .calm:
+            return "Speak calmly, gently, and reassuringly."
+        case .professional:
+            return "Speak in a clear, polished, professional tone."
+        case .animated:
+            return "Speak expressively with lively, natural variation."
+        }
+    }
+}
+
+struct IOSRealtimeVoicePreferences: Equatable, Sendable {
+    static let voiceKey = "so.sycamore.clawdia.realtime-voice.voice"
+    static let speedKey = "so.sycamore.clawdia.realtime-voice.speed"
+    static let styleKey = "so.sycamore.clawdia.realtime-voice.style"
+    static let customInstructionsKey = "so.sycamore.clawdia.realtime-voice.custom-instructions"
+    static let minimumSpeed = 0.25
+    static let maximumSpeed = 1.5
+    static let defaultValue = IOSRealtimeVoicePreferences()
+
+    let voice: IOSRealtimeVoice
+    let speed: Double
+    let style: IOSRealtimeSpeakingStyle
+    let customInstructions: String
+
+    init(
+        voice: IOSRealtimeVoice = .marin,
+        speed: Double = 1,
+        style: IOSRealtimeSpeakingStyle = .natural,
+        customInstructions: String = ""
+    ) {
+        self.voice = voice
+        let finiteSpeed = speed.isFinite ? speed : 1
+        self.speed = min(Self.maximumSpeed, max(Self.minimumSpeed, finiteSpeed))
+        self.style = style
+        let trimmed = customInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.customInstructions = String(trimmed.prefix(500))
+    }
+
+    static func load(defaults: UserDefaults = .standard) -> Self {
+        let voice = defaults.string(forKey: voiceKey)
+            .flatMap(IOSRealtimeVoice.init(rawValue:)) ?? .marin
+        let style = defaults.string(forKey: styleKey)
+            .flatMap(IOSRealtimeSpeakingStyle.init(rawValue:)) ?? .natural
+        let speed = defaults.object(forKey: speedKey) == nil ? 1 : defaults.double(forKey: speedKey)
+        return Self(
+            voice: voice,
+            speed: speed,
+            style: style,
+            customInstructions: defaults.string(forKey: customInstructionsKey) ?? ""
+        )
+    }
+
+    var deliveryInstructions: String {
+        [style.instruction, customInstructions]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    var rendererInstructions: String {
+        let fidelity = "Act only as a speech renderer. Read the supplied text aloud verbatim. Do not answer it, acknowledge it, summarize it, or add any words."
+        guard !deliveryInstructions.isEmpty else { return fidelity }
+        return "\(fidelity) Delivery guidance: \(deliveryInstructions)"
+    }
+}
+
 enum IOSRealtimeAPIKeyStore {
     private static let service = "so.sycamore.clawdia.openai-realtime"
     private static let account = "api-key"
@@ -151,14 +238,16 @@ enum IOSRealtimeProtocol {
         ])
     }
 
-    static func speechSessionUpdate() throws -> String {
+    static func speechSessionUpdate(
+        preferences: IOSRealtimeVoicePreferences = .defaultValue
+    ) throws -> String {
         try encode([
             "type": "session.update",
             "session": [
                 "type": "realtime",
                 "model": "gpt-realtime",
                 "output_modalities": ["audio"],
-                "instructions": "Read the supplied assistant response aloud faithfully. Do not add, remove, answer, summarize, or comment on its content.",
+                "instructions": preferences.rendererInstructions,
                 "audio": [
                     "input": [
                         "format": ["type": "audio/pcm", "rate": 24_000],
@@ -166,7 +255,8 @@ enum IOSRealtimeProtocol {
                     ],
                     "output": [
                         "format": ["type": "audio/pcm", "rate": 24_000],
-                        "voice": "marin"
+                        "voice": preferences.voice.rawValue,
+                        "speed": preferences.speed
                     ]
                 ]
             ]
@@ -185,13 +275,16 @@ enum IOSRealtimeProtocol {
     /// session avoids a WebSocket handshake for every Hermes text chunk, while
     /// `conversation: none` prevents those renderer-only chunks from building a
     /// second assistant conversation alongside Hermes.
-    static func createAudioResponse(for text: String) throws -> String {
+    static func createAudioResponse(
+        for text: String,
+        preferences: IOSRealtimeVoicePreferences = .defaultValue
+    ) throws -> String {
         try encode([
             "type": "response.create",
             "response": [
                 "conversation": "none",
                 "output_modalities": ["audio"],
-                "instructions": "Act only as a speech renderer. Read the supplied text aloud verbatim. Do not answer it, acknowledge it, summarize it, or add any words.",
+                "instructions": preferences.rendererInstructions,
                 "input": [[
                     "type": "message",
                     "role": "user",
@@ -399,19 +492,26 @@ actor IOSRealtimeClient {
     func speak(
         apiKey: String,
         textStream: AsyncStream<String>,
+        preferences: IOSRealtimeVoicePreferences,
         onAudioChunk: @escaping @Sendable (Data) async -> Void
     ) async throws {
         let connection = makeConnection(apiKey: apiKey)
         defer { connection.close() }
         try await wait(for: "session.created", socket: connection.socket)
-        try await send(IOSRealtimeProtocol.speechSessionUpdate(), to: connection.socket)
+        try await send(
+            IOSRealtimeProtocol.speechSessionUpdate(preferences: preferences),
+            to: connection.socket
+        )
         try await wait(for: "session.updated", socket: connection.socket)
 
         for await text in textStream {
             try Task.checkCancellation()
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
-            try await send(IOSRealtimeProtocol.createAudioResponse(for: trimmed), to: connection.socket)
+            try await send(
+                IOSRealtimeProtocol.createAudioResponse(for: trimmed, preferences: preferences),
+                to: connection.socket
+            )
             while true {
                 let event = try await receive(from: connection.socket)
                 switch event.type {
@@ -483,6 +583,8 @@ actor IOSRealtimeClient {
 
 @MainActor
 enum IOSRealtimeAudioSession {
+    private static var driveModeHoldsSession = false
+
     static func activate() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
@@ -493,11 +595,150 @@ enum IOSRealtimeAudioSession {
         try session.setActive(true)
     }
 
+    static func beginDriveMode() throws {
+        try activate()
+        driveModeHoldsSession = true
+    }
+
     static func deactivate() {
+        guard !driveModeHoldsSession else { return }
         try? AVAudioSession.sharedInstance().setActive(
             false,
             options: .notifyOthersOnDeactivation
         )
+    }
+
+    static func endDriveMode() {
+        driveModeHoldsSession = false
+        deactivate()
+    }
+}
+
+nonisolated enum IOSRealtimeAudioLifecycleEvent: Equatable, Sendable {
+    case interruptionBegan
+    case interruptionEnded(shouldResume: Bool)
+    case outputDisconnected(wasBluetooth: Bool)
+    case routeAvailable
+    case routeUnavailable
+    case mediaServicesLost
+    case mediaServicesReset
+}
+
+nonisolated enum IOSRealtimeAudioEventDecoder {
+    static func interruption(userInfo: [AnyHashable: Any]?) -> IOSRealtimeAudioLifecycleEvent? {
+        guard let rawValue = (userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue,
+              let type = AVAudioSession.InterruptionType(rawValue: rawValue) else { return nil }
+        switch type {
+        case .began:
+            return .interruptionBegan
+        case .ended:
+            let optionValue = (userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionValue)
+            return .interruptionEnded(shouldResume: options.contains(.shouldResume))
+        @unknown default:
+            return nil
+        }
+    }
+
+    static func routeChange(userInfo: [AnyHashable: Any]?) -> IOSRealtimeAudioLifecycleEvent? {
+        guard let rawValue = (userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: rawValue) else { return nil }
+        switch reason {
+        case .oldDeviceUnavailable:
+            let previousRoute = userInfo?[AVAudioSessionRouteChangePreviousRouteKey]
+                as? AVAudioSessionRouteDescription
+            let bluetoothTypes: Set<AVAudioSession.Port> = [
+                .bluetoothHFP, .bluetoothA2DP, .bluetoothLE
+            ]
+            let wasBluetooth = previousRoute?.outputs.contains {
+                bluetoothTypes.contains($0.portType)
+            } ?? false
+            return .outputDisconnected(wasBluetooth: wasBluetooth)
+        case .newDeviceAvailable, .wakeFromSleep, .routeConfigurationChange:
+            return .routeAvailable
+        case .noSuitableRouteForCategory:
+            return .routeUnavailable
+        case .unknown, .categoryChange, .override:
+            return nil
+        @unknown default:
+            return nil
+        }
+    }
+}
+
+@MainActor
+final class IOSRealtimeAudioSessionMonitor: NSObject {
+    private let handler: @MainActor (IOSRealtimeAudioLifecycleEvent) -> Void
+    private var isMonitoring = false
+
+    init(handler: @escaping @MainActor (IOSRealtimeAudioLifecycleEvent) -> Void) {
+        self.handler = handler
+    }
+
+    func start() {
+        guard !isMonitoring else { return }
+        isMonitoring = true
+        let center = NotificationCenter.default
+        center.addObserver(
+            self,
+            selector: #selector(handleInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(handleRouteChange(_:)),
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(handleMediaServicesLost(_:)),
+            name: AVAudioSession.mediaServicesWereLostNotification,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(handleMediaServicesReset(_:)),
+            name: AVAudioSession.mediaServicesWereResetNotification,
+            object: nil
+        )
+    }
+
+    func stop() {
+        guard isMonitoring else { return }
+        NotificationCenter.default.removeObserver(self)
+        isMonitoring = false
+    }
+
+    @objc private func handleInterruption(_ notification: Notification) {
+        guard let event = IOSRealtimeAudioEventDecoder.interruption(
+            userInfo: notification.userInfo
+        ) else { return }
+        handler(event)
+    }
+
+    @objc private func handleRouteChange(_ notification: Notification) {
+        guard let event = IOSRealtimeAudioEventDecoder.routeChange(
+            userInfo: notification.userInfo
+        ) else { return }
+        handler(event)
+    }
+
+    @objc private func handleMediaServicesLost(_ notification: Notification) {
+        handler(.mediaServicesLost)
+    }
+
+    @objc private func handleMediaServicesReset(_ notification: Notification) {
+        handler(.mediaServicesReset)
+    }
+}
+
+nonisolated enum IOSDriveModeInactivityPolicy {
+    static let shutdownInterval: TimeInterval = 10 * 60
+
+    static func shouldEnd(lastActivity: TimeInterval, now: TimeInterval) -> Bool {
+        now - lastActivity >= shutdownInterval
     }
 }
 
@@ -857,6 +1098,34 @@ final class IOSRealtimeStateCuePlayer {
     }
 }
 
+enum IOSDriveModePauseReason: Equatable, Sendable {
+    case noSpeech
+    case user
+    case interruption
+    case outputDisconnected(wasBluetooth: Bool)
+    case routeUnavailable
+    case mediaServices
+
+    var message: String {
+        switch self {
+        case .noSpeech:
+            return "No speech detected. Tap Resume when you're ready."
+        case .user:
+            return "Conversation paused. Tap Resume to keep talking."
+        case .interruption:
+            return "A call, Siri, or another app is using audio. Clawdia will resume when available."
+        case .outputDisconnected(let wasBluetooth):
+            return wasBluetooth
+                ? "Bluetooth disconnected. Reconnect it or tap Resume to use iPhone audio."
+                : "The audio device disconnected. Tap Resume to use the current route."
+        case .routeUnavailable:
+            return "No usable audio route is available. Connect an audio device, then tap Resume."
+        case .mediaServices:
+            return "iOS restarted its audio system. Clawdia will reconnect when it is ready."
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class IOSRealtimeVoiceController {
@@ -867,7 +1136,7 @@ final class IOSRealtimeVoiceController {
     }
 
     enum Phase: Equatable {
-        case idle, preparing, recording, transcribing, waitingForHermes, speaking
+        case idle, preparing, recording, transcribing, waitingForHermes, speaking, paused
     }
 
     var mode: ComposerMode = .text
@@ -878,6 +1147,9 @@ final class IOSRealtimeVoiceController {
     private(set) var errorMessage: String?
     private(set) var activityLevel: Float = 0
     private(set) var isAutomaticListening = false
+    private(set) var isDriveModeActive = false
+    private(set) var driveModePauseReason: IOSDriveModePauseReason?
+    private(set) var driveModeNotice: String?
 
     private let microphone = IOSRealtimeMicrophoneRecorder()
     private let player = IOSRealtimePCMStreamPlayer()
@@ -894,6 +1166,13 @@ final class IOSRealtimeVoiceController {
     private var speechBuffer = IOSStreamingSpeechBuffer()
     private var speechContinuation: AsyncStream<String>.Continuation?
     private var transcriptHandler: (@MainActor (String) async -> Void)?
+    private var pausedHermesReplyIsComplete = false
+    private var driveModeLastActivity = Date.timeIntervalSinceReferenceDate
+    private var driveModeInactivityTask: Task<Void, Never>?
+    @ObservationIgnored
+    private lazy var audioSessionMonitor = IOSRealtimeAudioSessionMonitor { [weak self] event in
+        self?.handleAudioLifecycleEvent(event)
+    }
 
     init() {
         hasAPIKey = (try? IOSRealtimeAPIKeyStore.load()) != nil
@@ -905,8 +1184,9 @@ final class IOSRealtimeVoiceController {
         case .preparing: return "Starting the microphone…"
         case .recording: return "Listening…"
         case .transcribing: return "Transcribing…"
-        case .waitingForHermes: return "Hermes is responding…"
-        case .speaking: return "Speaking Hermes's response…"
+        case .waitingForHermes: return "Clawdia is responding…"
+        case .speaking: return "Clawdia is speaking…"
+        case .paused: return "Drive Mode paused"
         }
     }
 
@@ -914,21 +1194,24 @@ final class IOSRealtimeVoiceController {
         switch phase {
         case .idle: return "Tap once for hands-free · hold to talk"
         case .preparing: return "Release after speaking when holding"
+        case .recording where isAutomaticListening && isDriveModeActive:
+            return "Speak naturally · pauses after 10 seconds with no speech"
         case .recording where isAutomaticListening:
             return "Speak naturally · sends after you stop · closes after 10 seconds of no speech"
         case .recording: return "Tap again to send · or release if you're holding"
-        case .transcribing: return "Turning your voice into a Hermes message"
+        case .transcribing: return "Turning your voice into a Clawdia message"
         case .waitingForHermes: return "Your text response continues streaming above"
         case .speaking: return "Tap to stop · listening resumes when speech ends"
+        case .paused: return driveModePauseReason?.message ?? "Tap Resume to continue"
         }
     }
 
     var canRecord: Bool { phase == .idle || phase == .preparing || phase == .recording }
 
-    /// Background audio is justified only while a live voice turn is active.
-    /// Once automatic listening times out to idle, normal iOS suspension resumes.
+    /// Only an explicit, user-started Drive Mode owns background audio. A
+    /// regular one-shot Voice turn still follows the normal scene lifecycle.
     var shouldContinueInBackground: Bool {
-        mode == .voice && phase != .idle
+        isDriveModeActive
     }
 
     func selectMode(_ newMode: ComposerMode) {
@@ -937,8 +1220,80 @@ final class IOSRealtimeVoiceController {
             showsCredentialSheet = true
             return
         }
-        if newMode == .text { resetVoiceTurn() }
+        if newMode == .text {
+            if isDriveModeActive {
+                endDriveMode()
+            } else {
+                resetVoiceTurn()
+            }
+        }
         mode = newMode
+    }
+
+    func startDriveMode(
+        onTranscript: @escaping @MainActor (String) async -> Void
+    ) {
+        guard mode == .voice, hasAPIKey, !isDriveModeActive, phase == .idle else { return }
+        do {
+            try IOSRealtimeAudioSession.beginDriveMode()
+            transcriptHandler = onTranscript
+            isDriveModeActive = true
+            driveModePauseReason = nil
+            driveModeNotice = nil
+            pausedHermesReplyIsComplete = false
+            audioSessionMonitor.start()
+            markDriveModeActivity()
+            startRecording(automatic: true, onTranscript: onTranscript)
+        } catch {
+            IOSRealtimeAudioSession.endDriveMode()
+            errorMessage = "Clawdia couldn't start Drive Mode: \(error.localizedDescription)"
+        }
+    }
+
+    func endDriveMode() {
+        finishDriveMode(notice: "Drive Mode ended.")
+    }
+
+    func resumeDriveMode() {
+        guard isDriveModeActive, phase == .paused else { return }
+        do {
+            try IOSRealtimeAudioSession.activate()
+            markDriveModeActivity()
+            driveModePauseReason = nil
+            phase = .idle
+
+            if speechBuffer.hasPendingText {
+                while let chunk = speechBuffer.takeChunk() {
+                    enqueueSpeechText(chunk)
+                }
+                if pausedHermesReplyIsComplete,
+                   let finalChunk = speechBuffer.takeChunk(force: true) {
+                    enqueueSpeechText(finalChunk)
+                }
+                if pausedHermesReplyIsComplete {
+                    pausedHermesReplyIsComplete = false
+                    speechContinuation?.finish()
+                } else if speechContinuation == nil {
+                    phase = .waitingForHermes
+                    waitingSound.start()
+                }
+                return
+            }
+
+            if awaitingHermesReply {
+                phase = .waitingForHermes
+                waitingSound.start()
+                return
+            }
+
+            guard let transcriptHandler else { return }
+            startRecording(automatic: true, onTranscript: transcriptHandler)
+        } catch {
+            driveModePauseReason = .routeUnavailable
+            phase = .paused
+            errorMessage = "Clawdia couldn't resume audio: \(error.localizedDescription)"
+            scheduleDriveModeInactivityShutdown()
+        }
     }
 
     func saveAPIKey() {
@@ -961,7 +1316,11 @@ final class IOSRealtimeVoiceController {
             apiKeyDraft = ""
             showsCredentialSheet = false
             mode = .text
-            resetVoiceTurn()
+            if isDriveModeActive {
+                finishDriveMode(notice: nil)
+            } else {
+                resetVoiceTurn()
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -974,7 +1333,9 @@ final class IOSRealtimeVoiceController {
         guard mode == .voice else { return }
         guard phase == .idle else { return }
         errorMessage = nil
+        driveModeNotice = nil
         transcriptHandler = onTranscript
+        markDriveModeActivity()
         isAutomaticListening = automatic
         stopWhenRecordingStarts = false
         serverDetectedSpeech = false
@@ -1027,12 +1388,14 @@ final class IOSRealtimeVoiceController {
                 operationTask = nil
                 if let transcriptHandler { await transcriptHandler(transcript) }
             } catch {
+                let message = error.localizedDescription
                 if error is CancellationError {
                     microphone.cancel()
                     waitingSound.stop()
-                    phase = .idle
                     isAutomaticListening = false
                     operationTask = nil
+                    if isDriveModeActive, driveModePauseReason != nil { return }
+                    phase = .idle
                     return
                 }
                 meterTask?.cancel()
@@ -1042,7 +1405,10 @@ final class IOSRealtimeVoiceController {
                 phase = .idle
                 isAutomaticListening = false
                 operationTask = nil
-                errorMessage = error.localizedDescription
+                if isDriveModeActive {
+                    finishDriveMode(notice: nil)
+                }
+                errorMessage = message
             }
         }
     }
@@ -1089,6 +1455,16 @@ final class IOSRealtimeVoiceController {
               !trimmed.isEmpty else { return }
 
         speechBuffer.ingest(text)
+        markDriveModeActivity()
+        if isDriveModeActive, phase == .paused {
+            if isComplete {
+                awaitingHermesReply = false
+                pendingSessionID = nil
+                pausedHermesReplyIsComplete = true
+            }
+            scheduleDriveModeInactivityShutdown()
+            return
+        }
         while let chunk = speechBuffer.takeChunk() {
             enqueueSpeechText(chunk)
         }
@@ -1121,6 +1497,7 @@ final class IOSRealtimeVoiceController {
         let textStream = AsyncStream<String> { continuation = $0 }
         guard let continuation else { return }
         speechContinuation = continuation
+        let preferences = IOSRealtimeVoicePreferences.load()
         waitingSound.stop()
         operationTask?.cancel()
         operationTask = Task { [weak self] in
@@ -1129,11 +1506,16 @@ final class IOSRealtimeVoiceController {
                 guard let apiKey = try IOSRealtimeAPIKeyStore.load() else {
                     throw IOSRealtimeVoiceError.missingAPIKey
                 }
+                markDriveModeActivity()
                 phase = .speaking
                 activityLevel = 0.18
                 stateCue.play(.speaking)
                 try player.start()
-                try await client.speak(apiKey: apiKey, textStream: textStream) { [weak self] chunk in
+                try await client.speak(
+                    apiKey: apiKey,
+                    textStream: textStream,
+                    preferences: preferences
+                ) { [weak self] chunk in
                     await self?.enqueueAudio(chunk)
                 }
                 await player.finish()
@@ -1149,8 +1531,9 @@ final class IOSRealtimeVoiceController {
                 player.stop()
                 speechContinuation = nil
                 activityLevel = 0
-                phase = .idle
                 operationTask = nil
+                if isDriveModeActive, driveModePauseReason != nil { return }
+                phase = .idle
             } catch {
                 player.stop()
                 speechContinuation = nil
@@ -1177,12 +1560,26 @@ final class IOSRealtimeVoiceController {
         pendingSessionID = nil
         speechBuffer = IOSStreamingSpeechBuffer()
         activityLevel = 0
-        phase = .idle
         operationTask = nil
-        deactivateAudioSessionAfterCue()
+        if isDriveModeActive {
+            driveModePauseReason = .user
+            phase = .paused
+            scheduleDriveModeInactivityShutdown()
+        } else {
+            phase = .idle
+            deactivateAudioSessionAfterCue()
+        }
     }
 
     func resetVoiceTurn() {
+        if isDriveModeActive {
+            stopDriveModeOwnership()
+        }
+        resetActiveTurnForDriveModeTransition()
+        errorMessage = nil
+    }
+
+    private func resetActiveTurnForDriveModeTransition() {
         operationTask?.cancel()
         operationTask = nil
         meterTask?.cancel()
@@ -1200,10 +1597,10 @@ final class IOSRealtimeVoiceController {
         stopWhenRecordingStarts = false
         serverDetectedSpeech = false
         speechBuffer = IOSStreamingSpeechBuffer()
+        pausedHermesReplyIsComplete = false
         isAutomaticListening = false
         activityLevel = 0
         phase = .idle
-        errorMessage = nil
         IOSRealtimeAudioSession.deactivate()
     }
 
@@ -1235,10 +1632,16 @@ final class IOSRealtimeVoiceController {
                     microphone.cancel()
                     isAutomaticListening = false
                     activityLevel = 0
-                    phase = .idle
                     meterTask = nil
                     stateCue.play(.paused)
-                    deactivateAudioSessionAfterCue()
+                    if isDriveModeActive {
+                        driveModePauseReason = .noSpeech
+                        phase = .paused
+                        scheduleDriveModeInactivityShutdown()
+                    } else {
+                        phase = .idle
+                        deactivateAudioSessionAfterCue()
+                    }
                     return
                 }
                 try? await Task.sleep(for: .milliseconds(50))
@@ -1249,8 +1652,98 @@ final class IOSRealtimeVoiceController {
     private func deactivateAudioSessionAfterCue() {
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(450))
-            guard let self, phase == .idle else { return }
+            guard let self, phase == .idle, !isDriveModeActive else { return }
             IOSRealtimeAudioSession.deactivate()
         }
+    }
+
+    private func handleAudioLifecycleEvent(_ event: IOSRealtimeAudioLifecycleEvent) {
+        guard isDriveModeActive else { return }
+        switch event {
+        case .interruptionBegan:
+            pauseDriveMode(for: .interruption, playCue: false)
+        case .interruptionEnded(let shouldResume):
+            if shouldResume { resumeDriveMode() }
+        case .outputDisconnected(let wasBluetooth):
+            pauseDriveMode(for: .outputDisconnected(wasBluetooth: wasBluetooth))
+        case .routeUnavailable:
+            pauseDriveMode(for: .routeUnavailable)
+        case .routeAvailable:
+            switch driveModePauseReason {
+            case .outputDisconnected, .routeUnavailable, .mediaServices:
+                resumeDriveMode()
+            default:
+                break
+            }
+        case .mediaServicesLost:
+            pauseDriveMode(for: .mediaServices, playCue: false)
+        case .mediaServicesReset:
+            resumeDriveMode()
+        }
+    }
+
+    private func pauseDriveMode(
+        for reason: IOSDriveModePauseReason,
+        playCue: Bool = true
+    ) {
+        guard isDriveModeActive else { return }
+        driveModePauseReason = reason
+        driveModeLastActivity = Date.timeIntervalSinceReferenceDate
+        operationTask?.cancel()
+        operationTask = nil
+        meterTask?.cancel()
+        meterTask = nil
+        speechFlushTask?.cancel()
+        speechFlushTask = nil
+        speechContinuation?.finish()
+        speechContinuation = nil
+        microphone.cancel()
+        player.stop()
+        waitingSound.stop()
+        stateCue.stop()
+        isAutomaticListening = false
+        activityLevel = 0
+        phase = .paused
+        if playCue { stateCue.play(.paused) }
+        scheduleDriveModeInactivityShutdown()
+    }
+
+    private func markDriveModeActivity() {
+        guard isDriveModeActive else { return }
+        driveModeLastActivity = Date.timeIntervalSinceReferenceDate
+        driveModeInactivityTask?.cancel()
+        driveModeInactivityTask = nil
+    }
+
+    private func scheduleDriveModeInactivityShutdown() {
+        guard isDriveModeActive else { return }
+        driveModeInactivityTask?.cancel()
+        let lastActivity = driveModeLastActivity
+        driveModeInactivityTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(IOSDriveModeInactivityPolicy.shutdownInterval))
+            guard !Task.isCancelled, let self, isDriveModeActive,
+                  phase == .paused || phase == .idle,
+                  IOSDriveModeInactivityPolicy.shouldEnd(
+                    lastActivity: lastActivity,
+                    now: Date.timeIntervalSinceReferenceDate
+                  ) else { return }
+            finishDriveMode(notice: "Drive Mode ended after 10 minutes of inactivity.")
+        }
+    }
+
+    private func finishDriveMode(notice: String?) {
+        guard isDriveModeActive else { return }
+        stopDriveModeOwnership()
+        resetActiveTurnForDriveModeTransition()
+        driveModeNotice = notice
+    }
+
+    private func stopDriveModeOwnership() {
+        isDriveModeActive = false
+        driveModePauseReason = nil
+        driveModeInactivityTask?.cancel()
+        driveModeInactivityTask = nil
+        audioSessionMonitor.stop()
+        IOSRealtimeAudioSession.endDriveMode()
     }
 }

@@ -38,7 +38,7 @@ struct PluginsView: View {
                     ContentUnavailableView(
                         "No plugins installed",
                         systemImage: "app.badge.checkmark",
-                        description: Text("Hermes plugins live under `~/.hermes/plugins/<name>/`. Install one with `hermes plugins install <repo>` from the Mac app.")
+                        description: Text("Clawdia plugins live under `~/.hermes/plugins/<name>/`. Install one with `hermes plugins install <repo>` from the Mac app.")
                     )
                 }
             } else {

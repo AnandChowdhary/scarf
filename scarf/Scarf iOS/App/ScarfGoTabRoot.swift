@@ -100,6 +100,12 @@ struct ScarfGoTabRoot: View {
                 // Weak ref — coordinator owns its own lifetime, router
                 // just observes.
                 NotificationRouter.shared.coordinator = coordinator
+                ClawdiaSystemEntryRouter.shared.attach(coordinator: coordinator)
+                let context = effectiveConfig.toServerContext(id: serverID)
+                Task.detached {
+                    let projects = ProjectDashboardService(context: context).loadRegistry().projects
+                    ClawdiaProjectEntityCache.save(projects)
+                }
             }
             // Funnel scene-phase transitions through the coordinator so
             // tab view-models (notably ChatController) can react even

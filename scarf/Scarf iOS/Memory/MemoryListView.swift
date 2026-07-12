@@ -111,7 +111,7 @@ struct MemoryListView: View {
                     : combined
             }
         } catch {
-            resetError = "Couldn't reach Hermes: \(error.localizedDescription)"
+            resetError = "Couldn't reach Clawdia's agent: \(error.localizedDescription)"
         }
     }
 

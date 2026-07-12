@@ -35,7 +35,7 @@ struct SkillDetailView: View {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Disabled").font(.callout.weight(.medium))
-                            Text("This skill is in `skills.disabled` in `~/.hermes/config.yaml`. Hermes won't load it. Re-enable from the Mac app's Skills config UI or with `hermes skills config`.")
+                            Text("This skill is in `skills.disabled` in `~/.hermes/config.yaml`. Clawdia won't load it. Re-enable from the Mac app's Skills config UI or with `hermes skills config`.")
                                 .font(.caption)
                                 .foregroundStyle(ScarfColor.foregroundMuted)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -69,7 +69,7 @@ struct SkillDetailView: View {
                 Section("Prerequisite missing") {
                     Label {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("`npx` not found on the Hermes host.")
+                            Text("`npx` not found on the Clawdia agent host.")
                                 .font(.callout.weight(.medium))
                             Text(hint)
                                 .font(.caption)

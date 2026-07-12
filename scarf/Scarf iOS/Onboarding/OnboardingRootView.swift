@@ -72,7 +72,7 @@ struct OnboardingRootView: View {
                 case .connected:       ConnectedStep()
                 }
             }
-            .navigationTitle("Connect to Hermes")
+            .navigationTitle("Connect Clawdia")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -154,7 +154,7 @@ private struct KeySourceStep: View {
             Text("SSH key")
                 .font(.title2)
                 .bold()
-            Text("Clawdia authenticates to your Hermes host with an SSH key. You can generate a new one on this device, or import one you already use.")
+            Text("Clawdia authenticates to your agent host with an SSH key. You can generate a new one on this device, or import one you already use.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(ScarfColor.foregroundMuted)
                 .padding(.horizontal)
@@ -246,7 +246,7 @@ private struct ShowPublicKeyStep: View {
                 Text("Add this public key to the remote")
                     .font(.title3)
                     .bold()
-                Text("Append the line below to `~/.ssh/authorized_keys` on the Hermes host. Once added, tap **I've added this key** to test the connection.")
+                Text("Append the line below to `~/.ssh/authorized_keys` on the Clawdia agent host. Once added, tap **I've added this key** to test the connection.")
                     .font(.callout)
                     .foregroundStyle(ScarfColor.foregroundMuted)
 

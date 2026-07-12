@@ -69,6 +69,12 @@ final class ScarfGoCoordinator {
     /// `AppCoordinator.pendingProjectChat`.
     var pendingProjectChat: String?
 
+    /// Durable system entry (Siri, Shortcuts, Spotlight, or Action button)
+    /// waiting for ChatView to consume it. The backing store is cleared only
+    /// after Chat begins the requested action so cold-launch handoffs cannot
+    /// disappear between RootModel and this server-scoped coordinator.
+    var pendingSystemEntryRequest: ClawdiaSystemEntryRequest?
+
     /// Most-recent scene-phase value observed at the WindowGroup
     /// level. Tab-specific view models (e.g. `ChatController`)
     /// observe `scenePhaseTick` to react to transitions even when
@@ -127,6 +133,20 @@ final class ScarfGoCoordinator {
     func startChatInProject(path: String) {
         pendingProjectChat = path
         selectedTab = .chat
+    }
+
+    func receiveSystemEntry(_ request: ClawdiaSystemEntryRequest) {
+        pendingSystemEntryRequest = request
+        selectedTab = .chat
+    }
+
+    func takeSystemEntry() -> ClawdiaSystemEntryRequest? {
+        defer { pendingSystemEntryRequest = nil }
+        return pendingSystemEntryRequest
+    }
+
+    func completeSystemEntry(_ requestID: UUID) {
+        ClawdiaSystemEntryRouter.shared.complete(requestID)
     }
 }
 

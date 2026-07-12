@@ -61,7 +61,7 @@ struct InstalledSkillsListView: View {
                                         .background(ScarfColor.backgroundTertiary)
                                         .clipShape(RoundedRectangle(cornerRadius: 3))
                                         .foregroundStyle(ScarfColor.foregroundMuted)
-                                        .accessibilityLabel("Disabled — Hermes won't load this skill")
+                                        .accessibilityLabel("Disabled — Clawdia won't load this skill")
                                 }
                             }
                         }

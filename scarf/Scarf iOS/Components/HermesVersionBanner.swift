@@ -33,7 +33,7 @@ struct HermesVersionBanner: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(ScarfColor.warning)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Hermes update available")
+                    Text("Clawdia agent update available")
                         .font(.callout.weight(.semibold))
                     Text("This server runs \(versionLabel). Update to v0.12 to unlock the autonomous curator, multimodal image input, GMI Cloud / Azure / LM Studio / MiniMax / Tencent providers, and more.")
                         .font(.caption)
@@ -70,8 +70,8 @@ struct HermesVersionBanner: View {
     private var versionLabel: String {
         let caps = capabilitiesStore?.capabilities
         if let semver = caps?.semver {
-            return "Hermes v\(semver.description)"
+            return "Clawdia agent v\(semver.description)"
         }
-        return caps?.versionLine ?? "an older Hermes"
+        return "an older Clawdia agent"
     }
 }
