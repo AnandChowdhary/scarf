@@ -2,10 +2,10 @@
 
 ## Pre-flight
 
-- [ ] `main` contains the complete unified Voice mode, App Intents, naming, icon, and audio-reactive waveform changes.
-- [ ] iOS build number is **55** with bundle identifier `so.sycamore.clawdia` and Sycamore team `UYNVFZ8S2F`.
-- [ ] AppIcon master and all derived sizes use the supplied Clawdia portrait, with no alpha.
-- [ ] `Scarf iOSTests`, simulator build, App Intents metadata extraction, and signed archive succeed.
+- [x] `main` contains the complete unified Voice mode, App Intents, naming, icon, and audio-reactive waveform changes.
+- [x] iOS build number is **55** with bundle identifier `so.sycamore.clawdia` and Sycamore team `UYNVFZ8S2F`.
+- [x] AppIcon master and all derived sizes use the supplied Clawdia portrait, with no alpha.
+- [x] `Scarf iOSTests`, simulator build, App Intents metadata extraction, and signed archive succeed.
 
 ## What to test
 
@@ -26,6 +26,8 @@ Report issues through TestFlight feedback.
 
 ## Upload
 
-- [ ] Archive `Clawdia iOS` for Any iOS Device using automatic signing.
-- [ ] Export/upload through App Store Connect and wait for processing.
+- [x] Archive `Clawdia iOS` for Any iOS Device using automatic signing.
+- [x] Export/upload through App Store Connect and wait for processing.
 - [ ] Add build 55 to the existing tester group when processing completes.
+
+Build 55 finished processing at 1:19 PM on July 12, 2026. App Store Connect is waiting for the per-build App Encryption Documentation answer before the build can be added to `Anand Alone`.

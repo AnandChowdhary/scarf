@@ -13,6 +13,7 @@ Ship the accumulated unified Voice experience and audio-reactive waveform as Cla
 
 ## Verification
 
-- Voice regression suite and live synthetic Realtime/Hermes round trip pass.
-- The archive validates as version 2.16.1 (55), team `UYNVFZ8S2F`, bundle `so.sycamore.clawdia`.
-- App Store Connect accepts build 55 for processing.
+- [x] Voice regression suite and live synthetic Realtime/Hermes round trip passed.
+- [x] The archive validates as version 2.16.1 (55), team `UYNVFZ8S2F`, bundle `so.sycamore.clawdia`.
+- [x] App Store Connect accepted and finished processing build 55.
+- [ ] Complete Apple's App Encryption Documentation attestation and assign build 55 to `Anand Alone`.
