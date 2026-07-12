@@ -1498,8 +1498,16 @@ final class ChatController {
     /// context files from the process cwd, not the ACP session cwd) — the
     /// iOS counterpart to Mac's project-cwd spawn. Single source of truth
     /// for the four chat-start paths (fresh / project / resume / reconnect).
+    /// Test seam (gh#124 regression coverage): when set, `makeClient`
+    /// returns this factory's client instead of the Keychain-wired
+    /// `forIOSApp` one, so unit tests can drive the real start()/send()
+    /// path over an in-memory ACP channel. Nil in production. Mirrors
+    /// `MiniAppAgentSession.clientFactory`.
+    var clientFactory: ((_ projectCwd: String?) -> ACPClient)?
+
     private func makeClient(projectCwd: String? = nil) -> ACPClient {
-        ACPClient.forIOSApp(
+        if let clientFactory { return clientFactory(projectCwd) }
+        return ACPClient.forIOSApp(
             context: context,
             projectCwd: projectCwd,
             keyProvider: {
@@ -1740,6 +1748,9 @@ final class ChatController {
             if case .ready = state {
                 state = .failed("Prompt failed: \(error.localizedDescription)")
             }
+            // Exit the working state on failure too. The `.reconnecting`
+            // early-return above deliberately skips this — its teardown
+            // path already ran `finalizeOnDisconnect()`.
             vm.handleACPEvent(
                 .promptComplete(sessionId: sessionId, response: ACPPromptResult(
                     stopReason: "error",

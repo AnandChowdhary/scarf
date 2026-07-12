@@ -6,7 +6,7 @@
 //
 
 import Testing
-@testable import Scarf_iOS
+@testable import scarf_mobile
 
 struct Scarf_iOSTests {
 
