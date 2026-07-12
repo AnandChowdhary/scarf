@@ -28,6 +28,7 @@ struct RichChatInputBar: View {
     /// commands (`/clear`, `/compact`, `/cost`, etc.) only do anything
     /// after `session/new` returns. Source: `richChat.sessionId != nil`.
     var hasActiveSession: Bool = false
+    @Bindable var voiceController: RealtimeVoiceController
 
     @Environment(\.hermesCapabilities) private var capabilitiesStore
 
@@ -81,161 +82,168 @@ struct RichChatInputBar: View {
                 .padding(.top, 8)
             }
 
-            if !attachments.isEmpty || isEncodingAttachment || attachmentError != nil {
+            composerModePicker
+
+            if voiceController.mode == .text,
+               (!attachments.isEmpty || isEncodingAttachment || attachmentError != nil) {
                 attachmentStrip
             }
 
-            HStack(alignment: .bottom, spacing: ScarfSpace.s2) {
-                if showCompressButton {
-                    Button {
-                        compressFocus = ""
-                        showCompressSheet = true
-                    } label: {
-                        Image(systemName: "rectangle.compress.vertical")
-                            .font(.system(size: 16))
-                            .foregroundStyle(ScarfColor.foregroundMuted)
-                            .padding(6)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!isEnabled)
-                    .help("Compress conversation (/compress)")
-                }
-
-                if supportsImagePrompts {
-                    attachmentButton
-                }
-
-                TextEditor(text: $text)
-                    .font(ScarfFont.body)
-                    .scrollContentBackground(.hidden)
-                    .focused($isFocused)
-                    .frame(minHeight: 28, maxHeight: 120)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: ScarfRadius.xl, style: .continuous)
-                            .fill(ScarfColor.backgroundSecondary)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: ScarfRadius.xl, style: .continuous)
-                                    .strokeBorder(showMenu ? ScarfColor.accent : ScarfColor.borderStrong, lineWidth: 1)
-                            )
-                    )
-                    .overlay(alignment: .topLeading) {
-                        // Placeholder ghosting (#65): TextEditor's
-                        // NSTextView updates the visible glyphs a frame
-                        // before the SwiftUI binding propagates, so a
-                        // bare `if text.isEmpty` overlay renders the
-                        // translucent placeholder text on top of the
-                        // just-typed character — visible as a "behind
-                        // or around" ghost. Three mitigations:
-                        //
-                        //   1. Pin an opaque rectangle behind the
-                        //      placeholder text. During any single-
-                        //      frame lag the user sees a clean
-                        //      placeholder, never layered glyphs.
-                        //   2. Use `.opacity(...)` instead of an `if`.
-                        //      Keeps the view tree stable per
-                        //      keystroke (removes the per-keystroke
-                        //      view-mutation churn the composer was
-                        //      already paying for).
-                        //   3. Constrain to a single line with
-                        //      `frame(maxWidth: .infinity)` and
-                        //      `truncationMode(.tail)` so the long-form
-                        //      hint can't escape the rounded
-                        //      TextEditor bounds when the sidebar /
-                        //      detail-pane geometry compresses the
-                        //      composer (was visibly overflowing).
-                        Text(supportsImagePrompts
-                             ? "Message Hermes…  /  for commands · drag images to attach"
-                             : "Message Hermes…  /  for commands")
-                            .scarfStyle(.body)
-                            .foregroundStyle(ScarfColor.foregroundFaint)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(ScarfColor.backgroundSecondary)
-                            // Hide once the field has any content OR
-                            // the user is actively focused — matches
-                            // standard NSTextField / UITextField
-                            // placeholder semantics.
-                            .opacity((text.isEmpty && !isFocused) ? 1 : 0)
-                            .allowsHitTesting(false)
-                    }
-                    // Drag-drop image attachments. Receives both file URLs
-                    // (from Finder) and raw image bitmap data (from
-                    // screenshot tools that drop tiff/png directly).
-                    // Capability-gated so v0.11 hosts don't surface a
-                    // drop target that does nothing.
-                    .onDrop(
-                        of: supportsImagePrompts ? [.image, .fileURL] : [],
-                        isTargeted: nil
-                    ) { providers in
-                        guard supportsImagePrompts else { return false }
-                        ingestProviders(providers)
-                        return true
-                    }
-                    // Paste from screenshots / browser context menu.
-                    // Accepting `Data` keeps us off `NSImage` which would
-                    // require AppKit-typed paste. v0.12+ only.
-                    .onPasteCommand(of: pasteAcceptedTypes) { providers in
-                        ingestProviders(providers)
-                    }
-                    .onKeyPress(.upArrow, phases: .down) { _ in
-                        guard showMenu, !filteredCommands.isEmpty else { return .ignored }
-                        let n = filteredCommands.count
-                        selectedIndex = (selectedIndex - 1 + n) % n
-                        return .handled
-                    }
-                    .onKeyPress(.downArrow, phases: .down) { _ in
-                        guard showMenu, !filteredCommands.isEmpty else { return .ignored }
-                        let n = filteredCommands.count
-                        selectedIndex = (selectedIndex + 1) % n
-                        return .handled
-                    }
-                    .onKeyPress(.tab, phases: .down) { _ in
-                        guard showMenu,
-                              let command = filteredCommands[safe: selectedIndex] else { return .ignored }
-                        insertCommand(command)
-                        return .handled
-                    }
-                    .onKeyPress(.escape, phases: .down) { _ in
-                        guard showMenu else { return .ignored }
-                        showMenu = false
-                        return .handled
-                    }
-                    .onKeyPress(.return, phases: .down) { press in
-                        if press.modifiers.contains(.shift) {
-                            return .ignored
+            if voiceController.mode == .text {
+                HStack(alignment: .bottom, spacing: ScarfSpace.s2) {
+                    if showCompressButton {
+                        Button {
+                            compressFocus = ""
+                            showCompressSheet = true
+                        } label: {
+                            Image(systemName: "rectangle.compress.vertical")
+                                .font(.system(size: 16))
+                                .foregroundStyle(ScarfColor.foregroundMuted)
+                                .padding(6)
                         }
-                        if showMenu, let command = filteredCommands[safe: selectedIndex] {
+                        .buttonStyle(.plain)
+                        .disabled(!isEnabled)
+                        .help("Compress conversation (/compress)")
+                    }
+
+                    if supportsImagePrompts {
+                        attachmentButton
+                    }
+
+                    TextEditor(text: $text)
+                        .font(ScarfFont.body)
+                        .scrollContentBackground(.hidden)
+                        .focused($isFocused)
+                        .frame(minHeight: 28, maxHeight: 120)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: ScarfRadius.xl, style: .continuous)
+                                .fill(ScarfColor.backgroundSecondary)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: ScarfRadius.xl, style: .continuous)
+                                        .strokeBorder(showMenu ? ScarfColor.accent : ScarfColor.borderStrong, lineWidth: 1)
+                                )
+                        )
+                        .overlay(alignment: .topLeading) {
+                            // Placeholder ghosting (#65): TextEditor's
+                            // NSTextView updates the visible glyphs a frame
+                            // before the SwiftUI binding propagates, so a
+                            // bare `if text.isEmpty` overlay renders the
+                            // translucent placeholder text on top of the
+                            // just-typed character — visible as a "behind
+                            // or around" ghost. Three mitigations:
+                            //
+                            //   1. Pin an opaque rectangle behind the
+                            //      placeholder text. During any single-
+                            //      frame lag the user sees a clean
+                            //      placeholder, never layered glyphs.
+                            //   2. Use `.opacity(...)` instead of an `if`.
+                            //      Keeps the view tree stable per
+                            //      keystroke (removes the per-keystroke
+                            //      view-mutation churn the composer was
+                            //      already paying for).
+                            //   3. Constrain to a single line with
+                            //      `frame(maxWidth: .infinity)` and
+                            //      `truncationMode(.tail)` so the long-form
+                            //      hint can't escape the rounded
+                            //      TextEditor bounds when the sidebar /
+                            //      detail-pane geometry compresses the
+                            //      composer (was visibly overflowing).
+                            Text(supportsImagePrompts
+                                 ? "Message Hermes…  /  for commands · drag images to attach"
+                                 : "Message Hermes…  /  for commands")
+                                .scarfStyle(.body)
+                                .foregroundStyle(ScarfColor.foregroundFaint)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(ScarfColor.backgroundSecondary)
+                                // Hide once the field has any content OR
+                                // the user is actively focused — matches
+                                // standard NSTextField / UITextField
+                                // placeholder semantics.
+                                .opacity((text.isEmpty && !isFocused) ? 1 : 0)
+                                .allowsHitTesting(false)
+                        }
+                        // Drag-drop image attachments. Receives both file URLs
+                        // (from Finder) and raw image bitmap data (from
+                        // screenshot tools that drop tiff/png directly).
+                        // Capability-gated so v0.11 hosts don't surface a
+                        // drop target that does nothing.
+                        .onDrop(
+                            of: supportsImagePrompts ? [.image, .fileURL] : [],
+                            isTargeted: nil
+                        ) { providers in
+                            guard supportsImagePrompts else { return false }
+                            ingestProviders(providers)
+                            return true
+                        }
+                        // Paste from screenshots / browser context menu.
+                        // Accepting `Data` keeps us off `NSImage` which would
+                        // require AppKit-typed paste. v0.12+ only.
+                        .onPasteCommand(of: pasteAcceptedTypes) { providers in
+                            ingestProviders(providers)
+                        }
+                        .onKeyPress(.upArrow, phases: .down) { _ in
+                            guard showMenu, !filteredCommands.isEmpty else { return .ignored }
+                            let n = filteredCommands.count
+                            selectedIndex = (selectedIndex - 1 + n) % n
+                            return .handled
+                        }
+                        .onKeyPress(.downArrow, phases: .down) { _ in
+                            guard showMenu, !filteredCommands.isEmpty else { return .ignored }
+                            let n = filteredCommands.count
+                            selectedIndex = (selectedIndex + 1) % n
+                            return .handled
+                        }
+                        .onKeyPress(.tab, phases: .down) { _ in
+                            guard showMenu,
+                                  let command = filteredCommands[safe: selectedIndex] else { return .ignored }
                             insertCommand(command)
                             return .handled
                         }
-                        send()
-                        return .handled
-                    }
+                        .onKeyPress(.escape, phases: .down) { _ in
+                            guard showMenu else { return .ignored }
+                            showMenu = false
+                            return .handled
+                        }
+                        .onKeyPress(.return, phases: .down) { press in
+                            if press.modifiers.contains(.shift) {
+                                return .ignored
+                            }
+                            if showMenu, let command = filteredCommands[safe: selectedIndex] {
+                                insertCommand(command)
+                                return .handled
+                            }
+                            send()
+                            return .handled
+                        }
 
-                Button {
-                    send()
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(canSend ? ScarfColor.onAccent : ScarfColor.foregroundFaint)
-                        .frame(width: 30, height: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: ScarfRadius.lg, style: .continuous)
-                                .fill(canSend ? ScarfColor.accent : ScarfColor.backgroundSecondary)
-                        )
+                    Button {
+                        send()
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(canSend ? ScarfColor.onAccent : ScarfColor.foregroundFaint)
+                            .frame(width: 30, height: 30)
+                            .background(
+                                RoundedRectangle(cornerRadius: ScarfRadius.lg, style: .continuous)
+                                    .fill(canSend ? ScarfColor.accent : ScarfColor.backgroundSecondary)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSend)
+                    .help("Send message (Enter)")
                 }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
-                .help("Send message (Enter)")
+                .padding(.horizontal, ScarfSpace.s3)
+                .padding(.vertical, ScarfSpace.s2)
+            } else {
+                voiceComposer
             }
-            .padding(.horizontal, ScarfSpace.s3)
-            .padding(.vertical, ScarfSpace.s2)
         }
         .background(ScarfColor.backgroundSecondary)
         .overlay(
@@ -253,9 +261,188 @@ struct RichChatInputBar: View {
         .onChange(of: commands.count) { _, _ in
             updateMenuState()
         }
+        .onChange(of: voiceController.mode) { _, mode in
+            if mode == .voice {
+                showMenu = false
+                isFocused = false
+            }
+        }
         .sheet(isPresented: $showCompressSheet) {
             compressSheet
         }
+        .sheet(isPresented: $voiceController.showsCredentialSheet) {
+            realtimeCredentialSheet
+        }
+    }
+
+    private var composerModePicker: some View {
+        HStack(spacing: ScarfSpace.s2) {
+            Picker(
+                "Composer mode",
+                selection: Binding(
+                    get: { voiceController.mode },
+                    set: { voiceController.selectMode($0) }
+                )
+            ) {
+                ForEach(RealtimeVoiceController.ComposerMode.allCases) { mode in
+                    Label(mode.rawValue, systemImage: mode == .text ? "keyboard" : "waveform")
+                        .tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 176)
+
+            if voiceController.mode == .voice {
+                Text("gpt-realtime audio · Hermes agent")
+                    .scarfStyle(.caption)
+                    .foregroundStyle(ScarfColor.foregroundMuted)
+                Spacer(minLength: 0)
+                Button {
+                    voiceController.apiKeyDraft = ""
+                    voiceController.showsCredentialSheet = true
+                } label: {
+                    Image(systemName: "key")
+                }
+                .buttonStyle(.plain)
+                .help("Manage OpenAI API key")
+                .accessibilityLabel("Manage OpenAI API key")
+            } else {
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, ScarfSpace.s3)
+        .padding(.top, ScarfSpace.s2)
+    }
+
+    private var voiceComposer: some View {
+        VStack(spacing: ScarfSpace.s2) {
+            Text(voiceController.statusTitle)
+                .scarfStyle(.body)
+                .foregroundStyle(ScarfColor.foregroundPrimary)
+            Text(voiceController.statusDetail)
+                .scarfStyle(.caption)
+                .foregroundStyle(ScarfColor.foregroundMuted)
+
+            Button {
+                if voiceController.phase == .speaking {
+                    voiceController.stopSpeaking()
+                } else {
+                    voiceController.toggleRecording { transcript in
+                        onSend(transcript, [])
+                    }
+                }
+            } label: {
+                Image(systemName: voiceButtonSymbol)
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(voiceButtonForeground)
+                    .frame(width: 72, height: 72)
+                    .background(Circle().fill(voiceButtonBackground))
+                    .overlay(
+                        Circle().strokeBorder(
+                            voiceController.phase == .recording
+                                ? ScarfColor.danger.opacity(0.35)
+                                : ScarfColor.borderStrong,
+                            lineWidth: 1
+                        )
+                    )
+                    .contentShape(Circle())
+                    .symbolEffect(.pulse, isActive: voiceController.phase == .recording)
+            }
+            .buttonStyle(.plain)
+            .disabled(!isEnabled || (!voiceController.canRecord && voiceController.phase != .speaking))
+            .help(voiceButtonHelp)
+            .accessibilityLabel(voiceButtonHelp)
+
+            if let error = voiceController.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .scarfStyle(.caption)
+                    .foregroundStyle(ScarfColor.danger)
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, ScarfSpace.s3)
+        .padding(.vertical, ScarfSpace.s3)
+    }
+
+    private var voiceButtonSymbol: String {
+        switch voiceController.phase {
+        case .recording: return "stop.fill"
+        case .speaking: return "speaker.slash.fill"
+        case .transcribing, .waitingForHermes: return "ellipsis"
+        case .idle: return "mic.fill"
+        }
+    }
+
+    private var voiceButtonHelp: String {
+        switch voiceController.phase {
+        case .recording: return "Stop recording and send to Hermes"
+        case .speaking: return "Stop spoken response"
+        case .transcribing, .waitingForHermes: return voiceController.statusTitle
+        case .idle: return "Start voice message"
+        }
+    }
+
+    private var voiceButtonBackground: Color {
+        switch voiceController.phase {
+        case .recording: return ScarfColor.danger
+        case .idle, .speaking: return ScarfColor.accent
+        case .transcribing, .waitingForHermes: return ScarfColor.backgroundTertiary
+        }
+    }
+
+    private var voiceButtonForeground: Color {
+        switch voiceController.phase {
+        case .transcribing, .waitingForHermes: return ScarfColor.foregroundFaint
+        default: return ScarfColor.onAccent
+        }
+    }
+
+    private var realtimeCredentialSheet: some View {
+        VStack(alignment: .leading, spacing: ScarfSpace.s3) {
+            Text("OpenAI Realtime Voice")
+                .scarfStyle(.headline)
+                .foregroundStyle(ScarfColor.foregroundPrimary)
+            Text("Scarf stores your key in the macOS Keychain. It is used only for OpenAI Realtime transcription and gpt-realtime speech; your actual conversation still runs through Hermes.")
+                .scarfStyle(.body)
+                .foregroundStyle(ScarfColor.foregroundMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            SecureField(
+                voiceController.hasAPIKey ? "Enter a replacement key" : "sk-…",
+                text: $voiceController.apiKeyDraft
+            )
+            .textFieldStyle(.roundedBorder)
+
+            if let error = voiceController.errorMessage {
+                Text(error)
+                    .scarfStyle(.caption)
+                    .foregroundStyle(ScarfColor.danger)
+            }
+
+            HStack {
+                if voiceController.hasAPIKey {
+                    Button("Forget Key", role: .destructive) {
+                        voiceController.forgetAPIKey()
+                    }
+                }
+                Spacer()
+                Button("Cancel") {
+                    voiceController.apiKeyDraft = ""
+                    voiceController.showsCredentialSheet = false
+                }
+                .buttonStyle(ScarfGhostButton())
+                Button(voiceController.hasAPIKey ? "Replace Key" : "Save Key") {
+                    voiceController.saveAPIKey()
+                }
+                .buttonStyle(ScarfPrimaryButton())
+                .disabled(voiceController.apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(ScarfSpace.s5)
+        .frame(width: 440)
     }
 
     /// Horizontal preview strip for attached images. Each chip shows the

@@ -19,6 +19,10 @@ struct ChatTranscriptPane: View {
     /// stack pollers.
     @State private var kanbanBadgeViewModel: KanbanChatBadgeViewModel?
     @State private var resolvedTenantForChat: String?
+    /// One voice bridge per transcript pane. It survives composer identity
+    /// changes when the user switches sessions, while the normal Hermes
+    /// transcript remains the source of truth for every turn.
+    @State private var voiceController = RealtimeVoiceController()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -90,12 +94,16 @@ struct ChatTranscriptPane: View {
             // fresh value per render and trash the composer on every
             // body re-eval.
             RichChatInputBar(
-                onSend: onSend,
+                onSend: { text, images in
+                    voiceController.noteHermesSend(sessionID: richChat.sessionId)
+                    onSend(text, images)
+                },
                 isEnabled: isEnabled,
                 commands: richChat.availableCommands,
                 showCompressButton: richChat.supportsCompress && !richChat.hasBroaderCommandMenu,
                 isAgentWorking: richChat.isAgentWorking,
-                hasActiveSession: richChat.sessionId != nil
+                hasActiveSession: richChat.sessionId != nil,
+                voiceController: voiceController
             )
             .id(richChat.sessionId ?? "scarf.chat.no-session")
         }
@@ -123,6 +131,30 @@ struct ChatTranscriptPane: View {
                 capabilities: caps
             )
         }
+        .onChange(of: richChat.isGenerating) { _, isGenerating in
+            if !isGenerating { speakLatestHermesReplyIfNeeded() }
+        }
+        .onChange(of: richChat.messages.last?.id ?? Int.min) { _, _ in
+            // Covers very fast turns where the final message lands without
+            // a separately-observed isGenerating transition.
+            if !richChat.isGenerating { speakLatestHermesReplyIfNeeded() }
+        }
+        .onChange(of: richChat.sessionId) { _, _ in
+            voiceController.handleSessionChange(to: richChat.sessionId)
+        }
+    }
+
+    private func speakLatestHermesReplyIfNeeded() {
+        guard let message = richChat.messages.last(where: {
+            $0.isAssistant
+                && $0.id != 0
+                && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) else { return }
+        voiceController.speakHermesReply(
+            sessionID: richChat.sessionId,
+            messageID: message.id,
+            text: message.content
+        )
     }
 
     /// Stable identity for the badge poller's `.task(id:)`. Includes
