@@ -8,7 +8,7 @@ permalink: scarf-wiki/localization
 
 Scarf 2.1 added full UI translations on top of English. Seven languages ship in the box and more can be contributed via a plain GitHub PR — no translation-management tool, no account to create.
 
-> **ScarfGo (iOS) is English-only in v2.5.** The iOS strings are extracted but no translations are contributed yet. Localizing the iOS app is on the [ScarfGo Roadmap](ScarfGo-Roadmap) — most of the strings already exist in `Localizable.xcstrings`, so contributing iOS translations would lean on the same workflow described below.
+> **Clawdia (iOS) is English-only in v2.5.** The iOS strings are extracted but no translations are contributed yet. Localizing the iOS app is on the [Clawdia Roadmap](ScarfGo-Roadmap) — most of the strings already exist in `Localizable.xcstrings`, so contributing iOS translations would lean on the same workflow described below.
 
 ## Supported languages
 
@@ -78,4 +78,4 @@ Per-locale JSON under `tools/translations/` is the canonical source of truth for
 Deeper dev-facing notes on which SwiftUI patterns silently bypass localization (and how to avoid them when adding new UI) are in [`scarf/docs/I18N.md`](https://github.com/awizemann/scarf/blob/main/scarf/docs/I18N.md).
 
 ---
-_Last updated: 2026-04-25 — Scarf v2.5.0 (added iOS English-only note + ScarfGo Roadmap link)_
+_Last updated: 2026-04-25 — Scarf v2.5.0 (added iOS English-only note + Clawdia Roadmap link)_

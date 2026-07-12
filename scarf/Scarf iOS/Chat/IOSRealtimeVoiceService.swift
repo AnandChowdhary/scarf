@@ -238,6 +238,78 @@ enum IOSWAVPCM16 {
     }
 }
 
+nonisolated enum IOSPCM16Meter {
+    static func level(in data: Data) -> Float {
+        guard data.count >= 2 else { return 0 }
+        var sumOfSquares = 0.0
+        var sampleCount = 0
+        data.withUnsafeBytes { rawBuffer in
+            let bytes = rawBuffer.bindMemory(to: UInt8.self)
+            for offset in stride(from: 0, to: bytes.count - 1, by: 2) {
+                let bits = UInt16(bytes[offset]) | (UInt16(bytes[offset + 1]) << 8)
+                let sample = Double(Int16(bitPattern: bits)) / Double(Int16.max)
+                sumOfSquares += sample * sample
+                sampleCount += 1
+            }
+        }
+        guard sampleCount > 0 else { return 0 }
+        let rms = sqrt(sumOfSquares / Double(sampleCount))
+        return Float(min(1, sqrt(rms * 2.4)))
+    }
+
+    static func level(decibels: Float) -> Float {
+        let floor: Float = -60
+        guard decibels > floor else { return 0 }
+        let linear = min(1, max(0, (decibels - floor) / -floor))
+        return pow(linear, 1.45)
+    }
+}
+
+nonisolated struct IOSVoiceActivityTracker {
+    enum Decision: Equatable, Sendable {
+        case keepListening
+        case finishUtterance
+        case timedOut
+    }
+
+    let startedAt: TimeInterval
+    var speechThreshold: Float = 0.22
+    var noSpeechTimeout: TimeInterval = 7
+    var trailingSilence: TimeInterval = 1.15
+
+    private(set) var detectedSpeech = false
+    private var lastSpeechAt: TimeInterval?
+
+    init(
+        startedAt: TimeInterval,
+        speechThreshold: Float = 0.22,
+        noSpeechTimeout: TimeInterval = 7,
+        trailingSilence: TimeInterval = 1.15
+    ) {
+        self.startedAt = startedAt
+        self.speechThreshold = speechThreshold
+        self.noSpeechTimeout = noSpeechTimeout
+        self.trailingSilence = trailingSilence
+    }
+
+    mutating func observe(level: Float, at time: TimeInterval) -> Decision {
+        if level >= speechThreshold {
+            detectedSpeech = true
+            lastSpeechAt = time
+            return .keepListening
+        }
+        if !detectedSpeech, time - startedAt >= noSpeechTimeout {
+            return .timedOut
+        }
+        if detectedSpeech,
+           let lastSpeechAt,
+           time - lastSpeechAt >= trailingSilence {
+            return .finishUtterance
+        }
+        return .keepListening
+    }
+}
+
 actor IOSRealtimeClient {
     private static let audioChunkBytes = 24_000
 
@@ -389,6 +461,7 @@ final class IOSRealtimeMicrophoneRecorder {
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
         let newRecorder = try AVAudioRecorder(url: url, settings: settings)
+        newRecorder.isMeteringEnabled = true
         guard newRecorder.prepareToRecord(), newRecorder.record() else {
             throw IOSRealtimeVoiceError.recordingFailed
         }
@@ -405,6 +478,12 @@ final class IOSRealtimeMicrophoneRecorder {
         defer { try? FileManager.default.removeItem(at: fileURL) }
         guard duration >= 0.15 else { throw IOSRealtimeVoiceError.emptyRecording }
         return try IOSWAVPCM16.extract(from: Data(contentsOf: fileURL))
+    }
+
+    func currentLevel() -> Float {
+        guard let recorder, recorder.isRecording else { return 0 }
+        recorder.updateMeters()
+        return IOSPCM16Meter.level(decibels: recorder.averagePower(forChannel: 0))
     }
 
     func cancel() {
@@ -485,6 +564,87 @@ final class IOSRealtimePCMStreamPlayer {
 }
 
 @MainActor
+final class IOSRealtimeWaitingSoundPlayer {
+    private let engine = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private let format = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: 24_000,
+        channels: 1,
+        interleaved: false
+    )!
+    private var loopTask: Task<Void, Never>?
+
+    init() {
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+    }
+
+    func start() throws {
+        guard loopTask == nil else { return }
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.ambient, mode: .default)
+        try session.setActive(true)
+        engine.prepare()
+        try engine.start()
+        loopTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                player.scheduleBuffer(
+                    makeChimeBuffer(),
+                    completionCallbackType: .dataPlayedBack
+                ) { _ in }
+                if !player.isPlaying { player.play() }
+                try? await Task.sleep(for: .seconds(4.8))
+            }
+        }
+    }
+
+    func stop() {
+        loopTask?.cancel()
+        loopTask = nil
+        player.stop()
+        engine.stop()
+    }
+
+    private func makeChimeBuffer() -> AVAudioPCMBuffer {
+        let duration = 2.5
+        let frameCount = AVAudioFrameCount(format.sampleRate * duration)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
+        buffer.frameLength = frameCount
+        guard let samples = buffer.floatChannelData?[0] else { return buffer }
+        let notes: [(
+            start: Double,
+            duration: Double,
+            frequency: Double,
+            amplitude: Double,
+            attack: Double,
+            releasePower: Double,
+            secondHarmonic: Double
+        )] = [
+            (0.00, 1.55, 329.63, 0.020, 0.24, 1.8, 0.08),
+            (0.48, 1.65, 493.88, 0.016, 0.28, 1.9, 0.06),
+            (0.96, 1.45, 659.25, 0.010, 0.30, 2.0, 0.04)
+        ]
+        for frame in 0..<Int(frameCount) {
+            let time = Double(frame) / format.sampleRate
+            var value = 0.0
+            for note in notes where time >= note.start && time <= note.start + note.duration {
+                let localTime = time - note.start
+                let progress = localTime / note.duration
+                let attack = min(1, localTime / note.attack)
+                let release = pow(max(0, 1 - progress), note.releasePower)
+                let fundamental = sin(2 * .pi * note.frequency * localTime)
+                let harmonic = sin(4 * .pi * note.frequency * localTime) * note.secondHarmonic
+                value += (fundamental + harmonic) * attack * release * note.amplitude
+            }
+            samples[frame] = Float(value)
+        }
+        return buffer
+    }
+}
+
+@MainActor
 @Observable
 final class IOSRealtimeVoiceController {
     enum ComposerMode: String, CaseIterable, Identifiable {
@@ -494,7 +654,7 @@ final class IOSRealtimeVoiceController {
     }
 
     enum Phase: Equatable {
-        case idle, recording, transcribing, waitingForHermes, speaking
+        case idle, preparing, recording, transcribing, waitingForHermes, speaking
     }
 
     var mode: ComposerMode = .text
@@ -503,14 +663,21 @@ final class IOSRealtimeVoiceController {
     var showsCredentialSheet = false
     var apiKeyDraft = ""
     private(set) var errorMessage: String?
+    private(set) var activityLevel: Float = 0
+    private(set) var isAutomaticListening = false
 
     private let microphone = IOSRealtimeMicrophoneRecorder()
     private let player = IOSRealtimePCMStreamPlayer()
+    private let waitingSound = IOSRealtimeWaitingSoundPlayer()
     private let client = IOSRealtimeClient()
     private var operationTask: Task<Void, Never>?
+    private var meterTask: Task<Void, Never>?
     private var awaitingHermesReply = false
     private var pendingSessionID: String?
     private var lastSpokenMessageID: Int?
+    private var stopWhenRecordingStarts = false
+    private var voiceActivityTracker: IOSVoiceActivityTracker?
+    private var transcriptHandler: (@MainActor (String) async -> Void)?
 
     init() {
         hasAPIKey = (try? IOSRealtimeAPIKeyStore.load()) != nil
@@ -519,6 +686,7 @@ final class IOSRealtimeVoiceController {
     var statusTitle: String {
         switch phase {
         case .idle: return "Tap the microphone to speak"
+        case .preparing: return "Starting the microphone…"
         case .recording: return "Listening…"
         case .transcribing: return "Transcribing…"
         case .waitingForHermes: return "Hermes is responding…"
@@ -526,7 +694,20 @@ final class IOSRealtimeVoiceController {
         }
     }
 
-    var canRecord: Bool { phase == .idle || phase == .recording }
+    var statusSubtitle: String {
+        switch phase {
+        case .idle: return "Tap once for hands-free · hold to talk"
+        case .preparing: return "Release after speaking when holding"
+        case .recording where isAutomaticListening:
+            return "Listening for your next question · stops after 7 seconds"
+        case .recording: return "Tap again to send · or release if you're holding"
+        case .transcribing: return "Turning your voice into a Hermes message"
+        case .waitingForHermes: return "Your text response continues streaming above"
+        case .speaking: return "Tap to stop · listening resumes when speech ends"
+        }
+    }
+
+    var canRecord: Bool { phase == .idle || phase == .preparing || phase == .recording }
 
     func selectMode(_ newMode: ComposerMode) {
         if newMode == .voice, !hasAPIKey {
@@ -564,43 +745,81 @@ final class IOSRealtimeVoiceController {
         }
     }
 
-    func toggleRecording(onTranscript: @escaping @MainActor (String) async -> Void) {
+    func startRecording(
+        automatic: Bool = false,
+        onTranscript: @escaping @MainActor (String) async -> Void
+    ) {
         guard mode == .voice else { return }
+        guard phase == .idle else { return }
         errorMessage = nil
-        switch phase {
-        case .idle:
-            operationTask?.cancel()
-            operationTask = Task { [weak self] in
-                guard let self else { return }
-                do {
-                    try await microphone.start()
-                    phase = .recording
-                } catch {
-                    phase = .idle
-                    errorMessage = error.localizedDescription
+        transcriptHandler = onTranscript
+        isAutomaticListening = automatic
+        stopWhenRecordingStarts = false
+        activityLevel = 0
+        waitingSound.stop()
+        operationTask?.cancel()
+        phase = .preparing
+        operationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await microphone.start()
+                guard !Task.isCancelled else {
+                    microphone.cancel()
+                    return
                 }
-            }
-        case .recording:
-            operationTask?.cancel()
-            operationTask = Task { [weak self] in
-                guard let self else { return }
-                do {
-                    let pcm = try microphone.stopAndReadPCM()
-                    guard let apiKey = try IOSRealtimeAPIKeyStore.load() else {
-                        throw IOSRealtimeVoiceError.missingAPIKey
-                    }
-                    phase = .transcribing
-                    let transcript = try await client.transcribe(apiKey: apiKey, pcm: pcm)
-                    awaitingHermesReply = true
-                    phase = .waitingForHermes
-                    await onTranscript(transcript)
-                } catch {
-                    phase = .idle
-                    errorMessage = error.localizedDescription
+                phase = .recording
+                operationTask = nil
+                startMetering(automatic: automatic)
+                if stopWhenRecordingStarts {
+                    stopWhenRecordingStarts = false
+                    finishRecording()
                 }
+            } catch {
+                phase = .idle
+                isAutomaticListening = false
+                operationTask = nil
+                errorMessage = error.localizedDescription
             }
-        default:
-            break
+        }
+    }
+
+    func finishRecording() {
+        if phase == .preparing {
+            stopWhenRecordingStarts = true
+            return
+        }
+        guard phase == .recording else { return }
+        meterTask?.cancel()
+        meterTask = nil
+        voiceActivityTracker = nil
+        isAutomaticListening = false
+        activityLevel = 0
+        phase = .transcribing
+        let handler = transcriptHandler
+        operationTask?.cancel()
+        operationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let pcm = try microphone.stopAndReadPCM()
+                guard let apiKey = try IOSRealtimeAPIKeyStore.load() else {
+                    throw IOSRealtimeVoiceError.missingAPIKey
+                }
+                let transcript = try await client.transcribe(apiKey: apiKey, pcm: pcm)
+                awaitingHermesReply = true
+                phase = .waitingForHermes
+                try? waitingSound.start()
+                operationTask = nil
+                if let handler { await handler(transcript) }
+            } catch is CancellationError {
+                microphone.cancel()
+                phase = .idle
+                operationTask = nil
+            } catch {
+                microphone.cancel()
+                phase = .idle
+                operationTask = nil
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -616,7 +835,7 @@ final class IOSRealtimeVoiceController {
             } else if pendingSessionID != sessionID {
                 resetVoiceTurn()
             }
-        } else if phase == .speaking {
+        } else if phase != .idle {
             resetVoiceTurn()
         }
     }
@@ -631,6 +850,7 @@ final class IOSRealtimeVoiceController {
         awaitingHermesReply = false
         pendingSessionID = nil
         lastSpokenMessageID = messageID
+        waitingSound.stop()
         operationTask?.cancel()
         operationTask = Task { [weak self] in
             guard let self else { return }
@@ -639,18 +859,28 @@ final class IOSRealtimeVoiceController {
                     throw IOSRealtimeVoiceError.missingAPIKey
                 }
                 phase = .speaking
+                activityLevel = 0.18
                 try player.start()
                 try await client.speak(apiKey: apiKey, text: trimmed) { [weak self] chunk in
                     await self?.enqueueAudio(chunk)
                 }
                 await player.finish()
+                activityLevel = 0
                 phase = .idle
+                operationTask = nil
+                try? await Task.sleep(for: .milliseconds(280))
+                guard mode == .voice, phase == .idle, let transcriptHandler else { return }
+                startRecording(automatic: true, onTranscript: transcriptHandler)
             } catch is CancellationError {
                 player.stop()
+                activityLevel = 0
                 phase = .idle
+                operationTask = nil
             } catch {
                 player.stop()
+                activityLevel = 0
                 phase = .idle
+                operationTask = nil
                 errorMessage = error.localizedDescription
             }
         }
@@ -660,22 +890,70 @@ final class IOSRealtimeVoiceController {
         guard phase == .speaking else { return }
         operationTask?.cancel()
         player.stop()
+        activityLevel = 0
         phase = .idle
+        operationTask = nil
     }
 
     func resetVoiceTurn() {
         operationTask?.cancel()
         operationTask = nil
+        meterTask?.cancel()
+        meterTask = nil
         microphone.cancel()
         player.stop()
+        waitingSound.stop()
         awaitingHermesReply = false
         pendingSessionID = nil
+        stopWhenRecordingStarts = false
+        voiceActivityTracker = nil
+        isAutomaticListening = false
+        activityLevel = 0
         phase = .idle
         errorMessage = nil
     }
 
     private func enqueueAudio(_ data: Data) {
         guard phase == .speaking else { return }
+        let measured = IOSPCM16Meter.level(in: data)
+        activityLevel = max(measured, activityLevel * 0.72)
         player.enqueue(data)
+    }
+
+    private func startMetering(automatic: Bool) {
+        voiceActivityTracker = automatic
+            ? IOSVoiceActivityTracker(startedAt: Date.timeIntervalSinceReferenceDate)
+            : nil
+        meterTask?.cancel()
+        meterTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, phase == .recording else { return }
+                let measured = microphone.currentLevel()
+                activityLevel = max(measured, activityLevel * 0.78)
+                if var tracker = voiceActivityTracker {
+                    let decision = tracker.observe(
+                        level: measured,
+                        at: Date.timeIntervalSinceReferenceDate
+                    )
+                    voiceActivityTracker = tracker
+                    switch decision {
+                    case .keepListening:
+                        break
+                    case .finishUtterance:
+                        finishRecording()
+                        return
+                    case .timedOut:
+                        microphone.cancel()
+                        voiceActivityTracker = nil
+                        isAutomaticListening = false
+                        activityLevel = 0
+                        phase = .idle
+                        meterTask = nil
+                        return
+                    }
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
     }
 }

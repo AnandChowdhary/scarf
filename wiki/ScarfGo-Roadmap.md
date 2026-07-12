@@ -1,14 +1,14 @@
 ---
-title: ScarfGo-Roadmap
+title: Clawdia-Roadmap
 type: note
 permalink: scarf-wiki/scarf-go-roadmap
 ---
 
-# ScarfGo — Roadmap & development reference
+# Clawdia — Roadmap & development reference
 
-> **Looking for the user guide?** See **[ScarfGo](ScarfGo)**. This page tracks engineering milestones (M6 / M7 / M8 / M9) and the pass-1 / pass-2 smoke-test punch list — useful for contributors and history, less useful for users.
+> **Looking for the user guide?** See **[Clawdia](ScarfGo)**. This page tracks engineering milestones (M6 / M7 / M8 / M9) and the pass-1 / pass-2 smoke-test punch list — useful for contributors and history, less useful for users.
 
-ScarfGo is the on-the-go iPhone companion to [Scarf](Home). Its scope is deliberately narrower than the Mac app: **remotely manage and interact with a running Hermes agent** from your phone. It is **not** a feature-parity port — Mac handles the full operator surface; ScarfGo handles what's valuable away from a desk.
+Clawdia is the on-the-go iPhone companion to [Scarf](Home). Its scope is deliberately narrower than the Mac app: **remotely manage and interact with a running Hermes agent** from your phone. It is **not** a feature-parity port — Mac handles the full operator surface; Clawdia handles what's valuable away from a desk.
 
 **Current state:** **public TestFlight** as of v2.5. M6 → M7 → M8 → M9 all shipped. See [Known Issues](#known-issues) below for residual items + this page for the historical milestone narrative.
 
@@ -31,12 +31,12 @@ ScarfGo is the on-the-go iPhone companion to [Scarf](Home). Its scope is deliber
 | **Skills** | Read-only browse — categories + skill files per skill. |
 | **Settings** | Read-only view of `config.yaml` grouped by section. Editing deferred — see M9. |
 
-## Deliberately not on ScarfGo
+## Deliberately not on Clawdia
 
 - **Analytics features** (Activity, Logs, Health, Insights) — belong on the Mac where screen real-estate supports them.
 - **Full-surface configuration** (CredentialPools, Gateway, Templates, MCP Servers, Platforms, Plugins, Profiles, Personalities, Tools, Webhooks, QuickCommands) — config flows live on the Mac. On the go you want to run and interact, not configure.
 - **Terminal mode** (embedded SwiftTerm) — out of scope for a chat-first companion.
-- **Local Hermes** — iOS can't spawn subprocesses (sandbox). ScarfGo is remote-only by design.
+- **Local Hermes** — iOS can't spawn subprocesses (sandbox). Clawdia is remote-only by design.
 
 ## Roadmap
 
@@ -46,7 +46,7 @@ Bug fixes only, no new features. Unblocks the first internal TestFlight build. S
 
 ### M8 — UX density pass
 
-ScarfGo is a developer tool; it needs to show more on-screen than Apple's spacious defaults. Research-driven changes:
+Clawdia is a developer tool; it needs to show more on-screen than Apple's spacious defaults. Research-driven changes:
 
 - Migrate root navigation from "Dashboard-is-hub" to a `TabView` with `.sidebarAdaptable` style — Chat, Dashboard, Memory, More. Primary nav stops hiding below the fold.
 - Clamp Dynamic Type at scene root: `.dynamicTypeSize(.xSmall ... .accessibility2)`. Semantic fonts + `@ScaledMetric`.
@@ -89,18 +89,18 @@ All tracked from the 2026-04-24 pass-1 smoke test. This list is the truth about 
 
 | # | Summary | Scope | Status |
 |---|---|---|---|
-| 1 | **Primary navigation hidden below Dashboard fold.** Chat / Memory / Cron / Skills / Settings links lived as the 4th section in a `List`. Replaced with `.tabViewStyle(.sidebarAdaptable)` root: 4 primary tabs (Chat / Dashboard / Memory / More) + collapse to sidebar on iPadOS later with zero UI code change. | ScarfGo | ✅ Fixed |
-| 2 | **Non-retryable provider errors → perpetual spinner.** ACP error triplet (`acpError`, `acpErrorHint`, `acpErrorDetails`) promoted to ScarfCore so Mac + ScarfGo share state; ChatView renders an inline banner with Copy Details / Expand. `handlePromptComplete` now calls `recordPromptStopFailureUsingProvider(stopReason:)` on non-`end_turn` stops with the stderr tail appended. | Cross-platform | ✅ Fixed |
-| 3 | **No connecting feedback when entering Chat.** ChatController's existing `.connecting` state now drives a `.regularMaterial` overlay with "Connecting to <nickname>…" + ProgressView. | ScarfGo | ✅ Fixed |
+| 1 | **Primary navigation hidden below Dashboard fold.** Chat / Memory / Cron / Skills / Settings links lived as the 4th section in a `List`. Replaced with `.tabViewStyle(.sidebarAdaptable)` root: 4 primary tabs (Chat / Dashboard / Memory / More) + collapse to sidebar on iPadOS later with zero UI code change. | Clawdia | ✅ Fixed |
+| 2 | **Non-retryable provider errors → perpetual spinner.** ACP error triplet (`acpError`, `acpErrorHint`, `acpErrorDetails`) promoted to ScarfCore so Mac + Clawdia share state; ChatView renders an inline banner with Copy Details / Expand. `handlePromptComplete` now calls `recordPromptStopFailureUsingProvider(stopReason:)` on non-`end_turn` stops with the stderr tail appended. | Cross-platform | ✅ Fixed |
+| 3 | **No connecting feedback when entering Chat.** ChatController's existing `.connecting` state now drives a `.regularMaterial` overlay with "Connecting to <nickname>…" + ProgressView. | Clawdia | ✅ Fixed |
 | 4 | **`isAgentWorking` doesn't clear after primary response.** Split into computed `isGenerating` (agent still producing text) + `isPostProcessing` (agent done producing; ACP `promptComplete` not yet fired). Prominent spinner drops as soon as the reply is visible; subtle "Finishing up…" pill covers auxiliary post-work. Applied cross-platform. | Cross-platform | ✅ Fixed |
-| 5 | **ACP command missing PATH prefix.** SSH exec runs a non-interactive shell whose PATH is `/usr/bin:/bin:/usr/sbin:/sbin`. Fixed by prepending the three most common pipx + Homebrew install locations (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) to PATH inline on every Citadel `runProcess` and `SSHExecACPChannel` invocation. Self-install layouts at `~/.hermes/bin` need the per-server **Hermes binary hint** override. | ScarfGo | ✅ Fixed |
-| 6 | **SFTP `~` tilde not expanded.** Per-connection cached `resolveHome()` on `ConnectionHolder` + `resolveSFTPPath()` helper applied to every SFTP entry point (`readFile` / `writeFile` / `fileExists` / `stat` / `listDirectory` / `createDirectory` / `removeFile`). | ScarfGo | ✅ Fixed |
-| 7 | **No loading state on Memory editor.** Switched to throwing read (#8) so `lastError` populates on real failures instead of silently showing "empty" — the existing error banner now renders. | ScarfGo | ✅ Fixed |
+| 5 | **ACP command missing PATH prefix.** SSH exec runs a non-interactive shell whose PATH is `/usr/bin:/bin:/usr/sbin:/sbin`. Fixed by prepending the three most common pipx + Homebrew install locations (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) to PATH inline on every Citadel `runProcess` and `SSHExecACPChannel` invocation. Self-install layouts at `~/.hermes/bin` need the per-server **Hermes binary hint** override. | Clawdia | ✅ Fixed |
+| 6 | **SFTP `~` tilde not expanded.** Per-connection cached `resolveHome()` on `ConnectionHolder` + `resolveSFTPPath()` helper applied to every SFTP entry point (`readFile` / `writeFile` / `fileExists` / `stat` / `listDirectory` / `createDirectory` / `removeFile`). | Clawdia | ✅ Fixed |
+| 7 | **No loading state on Memory editor.** Switched to throwing read (#8) so `lastError` populates on real failures instead of silently showing "empty" — the existing error banner now renders. | Clawdia | ✅ Fixed |
 | 8 | **`ServerContext.readText` swallows errors.** New `readTextThrowing(_:)` distinguishes "file absent" from "transport error"; old nil-returning `readText` stays as a `try?` shim for callers that really don't care. Memory editor uses the throwing variant. | Cross-platform | ✅ Fixed |
-| 9 | **TextEditor keyboard obscures cursor.** `.scrollDismissesKeyboard(.interactively)` on the TextEditor, error pill + Saved pill moved into `.safeAreaInset(edge: .bottom)` so SwiftUI draws them above the keyboard. | ScarfGo | ✅ Fixed |
-| 10 | **Save confirmation not visible.** Saved pill is now a full-width material strip inside `.safeAreaInset`, holds 2.5s (up from 1.5s), and cancels any in-flight hide task on subsequent saves so rapid saves don't drop the pill mid-fade. | ScarfGo | ✅ Fixed |
-| 11 | **Cron schedule + next-run shown as machine formats.** New `CronScheduleFormatter` in ScarfCore translates the common cron shapes (every N minutes / hourly / daily at H / weekdays at H / weekends / specific weekday / monthly on day D + @-macros) into English phrases and falls back to raw expression on unrecognised shapes. Sibling `formatNextRun(iso:)` parses Hermes's ISO-8601 next-run and renders `"in 4 hours"` etc. 17 unit tests. Applied Mac + ScarfGo. | Cross-platform | ✅ Fixed |
-| 12 | **"Disconnect" is factory reset.** Split properly into **Disconnect** (soft — keeps Keychain key + config, returns to ServerListView, next tap reconnects with no re-onboarding) and **Forget** (hard — removes that server's key + config, returns to list or onboarding if list becomes empty). Lives on the More tab. | ScarfGo | ✅ Fixed |
+| 9 | **TextEditor keyboard obscures cursor.** `.scrollDismissesKeyboard(.interactively)` on the TextEditor, error pill + Saved pill moved into `.safeAreaInset(edge: .bottom)` so SwiftUI draws them above the keyboard. | Clawdia | ✅ Fixed |
+| 10 | **Save confirmation not visible.** Saved pill is now a full-width material strip inside `.safeAreaInset`, holds 2.5s (up from 1.5s), and cancels any in-flight hide task on subsequent saves so rapid saves don't drop the pill mid-fade. | Clawdia | ✅ Fixed |
+| 11 | **Cron schedule + next-run shown as machine formats.** New `CronScheduleFormatter` in ScarfCore translates the common cron shapes (every N minutes / hourly / daily at H / weekdays at H / weekends / specific weekday / monthly on day D + @-macros) into English phrases and falls back to raw expression on unrecognised shapes. Sibling `formatNextRun(iso:)` parses Hermes's ISO-8601 next-run and renders `"in 4 hours"` etc. 17 unit tests. Applied Mac + Clawdia. | Cross-platform | ✅ Fixed |
+| 12 | **"Disconnect" is factory reset.** Split properly into **Disconnect** (soft — keeps Keychain key + config, returns to ServerListView, next tap reconnects with no re-onboarding) and **Forget** (hard — removes that server's key + config, returns to list or onboarding if list becomes empty). Lives on the More tab. | Clawdia | ✅ Fixed |
 
 ### Cross-platform (fix on Mac too)
 
@@ -126,7 +126,7 @@ The pass-1 session also surfaced the user-facing roadmap we delivered through M8
 
 - **Multi-server** — storage layer (UserDefaults + Keychain) now keys by `ServerID`, with one-shot v1 → v2 migration so updating the app doesn't re-onboard anyone. New `ServerListView` root shows every configured server with nickname / user@host:port / tap-to-connect / swipe-to-forget. "+" button re-enters onboarding for a fresh server. ScarfGoTabRoot splits the old factory-reset "Disconnect" into soft Disconnect + destructive Forget rows in the More tab.
 - **Session resume** — Dashboard Recent Sessions rows are now tappable; `ScarfGoCoordinator` routes the tap to the Chat tab with a `pendingResumeSessionID`; ChatController.startResuming calls `session/resume` (or falls back to `session/load` on older Hermes) with the full transcript preserved.
-- **Project-scoped chat** — "+" in Chat opens a picker: Quick chat vs. In project…. Project list loads from `~/.hermes/scarf/projects.json` over SFTP. On project select, ScarfGo SFTP-writes the Scarf-managed block into `<project>/AGENTS.md` via the shared `ProjectContextBlock` service (same byte-for-byte markers as the Mac app — projects round-trip cleanly), spawns `hermes acp` with `cwd = project.path`, and records the session attribution in `session_project_map.json`. `SessionAttributionService` moved from Mac target into ScarfCore so both apps use the same store.
+- **Project-scoped chat** — "+" in Chat opens a picker: Quick chat vs. In project…. Project list loads from `~/.hermes/scarf/projects.json` over SFTP. On project select, Clawdia SFTP-writes the Scarf-managed block into `<project>/AGENTS.md` via the shared `ProjectContextBlock` service (same byte-for-byte markers as the Mac app — projects round-trip cleanly), spawns `hermes acp` with `cwd = project.path`, and records the session attribution in `session_project_map.json`. `SessionAttributionService` moved from Mac target into ScarfCore so both apps use the same store.
 - **Scoped Settings editor** — curated list of 7 editable keys (model.default, model.provider, approvals.mode, agent.max_turns, display.show_cost / show_reasoning / streaming) as a Quick Edits section at the top of Settings. Save routes through `hermes config set <key> <value>` on the remote (Hermes owns the YAML round-trip); Scarf just picks the value. Inline error banner on sheet if the remote command fails.
 - **APNs push skeleton** — `APNSTokenStore` + `NotificationRouter` ship ready for a future Hermes-side push sender. Lock-screen "Approve" / "Deny" action category is registered. Capability stays OFF in Xcode until Hermes gains a sender + we have an APNs auth key; flipping the capability on is a ~5-line follow-up.
 

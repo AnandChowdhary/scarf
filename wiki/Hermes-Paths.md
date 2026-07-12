@@ -41,7 +41,7 @@ These are written by Scarf, never by Hermes. Both clients (Mac + iOS) read and w
 | Path | What lives here | Notes |
 |---|---|---|
 | `~/.hermes/scarf/projects.json` | Project registry — every directory you've registered as a Scarf project | Mac authors via Projects sidebar; iOS reads via SFTP. |
-| `~/.hermes/scarf/session_project_map.json` | Attribution sidecar — maps Hermes session IDs to project paths | Written when project-scoped chat starts. Drives the project-filter UI on both Mac global Sessions and ScarfGo Dashboard. |
+| `~/.hermes/scarf/session_project_map.json` | Attribution sidecar — maps Hermes session IDs to project paths | Written when project-scoped chat starts. Drives the project-filter UI on both Mac global Sessions and Clawdia Dashboard. |
 | `<project>/.scarf/dashboard.json` | Per-project dashboard JSON | Lives inside the project, not under `~/.hermes/`. |
 | `<project>/.scarf/template.lock.json` | `.scarftemplate` install manifest (when a project was installed from a template) | Drives clean uninstall. |
 | `<project>/.scarf/manifest.json` | Cached `template.json` for templates with a config schema | Drives the post-install Configuration sheet. |
@@ -63,9 +63,9 @@ Chat does not go through the filesystem. It is a subprocess: `hermes acp` (local
 | `/tmp/scarf-ssh-<uid>/` | SSH ControlMaster sockets (per-host `%C` hash). Mode 0700; per-uid suffix isolates between local users. Lives under `/tmp` to stay within macOS' 104-byte Unix domain socket path limit. |
 | `~/Library/Preferences/com.scarf.app.plist` | App preferences + the server registry |
 
-## iOS-side (ScarfGo) state
+## iOS-side (Clawdia) state
 
-ScarfGo can't write to `~/Library/Caches/scarf/...` — it lives in its own iOS app sandbox. Equivalent paths:
+Clawdia can't write to `~/Library/Caches/scarf/...` — it lives in its own iOS app sandbox. Equivalent paths:
 
 | What | Where |
 |---|---|

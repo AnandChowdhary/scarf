@@ -53,7 +53,7 @@ The sidebar groups capabilities into four sections: **Monitor**, **Interact**, *
 
 Scarf 2.0 is multi-window on Mac. Each window binds to exactly one **`ServerContext`** — either the local `~/.hermes/` (synthesized automatically) or a remote SSH host. Windows are independent; opening a second window for a different server gives you side-by-side state.
 
-ScarfGo (iOS) uses the same `ServerContext` abstraction but with a single-window TabView. Switching servers from the Servers list rebuilds the `ScarfGoTabRoot` against the new context — same effect as opening a different window on Mac.
+Clawdia (iOS) uses the same `ServerContext` abstraction but with a single-window TabView. Switching servers from the Servers list rebuilds the `ScarfGoTabRoot` against the new context — same effect as opening a different window on Mac.
 
 Server state lives in the `ServerRegistry` (Mac: Codable plist in `~/Library/Preferences/com.scarf.app`; iOS: `UserDefaults` under `com.scarf.ios.servers.v2` + per-server SSH keys in the iOS Keychain). A window's `ServerContext` is built once and provides the unified API services use:
 

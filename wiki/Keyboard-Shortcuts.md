@@ -58,11 +58,11 @@ There's no command palette and no global shortcuts beyond ⌘ + number for windo
 
 If you'd like to see additional shortcuts, file an issue — keyboard accessibility is welcome contribution territory.
 
-## ScarfGo (iOS)
+## Clawdia (iOS)
 
 iPhone has no Mac keyboard, so the binding tables above don't apply. The numbered permission-sheet hints (1. / 2. / …) still render on iOS but as hierarchy cues — the row tap target is the action.
 
-If you connect a Bluetooth keyboard or an iPad with a Magic Keyboard, you get system iOS shortcuts (⌘C copy, ⌘W close sheet, ⌘N new chat in some flows). No app-specific bindings yet — on the [ScarfGo Roadmap](ScarfGo-Roadmap).
+If you connect a Bluetooth keyboard or an iPad with a Magic Keyboard, you get system iOS shortcuts (⌘C copy, ⌘W close sheet, ⌘N new chat in some flows). No app-specific bindings yet — on the [Clawdia Roadmap](ScarfGo-Roadmap).
 
 ---
 _Last updated: 2026-04-25 — Scarf v2.5.0 (numbered approval shortcuts + iOS note)_

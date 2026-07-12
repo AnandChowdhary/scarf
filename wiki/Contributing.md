@@ -11,8 +11,8 @@ Thanks for your interest in contributing to Scarf. The canonical contributor gui
 ## Quick start
 
 1. Fork and clone <https://github.com/awizemann/scarf>.
-2. Open `scarf/scarf.xcodeproj` in Xcode 16+. Two app targets: `scarf` (macOS) and `scarf mobile` (ScarfGo, iOS). Both share the local SwiftPM packages [ScarfCore](ScarfCore-Package), `ScarfIOS`, and [ScarfDesign](Design-System).
-3. Build and run (requires macOS 14.6+ and Hermes installed at `~/.hermes/` for the local Mac window; iOS sim or device + a SSH-reachable Hermes host for ScarfGo).
+2. Open `scarf/scarf.xcodeproj` in Xcode 16+. Two app targets: `scarf` (macOS) and `scarf mobile` (Clawdia, iOS). Both share the local SwiftPM packages [ScarfCore](ScarfCore-Package), `ScarfIOS`, and [ScarfDesign](Design-System).
+3. Build and run (requires macOS 14.6+ and Hermes installed at `~/.hermes/` for the local Mac window; iOS sim or device + a SSH-reachable Hermes host for Clawdia).
 4. Read [Build & Run](Build-and-Run) for the codebase tour, [Architecture Overview](Architecture-Overview) for the layering, and [Design System](Design-System) for the rust palette + token usage.
 
 ## Code conventions
@@ -28,7 +28,7 @@ The full list is in [`CONTRIBUTING.md`](https://github.com/awizemann/scarf/blob/
 
 ## What's good to work on
 
-- Anything in the [Roadmap](Roadmap) or [ScarfGo Roadmap](ScarfGo-Roadmap).
+- Anything in the [Roadmap](Roadmap) or [Clawdia Roadmap](ScarfGo-Roadmap).
 - iOS-specific gaps — Cron editor, Settings full-YAML editor, Insights / Activity views, iPad layout polish, push notifications wiring once Hermes ships a sender. See [Platform Differences](Platform-Differences).
 - Test coverage — see [Testing](Testing) for the highest-value remaining gaps (UI tests, log streaming).
 - iOS localization — strings are extracted; translations welcome. See [Localization](Localization).

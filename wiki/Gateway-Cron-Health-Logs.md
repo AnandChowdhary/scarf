@@ -25,7 +25,7 @@ View and edit Hermes scheduled jobs (`~/.hermes/cron/jobs.json`):
 | Column | What it shows |
 |---|---|
 | Name | The job's display name. |
-| Schedule | **Human-readable phrase** _(v2.5+)_ — "Every 6 hours", "Weekdays at 09:00", "@hourly", etc. — falling back to the raw cron expression for anything the formatter doesn't recognize. Backed by [`CronScheduleFormatter`](Core-Services); ScarfGo renders the same text. |
+| Schedule | **Human-readable phrase** _(v2.5+)_ — "Every 6 hours", "Weekdays at 09:00", "@hourly", etc. — falling back to the raw cron expression for anything the formatter doesn't recognize. Backed by [`CronScheduleFormatter`](Core-Services); Clawdia renders the same text. |
 | State | `enabled` / `paused` / `failed` / `running` with an icon. |
 | Last run / next run | Timestamps. |
 | Delivery | Channel format like `discord:chat:thread`. |
@@ -110,7 +110,7 @@ Restructured in 1.6 into a 10-tab layout exposing ~60 previously hidden config f
 
 **Backup & Restore** lives at the bottom — wraps `hermes backup` (zips the current profile) and `hermes import` (unzips into the active profile). One-click via `context.runHermes`.
 
-ScarfGo's Settings tab is **read view + Quick Edits** — see [ScarfGo](ScarfGo) and [Platform Differences](Platform-Differences). The 7 quick-edit keys (`model.default` / `provider`, `agent.approval_mode` / `max_turns`, `display.streaming` / `show_cost` / `show_reasoning`) shell out to `hermes config set`. Other keys remain read-only on iOS.
+Clawdia's Settings tab is **read view + Quick Edits** — see [Clawdia](ScarfGo) and [Platform Differences](Platform-Differences). The 7 quick-edit keys (`model.default` / `provider`, `agent.approval_mode` / `max_turns`, `display.streaming` / `show_cost` / `show_reasoning`) shell out to `hermes config set`. Other keys remain read-only on iOS.
 
 ## Related pages
 

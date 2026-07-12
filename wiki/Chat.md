@@ -41,7 +41,7 @@ Streams tokens, thoughts, and tool calls live via the [ACP subprocess](ACP-Subpr
 
 **Offline-tolerant snapshots** _(v2.5.2+)_. When a fresh remote `state.db` snapshot pull fails, Scarf falls back to the last cached copy at `~/Library/Caches/scarf/snapshots/<server-id>/state.db` so Dashboard and Sessions stay viewable. The chat history reload path explicitly opts out of this fallback (`forceFresh: true`) — falling back there would silently hide messages the agent streamed during the outage.
 
-**Voice mode controls:** PTT (push-to-talk), TTS playback, STT transcription preferences live in **Settings → Voice**. The chat toolbar exposes the basic toggles.
+**Voice mode controls:** Rich Chat on macOS and Clawdia on iOS have a **Text / Voice** composer toggle. Voice mode records an utterance, transcribes it through an OpenAI Realtime session (`gpt-realtime` with `gpt-realtime-whisper` input transcription), and sends the resulting text through the same Hermes ACP prompt path as typing. Hermes still owns the conversation, reasoning, tools, permissions, memory, and persisted transcript. When the Hermes turn settles, the app streams that assistant text back as spoken audio with `gpt-realtime`. Clawdia's voice-first composer fills roughly the lower half of the chat, visualizes live microphone and playback levels, supports both tap-to-toggle and hold-to-talk, plays quiet synthesized waiting tones while Hermes works, and automatically listens for a follow-up after speech playback. Follow-up listening submits after trailing silence and returns to idle after seven seconds with no speech. While the visible Chat composer is in Voice mode, Clawdia keeps the screen awake; switching to Text, leaving Chat, or backgrounding restores the normal iOS auto-lock behavior. The bring-your-own OpenAI key is stored device-locally in Keychain and can be replaced or forgotten from the composer. Terminal mode's existing Hermes PTT / TTS controls and the provider preferences in **Settings → Voice** remain unchanged.
 
 ## Project context — your AGENTS.md in project chats _(v2.15+, Mac)_
 
@@ -97,15 +97,15 @@ Defaults match today's UI exactly so existing users see no change until they opt
 
 ## Streaming performance _(v2.5.1)_
 
-Pre-2.5.1 long chats progressively bogged down because every streamed ACP token rebuilt the full message-group array AND every `MessageGroupView` / `RichMessageBubble` re-evaluated its body. v2.5.1 caps per-chunk work at O(1) for settled groups via `Equatable` + `.equatable()` short-circuits, plus a trailing-group patch helper that replaces the per-chunk full rebuild. ScarfGo's chat (different rendering path — `LazyVStack` directly over `controller.vm.messages`) gained an iOS-equivalent `MessageBubble: Equatable`. Issue [#46](https://github.com/awizemann/scarf/issues/46).
+Pre-2.5.1 long chats progressively bogged down because every streamed ACP token rebuilt the full message-group array AND every `MessageGroupView` / `RichMessageBubble` re-evaluated its body. v2.5.1 caps per-chunk work at O(1) for settled groups via `Equatable` + `.equatable()` short-circuits, plus a trailing-group patch helper that replaces the per-chunk full rebuild. Clawdia's chat (different rendering path — `LazyVStack` directly over `controller.vm.messages`) gained an iOS-equivalent `MessageBubble: Equatable`. Issue [#46](https://github.com/awizemann/scarf/issues/46).
 
 ## Chat-start model preflight _(v2.5.2+, Mac)_
 
 When chat-start hits a server whose `config.yaml` has no `model.default` / `model.provider`, the upstream provider returns an opaque `Model parameter is required` 400 only **after** the user types a prompt and hits send. New `ModelPreflight` (in ScarfCore) catches the missing keys before any ACP work; `ChatView` presents the existing `ModelPickerSheet` via a thin `ChatModelPreflightSheet` wrapper so the picker / validation / Nous-catalog branch stay single-sourced. `ChatViewModel` writes the selection via `hermes config set` and replays the original `startACPSession` arguments — the chat the user originally opened lands without re-clicking the project row. Note: `HermesConfig.empty` and the YAML parser's missing-key fallback both use the literal string `"unknown"`, so the check treats `""` and `"unknown"` as equivalent.
 
-## ScarfGo chat resilience _(v2.5.2+, iOS)_
+## Clawdia chat resilience _(v2.5.2+, iOS)_
 
-ScarfGo now survives phone-sleep, network handoffs, and SSH socket drops without losing the agent's work. Hermes already persists messages to `state.db` in real-time; iOS just had no resync path pre-2.5.2.
+Clawdia now survives phone-sleep, network handoffs, and SSH socket drops without losing the agent's work. Hermes already persists messages to `state.db` in real-time; iOS just had no resync path pre-2.5.2.
 
 - **5-attempt exponential reconnect** (1 → 2 → 4 → 8 → 16s) via `session/resume` with `session/load` fallback. On success, `reconcileWithDB` merges any messages the agent emitted while disconnected, and a *"Resynced N new messages"* toast surfaces above the composer.
 - **`NetworkReachabilityService`** (NWPathMonitor singleton) suspends reconnect attempts while offline; kicks a fresh cycle on link-up. Two banner states render slim ScarfDesign-tinted strips above the message list — `.reconnecting` (yellow) and `.offline` (grey) — so the user always knows what the chat is doing.
@@ -171,7 +171,7 @@ iPhone keeps a single-column transcript — three panes don't translate to phone
 
 ## Multi-server chat
 
-Each Mac window is bound to one server, so chat in window A talks to local Hermes while window B talks to a remote one. ScarfGo uses a single-window TabView; switching servers from the Servers list rebuilds the tab root against the new context. Sessions don't cross windows / contexts — they live on the server they were created on.
+Each Mac window is bound to one server, so chat in window A talks to local Hermes while window B talks to a remote one. Clawdia uses a single-window TabView; switching servers from the Servers list rebuilds the tab root against the new context. Sessions don't cross windows / contexts — they live on the server they were created on.
 
 ## Troubleshooting
 
@@ -186,4 +186,4 @@ Each Mac window is bound to one server, so chat in window A talks to local Herme
 - [Settings — Voice tab](Gateway-Cron-Health-Logs) for TTS/STT configuration (Settings is documented there).
 
 ---
-_Last updated: 2026-06-28 — Scarf v2.15.0 (project chats spawn hermes acp with cwd=project so the project's AGENTS.md / CLAUDE.md / .cursorrules load automatically — new, resumed, reconnected, and auto-started; trust note added)_
+_Last updated: 2026-07-12 — Clawdia voice-first continuous conversation composer_

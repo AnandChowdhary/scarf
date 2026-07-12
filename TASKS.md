@@ -13,6 +13,7 @@
 
 ## Todo
 
+- [ ] Upload the first Clawdia build and finish App Store submission fields (id: t-a52f09) (added: 2026-07-12)
 - [ ] Hermes 0.16.0 - Final Release Pass (id: t-614783) (added: 2026-06-14) (priority: urgent)
 - [ ] **[release · HIGH]** Cut **v2.10.3** — ships three fixes that are on `main` but missed the v2.10.2 cut (tagged 2026-06-05, before they landed): gh#102 100% CPU `720c805`, gh#112 Failure-1 stderr-surfacing `3401cc7`, gh#105 10s menu-bar flash `c7f42a6`. **Publicly promised on gh#102/#112/#105 (2026-06-13)** — users were told "fixed/next build" but no release contains these yet (this was gh#102 reporter aseelye's exact complaint). Until v2.10.3 ships, gh#102/#112(F1)/#105(flash) can't be closed. (id: t-rel-2103) (added: 2026-06-13, source: gh issue triage)
 - [ ] Edit existing remote server connections (id: t-edit-srv) (source: gh#105 part 2) (added: 2026-06-02)
@@ -67,6 +68,9 @@
 - [x] Performance and reliability issues on large state.db (lag, crashes, missing sessions) (id: t-b8a6c3) (source: gh#61) (added: 2026-06-13)
 - [x] iOS Settings: route config reads through the Hermes CLI wrapper for Docker hosts (config dir is in-container) (id: t-ios-cfg-get) (source: gh#112 failure 2) (added: 2026-06-06)
 - [x] gh#123: macOS remote dies until remove/re-add — stale ControlMaster recovery (wake observer + reactive -O exit on ACP connect failure) (id: t-8c8fef22) (added: 2026-07-12)
+- [x] Upstream the isolated iOS prompt-completion fix for gh#124 (id: t-124a1c) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Complete Clawdia App Store branding and metadata (id: t-c1a8d4) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Add gpt-realtime voice chat (id: t-9c4a12) (added: 2026-07-11) (completed: 2026-07-11)
 - [x] ModelPreflight: treat custom: providers as aggregators (Hermes v0.17 rule) (id: t-ed3700b2) (added: 2026-07-04)
 - [x] Cron jobs.json lossless round-trip: preserve unknown keys, remap preRunScript→script, model run_claim (Hermes 0.18.2 audit) (id: t-2fff51e4) (added: 2026-07-10) (priority: high)
 - [x] Hermes v0.18.0 parity: compacted-search gate, vertex/moa provider tables, cron attach_to_session + pre-existing web_tools/withEnabled bug fixes (id: t-1f860d6c) (added: 2026-07-04)
@@ -142,4 +146,3 @@
 - [x] “Chat connection failed” when app switcher used (id: t-e9257e) (source: gh#108) — **CLOSED on GitHub 2026-06-13** (fixed `8023097`, shipped v2.10.1, reporter confirmed).
 
 ## Archived
-

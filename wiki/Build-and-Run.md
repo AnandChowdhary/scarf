@@ -6,7 +6,7 @@ permalink: scarf-wiki/build-and-run
 
 # Build and Run
 
-Scarf is one Xcode project with **two app targets**: `scarf` (the macOS app) and `scarf mobile` (ScarfGo, iOS). Both targets share three local SwiftPM packages (`ScarfCore`, `ScarfIOS`, `ScarfDesign`) and pull in Sparkle (Mac auto-update) + Citadel (iOS pure-Swift SSH) as remote dependencies. No CocoaPods, no Carthage, no submodules.
+Scarf is one Xcode project with **two app targets**: `scarf` (the macOS app) and `scarf mobile` (Clawdia, iOS). Both targets share three local SwiftPM packages (`ScarfCore`, `ScarfIOS`, `ScarfDesign`) and pull in Sparkle (Mac auto-update) + Citadel (iOS pure-Swift SSH) as remote dependencies. No CocoaPods, no Carthage, no submodules.
 
 ## Prerequisites
 
@@ -73,7 +73,7 @@ scarf/                       repo root
   CONTRIBUTING.md
   README.md
   icon-v2.5.png              README hero icon
-  assets/screenshots/        ScarfGo screenshot gallery (in README)
+  assets/screenshots/        Clawdia screenshot gallery (in README)
   design/                    Reference UI kit (JSX mockups + token bundle source)
   releases/v<ver>/           per-version notes (RELEASE_NOTES.md, TESTFLIGHT_CHECKLIST.md, APP_STORE_METADATA.md)
   templates/                 Community .scarftemplate catalog source
@@ -101,7 +101,7 @@ scarf/                       repo root
       Navigation/            AppCoordinator + SidebarView
       Assets.xcassets        Mac app icon (rust set), AccentColor
       Info.plist + scarf.entitlements
-    Scarf iOS/               iOS TARGET — ScarfGo
+    Scarf iOS/               iOS TARGET — Clawdia
       App/                   ScarfGoTabRoot, ScarfGoCoordinator, theme glue
       Onboarding/            SSH key generation + connection test
       Servers/               Multi-server list + Forget flow

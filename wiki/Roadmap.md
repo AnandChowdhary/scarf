@@ -10,9 +10,9 @@ What's next for Scarf. Public, opinionated, subject to change. The internal vers
 
 ## Now (2.5)
 
-- **[ScarfGo](ScarfGo) public TestFlight.** First public iPhone companion build. Pulse the beta tester pool; iterate on feedback over 2.5.x patches.
+- **[Clawdia](ScarfGo) public TestFlight.** First public iPhone companion build. Pulse the beta tester pool; iterate on feedback over 2.5.x patches.
 - **Mac Sessions parity.** Project filter + badges shipped in 2.5 alongside the iOS work. Watch for follow-up on per-project Insights views.
-- **Documentation pass.** Wiki reorganized to surface ScarfGo as a first-class section. [Platform Differences](Platform-Differences) is the new canonical reference for "what's different on iOS".
+- **Documentation pass.** Wiki reorganized to surface Clawdia as a first-class section. [Platform Differences](Platform-Differences) is the new canonical reference for "what's different on iOS".
 
 ## Near-term (2.6 candidates)
 
@@ -45,11 +45,11 @@ What's next for Scarf. Public, opinionated, subject to change. The internal vers
 - **Background sync.** Scarf is a viewer; Hermes runs the agent. Pull happens when you open a tab, not in the background. (Push notifications, when Hermes ships a sender, are an *event* surface — they alert; they don't sync.)
 - **Bundled Hermes installer.** Hermes installation belongs in Hermes-land.
 - **Closed-source / paid tier.** MIT-licensed, free, will stay that way.
-- **Local Hermes runtime on iOS.** Hermes is Python; iOS doesn't sandbox Python runtimes practically. ScarfGo will always be a thin client over SSH.
+- **Local Hermes runtime on iOS.** Hermes is Python; iOS doesn't sandbox Python runtimes practically. Clawdia will always be a thin client over SSH.
 
 ## Suggesting features
 
 Open an issue at <https://github.com/awizemann/scarf/issues> with what you want and why. Star the repo if you'd use it (signal helps prioritization).
 
 ---
-_Last updated: 2026-04-25 — Scarf v2.5.0 + ScarfGo public TestFlight_
+_Last updated: 2026-04-25 — Scarf v2.5.0 + Clawdia public TestFlight_
