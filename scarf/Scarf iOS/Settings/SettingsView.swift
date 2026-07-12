@@ -235,7 +235,7 @@ struct SettingsView: View {
                 }
             }
         } header: {
-            Text("Chat (Scarf)")
+            Text("Chat (Clawdia)")
         }
     }
 

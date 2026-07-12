@@ -1,6 +1,6 @@
 # Scarf
 
-> Scarf is a native macOS and iOS GUI for the Hermes AI agent. It surfaces every part of a running Hermes installation — chat sessions, project workspaces, memory files, installed skills, MCP servers, cron jobs, messaging gateways, logs, and configuration — through a sidebar-driven Mac app and a tab-based iPhone companion called ScarfGo.
+> Scarf is a native macOS and iOS GUI for the Hermes AI agent. It surfaces every part of a running Hermes installation — chat sessions, project workspaces, memory files, installed skills, MCP servers, cron jobs, messaging gateways, logs, and configuration — through a sidebar-driven Mac app and a tab-based iPhone companion called Clawdia.
 
 Both apps are free, MIT licensed, and built from a single open repository. Scarf reads from `~/.hermes/state.db` directly (read-only) and streams agent replies in real time over the Agent Client Protocol. It connects to remote Hermes installations using the host's existing SSH config — no companion service, no telemetry, no account.
 
@@ -20,8 +20,8 @@ Both apps are free, MIT licensed, and built from a single open repository. Scarf
 
 - [README](https://github.com/awizemann/scarf/blob/main/README.md): project overview, full feature list, build instructions
 - [Wiki](https://github.com/awizemann/scarf/wiki): user guide, architecture, design system reference
-- [Wiki — ScarfGo](https://github.com/awizemann/scarf/wiki/ScarfGo): iOS companion details
-- [Wiki — ScarfGo Onboarding](https://github.com/awizemann/scarf/wiki/ScarfGo-Onboarding): SSH key setup walkthrough
+- [Wiki — Clawdia](https://github.com/awizemann/scarf/wiki/ScarfGo): iOS companion details
+- [Wiki — Clawdia Onboarding](https://github.com/awizemann/scarf/wiki/ScarfGo-Onboarding): SSH key setup walkthrough
 - [Wiki — Platform Differences](https://github.com/awizemann/scarf/wiki/Platform-Differences): what is and isn't shared between Mac and iOS
 - [Releases](https://github.com/awizemann/scarf/releases): release notes for every version
 - [License](https://github.com/awizemann/scarf/blob/main/LICENSE): MIT
@@ -37,7 +37,7 @@ Mac (sidebar sections):
 - **Project Dashboards:** custom JSON-defined dashboards rendered by Scarf, populated by the agent
 - **System:** Hermes process control, menu bar status
 
-iOS (ScarfGo, tabs):
+iOS (Clawdia, tabs):
 
 - Servers (multi-host management with pure-Swift SSH)
 - Dashboard (stats + recent sessions per server)

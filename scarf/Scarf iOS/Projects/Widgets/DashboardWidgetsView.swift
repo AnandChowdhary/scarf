@@ -115,7 +115,7 @@ struct WidgetView: View {
                 .font(.callout)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("This Scarf build doesn't render this widget type. Update Scarf or change the widget type in dashboard.json.")
+            Text("This Clawdia build doesn't render this widget type. Update Clawdia or change the widget type in dashboard.json.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)

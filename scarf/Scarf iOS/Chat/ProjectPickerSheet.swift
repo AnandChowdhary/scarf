@@ -63,7 +63,7 @@ struct ProjectPickerSheet: View {
                             .foregroundStyle(.orange)
                             .font(.caption)
                     } else if projects.isEmpty {
-                        Text("No Scarf projects registered yet. Create one in the Mac app's Projects sidebar.")
+                        Text("No projects registered yet. Create one in the Scarf Mac app's Projects sidebar.")
                             .font(.caption)
                             .foregroundStyle(ScarfColor.foregroundMuted)
                     } else {

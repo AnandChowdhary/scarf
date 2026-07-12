@@ -25,7 +25,7 @@ Scarf now targets the **Hermes v0.18 line** — audited against v0.18.0 (v2026.7
 
 - **Search stays in lockstep with v0.18 in-place compaction** — Hermes v0.18 can compact a session in place, soft-archiving the summarized messages while keeping them searchable. Scarf detects the new `messages.compacted` column and widens search to match Hermes exactly; `/undo`-rewound rows stay hidden, and the chat transcript still shows only the live conversation.
 - **The Web Tools tab actually works now** — it had been writing `web_tools.*` config keys Hermes never reads (the real block is `web.*`), so every backend choice was a silent no-op. Both the write and read sides now use the real keys; if you'd set backends before, re-pick them once.
-- **Cron jobs round-trip losslessly** — editing a job in ScarfGo used to rebuild it from an incomplete model, silently stripping repeat counts, per-job tool restrictions, provider routing, and (new in v0.18.2) the scheduler's `run_claim` double-execution guard. Scarf now preserves every key it doesn't model, so future Hermes job fields can never be stripped again — and the pre-run script + cron expression now use the keys Hermes actually reads (`script`, `expr`).
+- **Cron jobs round-trip losslessly** — editing a job in Clawdia used to rebuild it from an incomplete model, silently stripping repeat counts, per-job tool restrictions, provider routing, and (new in v0.18.2) the scheduler's `run_claim` double-execution guard. Scarf now preserves every key it doesn't model, so future Hermes job fields can never be stripped again — and the pre-run script + cron expression now use the keys Hermes actually reads (`script`, `expr`).
 - **No false mismatch banner on custom endpoints** — `custom`/`custom:*` providers serve their own model namespace, so a slash in the model ID no longer triggers the "model/provider mismatch" banner (same class as 2.15.1's aggregator fix, [#121](https://github.com/awizemann/scarf/issues/121)).
 - **New providers:** MoA (Mixture of Agents — Hermes's multi-advisor virtual provider, no credentials needed) joins the picker; Google Vertex AI replaces the retired Gemini CLI OAuth provider.
 - **Under the hood:** full eight-surface audit against the tagged v0.18.0 source, repeated against the v0.18.2 rollup (~712 commits) — ACP wire, CLI verbs, config keys, state.db columns, and gateway platforms all verified stable; provider tables pass the mechanical sync gate against both tags; 18 new tests, 799/799 green.
@@ -57,10 +57,10 @@ See the full [v2.15.0 release notes](https://github.com/awizemann/scarf/releases
 
 ## What's New in 2.13.0
 
-ScarfGo — the iOS companion — gets **Hermes profile switching**, plus a remote-chat/Settings reliability fix that anyone running ScarfGo over SSH will feel. The shared-core pieces ride into the Mac app too.
+Clawdia — the iOS companion — gets **Hermes profile switching**, plus a remote-chat/Settings reliability fix that anyone running Clawdia over SSH will feel. The shared-core pieces ride into the Mac app too.
 
-- **Switch Hermes profiles from ScarfGo** — pick a profile and ScarfGo points its chat, memory, cron, sessions, gateway, and every `hermes` call at that profile for the selected server. It uses per-connection scoping and **never runs `hermes profile use`**, so it doesn't touch the host's `active_profile` — your Mac, terminal, cron, and running gateway keep their own profile. (Create / rename / delete / import / export stay Mac-only.) ([#120](https://github.com/awizemann/scarf/issues/120))
-- **Reliable remote chat & Settings on iOS** — fixes "Couldn't save model.provider … Transport refused" and empty Settings on a valid host. ScarfGo was opening a new SSH connection per read / CLI call; under a Settings-load or chat-init burst the handshake itself failed. It now pools one connection per server and coalesces concurrent opens (verified against a live sshd: a 24-way burst went from 20/24 connection failures to 0). ([#112](https://github.com/awizemann/scarf/issues/112))
+- **Switch Hermes profiles from Clawdia** — pick a profile and Clawdia points its chat, memory, cron, sessions, gateway, and every `hermes` call at that profile for the selected server. It uses per-connection scoping and **never runs `hermes profile use`**, so it doesn't touch the host's `active_profile` — your Mac, terminal, cron, and running gateway keep their own profile. (Create / rename / delete / import / export stay Mac-only.) ([#120](https://github.com/awizemann/scarf/issues/120))
+- **Reliable remote chat & Settings on iOS** — fixes "Couldn't save model.provider … Transport refused" and empty Settings on a valid host. Clawdia was opening a new SSH connection per read / CLI call; under a Settings-load or chat-init burst the handshake itself failed. It now pools one connection per server and coalesces concurrent opens (verified against a live sshd: a 24-way burst went from 20/24 connection failures to 0). ([#112](https://github.com/awizemann/scarf/issues/112))
 - **Skills "What's New" tracks per profile** — the pill no longer shows bogus "new / changed" counts after a profile switch; the baseline is now keyed per (server, profile).
 
 See the full [v2.13.0 release notes](https://github.com/awizemann/scarf/releases/tag/v2.13.0).
@@ -164,40 +164,40 @@ See the full [v2.10.0 release notes](https://github.com/awizemann/scarf/releases
 
 **Previous releases:** see the [Release Notes Index](https://github.com/awizemann/scarf/wiki/Release-Notes-Index) on the wiki for v2.7, v2.6, v2.5, v2.3, v2.2, v2.0, v1.6, and earlier.
 
-## ScarfGo — the iPhone companion
+## Clawdia — the iPhone companion
 
 Same Hermes server you've been running on your Mac — reachable from your phone over SSH. Multi-server, project-scoped chat, session resume, memory editor, cron list, skills tree, settings (read), all native iOS. Pure-Swift SSH (Citadel under the hood — no `ssh` binary needed on iOS). Per-project chat writes the same Scarf-managed `AGENTS.md` block the Mac app does, so the agent boots with the same project context regardless of which client opened the session.
 
 **[Join the public TestFlight](https://testflight.apple.com/join/qCrRpcTz)** — the link is live now but only accepts new beta testers once Apple's Beta Review approves the first build. If you hit a "not accepting testers" splash, bookmark it and try again in 24–48h.
 
 <p align="center">
-  <a href="assets/screenshots/scarfgo-servers.png"><img src="assets/screenshots/scarfgo-servers.png" alt="ScarfGo — Servers list" width="140"></a>
-  <a href="assets/screenshots/scarfgo-chat.png"><img src="assets/screenshots/scarfgo-chat.png" alt="ScarfGo — Chat with Hermes" width="140"></a>
-  <a href="assets/screenshots/scarfgo-project-dashboard.png"><img src="assets/screenshots/scarfgo-project-dashboard.png" alt="ScarfGo — Project dashboard" width="140"></a>
-  <a href="assets/screenshots/scarfgo-skills.png"><img src="assets/screenshots/scarfgo-skills.png" alt="ScarfGo — Skills browser" width="140"></a>
-  <a href="assets/screenshots/scarfgo-system.png"><img src="assets/screenshots/scarfgo-system.png" alt="ScarfGo — System tab" width="140"></a>
+  <a href="assets/screenshots/scarfgo-servers.png"><img src="assets/screenshots/scarfgo-servers.png" alt="Clawdia — Servers list" width="140"></a>
+  <a href="assets/screenshots/scarfgo-chat.png"><img src="assets/screenshots/scarfgo-chat.png" alt="Clawdia — Chat with Hermes" width="140"></a>
+  <a href="assets/screenshots/scarfgo-project-dashboard.png"><img src="assets/screenshots/scarfgo-project-dashboard.png" alt="Clawdia — Project dashboard" width="140"></a>
+  <a href="assets/screenshots/scarfgo-skills.png"><img src="assets/screenshots/scarfgo-skills.png" alt="Clawdia — Skills browser" width="140"></a>
+  <a href="assets/screenshots/scarfgo-system.png"><img src="assets/screenshots/scarfgo-system.png" alt="Clawdia — System tab" width="140"></a>
 </p>
 
 <p align="center"><sub><em>Tap any thumbnail to view full size. Servers list · Chat · Project dashboard (Site Status Checker template) · Skills browser · System tab.</em></sub></p>
 
-See the [ScarfGo wiki page](https://github.com/awizemann/scarf/wiki/ScarfGo) for the full feature tour, [ScarfGo Onboarding](https://github.com/awizemann/scarf/wiki/ScarfGo-Onboarding) for the SSH-key setup walkthrough, and [Platform Differences](https://github.com/awizemann/scarf/wiki/Platform-Differences) for what is and isn't shared between Mac and iOS.
+See the [Clawdia wiki page](https://github.com/awizemann/scarf/wiki/ScarfGo) for the full feature tour, [Clawdia Onboarding](https://github.com/awizemann/scarf/wiki/ScarfGo-Onboarding) for the SSH-key setup walkthrough, and [Platform Differences](https://github.com/awizemann/scarf/wiki/Platform-Differences) for what is and isn't shared between Mac and iOS.
 
-## Connect ScarfGo to your Hermes server
+## Connect Clawdia to your Hermes server
 
-ScarfGo speaks SSH directly — no companion service, no developer-controlled server in between. Onboarding takes about a minute:
+Clawdia speaks SSH directly — no companion service, no developer-controlled server in between. Onboarding takes about a minute:
 
-1. **Install via TestFlight.** Open the [public TestFlight link](https://testflight.apple.com/join/qCrRpcTz) on your phone, accept the invite, install ScarfGo from TestFlight (just like any other beta).
+1. **Install via TestFlight.** Open the [public TestFlight link](https://testflight.apple.com/join/qCrRpcTz) on your phone, accept the invite, install Clawdia from TestFlight (just like any other beta).
 2. **Tap Add Server.** Enter the host (IP or DNS), SSH user, port (default 22), and an optional nickname. Same details you'd type into `ssh user@host`.
-3. **Generate Key.** ScarfGo creates a fresh Ed25519 keypair on the device. The private half lives in the iOS Keychain (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`) and is excluded from iCloud sync — it never leaves the phone.
+3. **Generate Key.** Clawdia creates a fresh Ed25519 keypair on the device. The private half lives in the iOS Keychain (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`) and is excluded from iCloud sync — it never leaves the phone.
 4. **Add the public key to your Hermes host.** Tap **Copy public key**, then on the host run:
    ```bash
    cat >> ~/.ssh/authorized_keys <<'EOF'
-   <paste the line ScarfGo showed you>
+   <paste the line Clawdia showed you>
    EOF
    chmod 600 ~/.ssh/authorized_keys
    ```
    This is its own line per device — the convention any second SSH client uses. Mac (Scarf) keeps using your existing ssh-agent / `~/.ssh/config` and is unaffected.
-5. **Tap Test connection.** ScarfGo opens an SSH session, probes for the `hermes` binary, and saves the server on success. If it can't find `hermes`, see the [troubleshooting section](https://github.com/awizemann/scarf/wiki/ScarfGo-Onboarding#troubleshooting) — it's almost always a `PATH` quirk on non-interactive SSH.
+5. **Tap Test connection.** Clawdia opens an SSH session, probes for the `hermes` binary, and saves the server on success. If it can't find `hermes`, see the [troubleshooting section](https://github.com/awizemann/scarf/wiki/ScarfGo-Onboarding#troubleshooting) — it's almost always a `PATH` quirk on non-interactive SSH.
 
 Done. Open the Dashboard tab and tap any session to resume it; tap the **+** in Chat to start a new project-scoped session.
 
@@ -272,10 +272,10 @@ Custom, agent-generated dashboards for any project. Define stat boxes, charts, t
 ## Requirements
 
 - macOS 14.6+ (Sonoma) for Scarf
-- iOS 18.0+ for [ScarfGo](https://github.com/awizemann/scarf/wiki/ScarfGo) (the iPhone companion, public TestFlight from v2.5)
+- iOS 18.0+ for [Clawdia](https://github.com/awizemann/scarf/wiki/ScarfGo) (the iPhone companion, public TestFlight from v2.5)
 - Xcode 16.0+ to build from source
 - [Hermes agent](https://github.com/hermes-ai/hermes-agent) v0.6.0+ installed at `~/.hermes/` on each target host (v0.17.0+ recommended for the full v2.12 surface — WhatsApp Business Cloud API + SimpleX setup forms, Telegram rich-messages / online-offline status toggles, an opt-in curator-consolidation toggle, and a max-concurrent-sessions cap, on top of the v0.16 soft-delete/rewind correctness fixes and the broader v0.13–v0.15 feature set. Older hosts down to v0.6.0 work — every release-gated surface is capability-gated and simply hidden on hosts that don't support it.)
-- For remote servers: SSH access (key-based), `sqlite3` on the remote (for atomic DB snapshots), and the `hermes` CLI resolvable from the remote user's `PATH` or at a path you specify per server. ScarfGo requires the same on every Hermes host it connects to.
+- For remote servers: SSH access (key-based), `sqlite3` on the remote (for atomic DB snapshots), and the `hermes` CLI resolvable from the remote user's `PATH` or at a path you specify per server. Clawdia requires the same on every Hermes host it connects to.
 
 ### Compatibility
 
@@ -600,7 +600,7 @@ If you find Scarf useful, consider buying me a coffee.
 
 ## FAQ
 
-Quick answers to common questions live on the **[Scarf website FAQ](https://awizemann.github.io/scarf/#faq)** — what Scarf is, the Hermes prerequisite, supported macOS/iOS versions, how ScarfGo connects over SSH, privacy and telemetry, where conversations are stored, how updates work, remote/headless hosts, and Windows/Linux support.
+Quick answers to common questions live on the **[Scarf website FAQ](https://awizemann.github.io/scarf/#faq)** — what Scarf is, the Hermes prerequisite, supported macOS/iOS versions, how Clawdia connects over SSH, privacy and telemetry, where conversations are stored, how updates work, remote/headless hosts, and Windows/Linux support.
 
 For deeper docs, see the **[Wiki](https://github.com/awizemann/scarf/wiki)** — including [Projects & Profiles](https://github.com/awizemann/scarf/wiki/Projects-&-Profiles), [Mini-Apps](https://github.com/awizemann/scarf/wiki/Mini-Apps), [Fleet & Portfolio](https://github.com/awizemann/scarf/wiki/Fleet-&-Portfolio), and [Chat](https://github.com/awizemann/scarf/wiki/Chat). Something not covered? Open a **[GitHub issue](https://github.com/awizemann/scarf/issues)**.
 

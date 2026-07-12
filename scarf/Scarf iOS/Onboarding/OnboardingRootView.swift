@@ -154,7 +154,7 @@ private struct KeySourceStep: View {
             Text("SSH key")
                 .font(.title2)
                 .bold()
-            Text("Scarf authenticates to your Hermes host with an SSH key. You can generate a new one on this device, or import one you already use.")
+            Text("Clawdia authenticates to your Hermes host with an SSH key. You can generate a new one on this device, or import one you already use.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(ScarfColor.foregroundMuted)
                 .padding(.horizontal)
