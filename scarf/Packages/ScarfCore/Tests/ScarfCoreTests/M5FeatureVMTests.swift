@@ -25,7 +25,15 @@ import Foundation
         // factory that returns a LocalTransport pointed at local
         // files. LocalTransport ignores the path's "remote-ness"
         // since on Linux everything resolves to the actual FS.
-        let kind = ServerKind.ssh(SSHConfig(host: "fake.invalid", remoteHome: tmp.path))
+        // hermesBinaryHint points at a path that can't exist so the
+        // gh#112 CLI fallbacks (`hermes config path` / `config show`)
+        // fail hermetically instead of finding the developer machine's
+        // real hermes install through the LocalTransport shim.
+        let kind = ServerKind.ssh(SSHConfig(
+            host: "fake.invalid",
+            remoteHome: tmp.path,
+            hermesBinaryHint: "/nonexistent/scarf-test-hermes"
+        ))
         let ctx = ServerContext(id: UUID(), displayName: "fake", kind: kind)
         // Pre-create subdirs the VMs look for.
         try FileManager.default.createDirectory(

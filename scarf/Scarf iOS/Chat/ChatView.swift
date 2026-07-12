@@ -1315,10 +1315,18 @@ final class ChatController {
     /// detached pushes the I/O off MainActor; the result and the
     /// `pendingStartIntent` / `modelPreflightReason` writes hop back.
     private func passModelPreflight(intent: PendingStart) async -> Bool {
-        let path = context.paths.configYAML
         let ctx = context
-        let raw = await Task.detached { ctx.readText(path) ?? "" }.value
-        let config = HermesConfig(yaml: raw)
+        // Direct read → `cat "$(hermes config path)"` wrapper fallback →
+        // `hermes config show` model-line probe. The probe is the only
+        // read that works when Hermes runs inside a container (gh#112) —
+        // without it, Docker users hit the "pick a model" sheet on every
+        // start even though config.yaml is fully configured.
+        let config: HermesConfig = await Task.detached {
+            if let raw = HermesConfigReader.readRawConfig(context: ctx) {
+                return HermesConfig(yaml: raw)
+            }
+            return HermesConfigReader.probeModelConfig(context: ctx) ?? .empty
+        }.value
         let result = ModelPreflight.check(config)
         if result.isConfigured { return true }
         pendingStartIntent = intent
