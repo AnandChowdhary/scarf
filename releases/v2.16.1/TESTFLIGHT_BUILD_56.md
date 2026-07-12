@@ -18,5 +18,5 @@ Report issues through TestFlight feedback.
 ## Upload
 
 - [x] Voice release gate passes.
-- [ ] Archive and upload build 56 using automatic Sycamore signing.
+- [x] Archive and upload build 56 using automatic Sycamore signing.
 - [ ] Wait for App Store Connect processing and complete any per-build encryption attestation.
