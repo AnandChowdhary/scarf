@@ -146,7 +146,7 @@ If you needed a new service to back this feature, decide between [`ScarfCore`](S
 
 ## Step 7: (If the feature should also be on iOS)
 
-Mac and iOS share data + view-models via ScarfCore but have separate views. To bring `MyFeature` to ScarfGo:
+Mac and iOS share data + view-models via ScarfCore but have separate views. To bring `MyFeature` to Clawdia:
 
 1. Add `Scarf iOS/MyFeature/MyFeatureView.swift` consuming the same ScarfCore ViewModel.
 2. Add a row, sub-tab, or tab to the appropriate parent in [`ScarfGoTabRoot.swift`](https://github.com/awizemann/scarf/blob/main/scarf/Scarf%20iOS/App/ScarfGoTabRoot.swift). Most additions push onto an existing tab's `NavigationStack` — not a new tab. New tabs in v2.5+ require Coordinator + product-design review (5-tab cap on iPhone today).

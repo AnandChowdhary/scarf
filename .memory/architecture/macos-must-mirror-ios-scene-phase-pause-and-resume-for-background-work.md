@@ -13,6 +13,8 @@ updated: 2026-06-13
 source_sha: 6a12139b218190d8a99ba679bd1a191c0bc13396
 source_paths: scarf/Scarf iOS/App/ScarfIOSApp.swift, scarf/scarf/scarfApp.swift
 source_paths_inferred: true
+reviewed: 2026-07-12
+reviewed_by: audit:claude-code (audit)
 ---
 
 ## Observations

@@ -6,7 +6,7 @@ permalink: scarf-wiki/support
 
 # Support
 
-How to get help with Scarf (macOS) or ScarfGo (iOS), report a bug, request a feature, or disclose a security issue. This page is the **Support URL** Apple's App Store reviewer follows — it's intentionally simple and link-heavy so anyone landing here from the App Store finds what they need without scrolling.
+How to get help with Scarf (macOS) or Clawdia (iOS), report a bug, request a feature, or disclose a security issue. This page is the **Support URL** Apple's App Store reviewer follows — it's intentionally simple and link-heavy so anyone landing here from the App Store finds what they need without scrolling.
 
 ## I'm having trouble using the app
 
@@ -14,12 +14,12 @@ Start with the troubleshooting docs — most issues match a known cause.
 
 | Symptom | Page to check |
 |---|---|
-| ScarfGo can't connect to my Hermes host | [ScarfGo Onboarding](ScarfGo-Onboarding) → Troubleshooting |
+| Clawdia can't connect to my Hermes host | [Clawdia Onboarding](ScarfGo-Onboarding) → Troubleshooting |
 | Mac Scarf can't reach a remote server | [Servers & Remote](Servers-and-Remote) |
 | Chat hangs or shows "Spinning forever" | [Chat](Chat) → Troubleshooting + [Slow Chat Startup](Troubleshooting-Slow-Chat-Startup) |
 | Skills hub Browse is empty | [Hermes Version Compatibility](Hermes-Version-Compatibility) — usually a v2.5+ Citadel exec channel issue, fixed in 2.5 |
-| TestFlight says "this beta isn't accepting any new testers" | Apple's Beta Review queue is processing the latest build. See [ScarfGo](ScarfGo) — bookmark the page and try again in 24–48h. |
-| Hermes "command not found" over iOS SSH | [ScarfGo Onboarding](ScarfGo-Onboarding) — set the **Hermes binary hint** in the server-edit screen |
+| TestFlight says "this beta isn't accepting any new testers" | Apple's Beta Review queue is processing the latest build. See [Clawdia](ScarfGo) — bookmark the page and try again in 24–48h. |
+| Hermes "command not found" over iOS SSH | [Clawdia Onboarding](ScarfGo-Onboarding) — set the **Hermes binary hint** in the server-edit screen |
 
 ## Bug reports
 
@@ -52,9 +52,9 @@ Same place, different tag:
 
 Include the use case ("I want to do X because Y") and ⭐ the issue if you'd use the proposed feature — star count is a real input to prioritization.
 
-## TestFlight feedback (ScarfGo only)
+## TestFlight feedback (Clawdia only)
 
-Open ScarfGo → take a screenshot → use the **Send Beta Feedback** button TestFlight overlays on your screenshot. The screenshot + your text go straight to the developer along with device + iOS version metadata. This is the right channel for TestFlight build issues (crashes, layout glitches on a specific device, missing strings).
+Open Clawdia → take a screenshot → use the **Send Beta Feedback** button TestFlight overlays on your screenshot. The screenshot + your text go straight to the developer along with device + iOS version metadata. This is the right channel for TestFlight build issues (crashes, layout glitches on a specific device, missing strings).
 
 For non-TestFlight-build issues (architectural feature requests, Mac↔iOS parity gaps), GitHub Issues is still the right place.
 
@@ -73,7 +73,7 @@ See **[Privacy Policy](Privacy-Policy)** for what data the apps access and what 
 
 ## License
 
-Both Scarf and ScarfGo are MIT-licensed. Source: <https://github.com/awizemann/scarf>.
+Both Scarf and Clawdia are MIT-licensed. Source: <https://github.com/awizemann/scarf>.
 
 ## Direct contact
 
@@ -83,8 +83,8 @@ Email is for security disclosures, press / partnership inquiries, and "I tried G
 
 ## Related pages
 
-- [ScarfGo](ScarfGo) — feature tour, FAQs.
-- [ScarfGo Onboarding](ScarfGo-Onboarding) — SSH key setup walkthrough.
+- [Clawdia](ScarfGo) — feature tour, FAQs.
+- [Clawdia Onboarding](ScarfGo-Onboarding) — SSH key setup walkthrough.
 - [Servers & Remote](Servers-and-Remote) — Mac remote-server setup.
 - [Privacy Policy](Privacy-Policy) — data handling.
 

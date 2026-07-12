@@ -30,7 +30,7 @@ All queries are aggregations over the same `sessions`, `messages`, `tool_calls` 
 The full conversation history browser:
 
 - **List** — every session, ordered by start date DESC. Subagent sessions (those with a `parent_session_id`) are filtered from the main list and accessible by drilling into the parent.
-- **Project filter** _(v2.5+)_ — Menu above the list picks **All projects / Unattributed / one entry per registered project**. Each row carries a tinted folder chip when the session is attributed to a project. The filter and the badges share the same `SessionAttributionService` ScarfGo's Sessions tab uses, so cross-platform parity is by construction. See [Projects & Profiles](Projects-and-Profiles).
+- **Project filter** _(v2.5+)_ — Menu above the list picks **All projects / Unattributed / one entry per registered project**. Each row carries a tinted folder chip when the session is attributed to a project. The filter and the badges share the same `SessionAttributionService` Clawdia's Sessions tab uses, so cross-platform parity is by construction. See [Projects & Profiles](Projects-and-Profiles).
 - **Detail panel** — full message stream: user → assistant → tool calls → tool results, with markdown rendering. **Reasoning blocks** (v0.7+) render in a collapsed section. v0.11+ `messages.reasoning_content` (when present) is preferred over the legacy `reasoning` blob.
 - **API call counter** _(v2.5+)_ — each row carries a network-icon chip showing `sessions.api_call_count` (v0.11+). Distinct from `tool_call_count`; counts per-turn API round-trips.
 - **Tool call inspector** — pretty-printed arguments, function name, result. Categorized by `toolKind` (read / edit / execute / fetch / browser / other).

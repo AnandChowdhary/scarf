@@ -6,7 +6,7 @@ permalink: scarf-wiki/first-run
 
 # First Run
 
-> **Looking for ScarfGo's first run?** The iOS app has a multi-step onboarding flow (host details → SSH key generation → paste public key → connection test). See [ScarfGo Onboarding](ScarfGo-Onboarding) for the walkthrough. This page covers the macOS app.
+> **Looking for Clawdia's first run?** The iOS app has a multi-step onboarding flow (host details → SSH key generation → paste public key → connection test). See [Clawdia Onboarding](ScarfGo-Onboarding) for the walkthrough. This page covers the macOS app.
 
 The first time you launch Scarf, it opens a single window bound to your local Hermes install at `~/.hermes/`. That window is automatic — there is no setup screen.
 
@@ -44,7 +44,7 @@ See [Servers & Remote](Servers-and-Remote) for prerequisites on the remote host 
 
 Each Scarf window is bound to exactly one server. Open as many windows as you want — they run with independent state and can be tiled side-by-side.
 
-ScarfGo on iOS uses a single-window 5-tab layout instead — see [Sidebar & Navigation](Sidebar-and-Navigation) for the cross-platform navigation comparison.
+Clawdia on iOS uses a single-window 5-tab layout instead — see [Sidebar & Navigation](Sidebar-and-Navigation) for the cross-platform navigation comparison.
 
 ---
-_Last updated: 2026-04-25 — Scarf v2.5.0 (cross-linked ScarfGo onboarding + iOS nav)_
+_Last updated: 2026-04-25 — Scarf v2.5.0 (cross-linked Clawdia onboarding + iOS nav)_

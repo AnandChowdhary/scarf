@@ -4,7 +4,7 @@ type: note
 permalink: scarf/architecture/skills-what-s-new-snapshot-is-keyed-per-server-profile
 created: 2026-06-25
 updated: 2026-06-25
-source_sha: b8ac53631ee1ca0beee46ed531742f4e35411a2d
+source_sha: 2b9ef15cdddcb1fde12a88556bf755a623ae7758
 source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/SkillSnapshotService.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Models/HermesProfileScope.swift, scarf/Scarf iOS/Skills/SkillsView.swift, scarf/scarf/Features/Skills/Views/SkillsView.swift
 tags:
 - ios
@@ -13,6 +13,8 @@ tags:
 - skills
 - issue-120
 - snapshot
+reviewed: 2026-07-12
+reviewed_by: audit:claude-code (audit)
 ---
 
 Resolves the cosmetic bug deferred from the #120 B4 integration audit: after per-connection profile switching landed, the Skills tab "What's New" pill bled across Hermes profiles (and across servers on iOS).

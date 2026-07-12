@@ -6,9 +6,9 @@ permalink: scarf-wiki/servers-and-remote
 
 # Servers & Remote
 
-> **Adding a server on iOS?** ScarfGo's Servers list works the same idea but with on-device key generation. See [ScarfGo Onboarding](ScarfGo-Onboarding) for the iPhone walkthrough. The rest of this page is the macOS Mac-app flow.
+> **Adding a server on iOS?** Clawdia's Servers list works the same idea but with on-device key generation. See [Clawdia Onboarding](ScarfGo-Onboarding) for the iPhone walkthrough. The rest of this page is the macOS Mac-app flow.
 
-Scarf 2.0 is multi-server. Each Mac window binds to one Hermes install — your local `~/.hermes/` (synthesized automatically) or any number of remote SSH hosts. Server state lives in `~/Library/Preferences/com.scarf.app.plist` via the `ServerRegistry`. ScarfGo (iOS) uses a single-window TabView; switching servers from its Servers list rebuilds the tab root against the new context.
+Scarf 2.0 is multi-server. Each Mac window binds to one Hermes install — your local `~/.hermes/` (synthesized automatically) or any number of remote SSH hosts. Server state lives in `~/Library/Preferences/com.scarf.app.plist` via the `ServerRegistry`. Clawdia (iOS) uses a single-window TabView; switching servers from its Servers list rebuilds the tab root against the new context.
 
 ## Adding a remote server
 

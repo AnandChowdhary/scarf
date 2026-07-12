@@ -45,9 +45,9 @@ Every Scarf window has a connection pill in the toolbar showing the bound server
 - **Token/cost are zero but you've used Hermes** — the schema may predate v0.7. Update Hermes; Scarf detects the new columns automatically.
 - **Yellow "Can't read Hermes state" pill on remote** — open Manage Servers → Run Diagnostics. Each failed check explains why and how to fix.
 
-## ScarfGo Dashboard (iOS, v2.5+)
+## Clawdia Dashboard (iOS, v2.5+)
 
-ScarfGo's Dashboard is a slimmer take: a stats grid (Sessions / Messages / Tool Calls / Tokens) over a recent-sessions card, plus a Sessions sub-tab with a project filter Menu. Swipe the row to resume a session. The Hermes Process / Gateway / Active Platforms cards are Mac-only — they read state Hermes doesn't yet expose remotely in a phone-friendly way. See [Platform Differences](Platform-Differences) for the full Mac vs iOS feature matrix.
+Clawdia's Dashboard is a slimmer take: a stats grid (Sessions / Messages / Tool Calls / Tokens) over a recent-sessions card, plus a Sessions sub-tab with a project filter Menu. Swipe the row to resume a session. The Hermes Process / Gateway / Active Platforms cards are Mac-only — they read state Hermes doesn't yet expose remotely in a phone-friendly way. See [Platform Differences](Platform-Differences) for the full Mac vs iOS feature matrix.
 
 A **Switch server** button in the iOS Dashboard's top-right corner (added v2.5) returns you to the Servers list without first navigating to the System tab — handy when you have multiple Hermes hosts configured.
 
@@ -56,7 +56,7 @@ A **Switch server** button in the iOS Dashboard's top-right corner (added v2.5) 
 - [Insights & Activity](Insights-and-Activity) for deeper analytics.
 - [Chat](Chat) for talking to the running Hermes.
 - [Servers & Remote](Servers-and-Remote) for adding remote hosts and the diagnostics flow.
-- [ScarfGo](ScarfGo) for the iOS Dashboard tour.
+- [Clawdia](ScarfGo) for the iOS Dashboard tour.
 
 ---
 _Last updated: 2026-05-04 — Scarf v2.7 (project-wide auto-refresh on `.scarf/` directory)_

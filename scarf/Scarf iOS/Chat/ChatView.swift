@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import ScarfCore
 import ScarfIOS
 import ScarfDesign
@@ -44,6 +45,10 @@ struct ChatView: View {
     @State private var showPhotoPicker = false
     @State private var isEncodingAttachment = false
     @State private var attachmentError: String?
+    @State private var voiceTouchActive = false
+    @State private var voicePressBeganIdle = false
+    @State private var voicePressHeld = false
+    @State private var voiceHoldTask: Task<Void, Never>?
 
     private static let maxAttachments = 5
 
@@ -190,6 +195,15 @@ struct ChatView: View {
                 await controller.start()
             }
         }
+        .onAppear {
+            updateVoiceIdleTimer()
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
+        .onChange(of: voiceController.mode) { _, _ in
+            updateVoiceIdleTimer()
+        }
         // React to coordinator changes that happen while Chat is
         // already mounted (e.g., user is in Chat, taps Projects, opens
         // a project detail, taps "New Chat" — coordinator flips the
@@ -220,7 +234,13 @@ struct ChatView: View {
         // app backgrounds; sees Chat after resume).
         .onChange(of: coordinator?.scenePhaseTick) { _, _ in
             guard let phase = coordinator?.scenePhase else { return }
-            if phase != .active { voiceController.resetVoiceTurn() }
+            if phase != .active {
+                UIApplication.shared.isIdleTimerDisabled = false
+                voiceController.resetVoiceTurn()
+                resetVoicePressState()
+            } else {
+                updateVoiceIdleTimer()
+            }
             Task { await controller.handleScenePhase(phase) }
         }
         .onChange(of: controller.vm.isGenerating) { _, isGenerating in
@@ -290,6 +310,13 @@ struct ChatView: View {
             .presentationDetents([.height(220), .large])
             .presentationDragIndicator(.visible)
         }
+    }
+
+    /// Voice mode is designed for hands-free use. Keep the display awake only
+    /// while this screen is visible and active; every exit path restores the
+    /// system's normal auto-lock behavior.
+    private func updateVoiceIdleTimer() {
+        UIApplication.shared.isIdleTimerDisabled = voiceController.mode == .voice
     }
 
     /// Resolve a project absolute path to a `ProjectEntry` via the
@@ -675,46 +702,59 @@ struct ChatView: View {
     }
 
     private var voiceComposer: some View {
-        VStack(spacing: ScarfSpace.s2) {
+        VStack(spacing: ScarfSpace.s3) {
             Text(voiceController.statusTitle)
-                .font(.subheadline.weight(.medium))
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(ScarfColor.foregroundPrimary)
 
-            Button {
-                if voiceController.phase == .speaking {
-                    voiceController.stopSpeaking()
-                } else {
-                    voiceController.toggleRecording { transcript in
-                        voiceController.noteHermesSend(sessionID: controller.vm.sessionId)
-                        controller.draft = transcript
-                        await controller.send()
-                    }
-                }
-            } label: {
-                Image(systemName: voiceButtonSymbol)
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(voiceButtonForeground)
-                    .frame(width: 72, height: 72)
-                    .background(Circle().fill(voiceButtonBackground))
+            Text(voicePressHeld && voiceController.phase == .recording
+                 ? "Release to send"
+                 : voiceController.statusSubtitle)
+                .font(.caption)
+                .foregroundStyle(ScarfColor.foregroundMuted)
+                .multilineTextAlignment(.center)
+
+            ZStack {
+                IOSVoiceWaveform(
+                    level: voiceController.activityLevel,
+                    phase: voiceController.phase
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 190)
+
+                Circle()
+                    .fill(voiceButtonBackground.gradient)
+                    .frame(width: 164, height: 164)
+                    .shadow(color: voiceButtonBackground.opacity(0.26), radius: 28)
                     .overlay(
                         Circle().strokeBorder(
                             voiceController.phase == .recording
-                                ? ScarfColor.danger.opacity(0.35)
-                                : ScarfColor.borderStrong,
-                            lineWidth: 1
+                                ? ScarfColor.danger.opacity(0.5)
+                                : Color.white.opacity(0.22),
+                            lineWidth: 2
                         )
                     )
-                    .contentShape(Circle())
-                    .symbolEffect(.pulse, isActive: voiceController.phase == .recording)
-            }
-            .buttonStyle(.plain)
-            .disabled(
-                controller.state != .ready
-                    || (!voiceController.canRecord && voiceController.phase != .speaking)
-            )
-            .accessibilityLabel(voiceButtonHelp)
 
-            Text("gpt-realtime audio · Hermes agent")
+                Image(systemName: voiceButtonSymbol)
+                    .font(.system(size: 62, weight: .medium))
+                    .foregroundStyle(voiceButtonForeground)
+                    .symbolEffect(
+                        .pulse,
+                        options: .repeating,
+                        isActive: voiceController.phase == .recording
+                    )
+            }
+            .frame(maxWidth: .infinity, minHeight: 210)
+            .contentShape(Rectangle())
+            .gesture(voicePressGesture)
+            .opacity(controller.state == .ready ? 1 : 0.55)
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(voiceButtonHelp)
+            .accessibilityHint(voiceController.statusSubtitle)
+            .accessibilityAction { voicePrimaryAccessibilityAction() }
+
+            Text("gpt-realtime audio · Hermes agent · continuous conversation")
                 .font(.caption2)
                 .foregroundStyle(ScarfColor.foregroundMuted)
 
@@ -726,14 +766,16 @@ struct ChatView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, ScarfSpace.s2)
+        .frame(minHeight: 320)
+        .padding(.top, ScarfSpace.s2)
+        .padding(.bottom, ScarfSpace.s3)
     }
 
     private var voiceButtonSymbol: String {
         switch voiceController.phase {
         case .recording: return "stop.fill"
-        case .speaking: return "speaker.slash.fill"
-        case .transcribing, .waitingForHermes: return "ellipsis"
+        case .speaking: return "speaker.wave.3.fill"
+        case .preparing, .transcribing, .waitingForHermes: return "waveform"
         case .idle: return "mic.fill"
         }
     }
@@ -742,7 +784,7 @@ struct ChatView: View {
         switch voiceController.phase {
         case .recording: return "Stop recording and send to Hermes"
         case .speaking: return "Stop spoken response"
-        case .transcribing, .waitingForHermes: return voiceController.statusTitle
+        case .preparing, .transcribing, .waitingForHermes: return voiceController.statusTitle
         case .idle: return "Start voice message"
         }
     }
@@ -751,14 +793,96 @@ struct ChatView: View {
         switch voiceController.phase {
         case .recording: return ScarfColor.danger
         case .idle, .speaking: return ScarfColor.accent
-        case .transcribing, .waitingForHermes: return ScarfColor.backgroundTertiary
+        case .preparing, .transcribing, .waitingForHermes: return ScarfColor.backgroundTertiary
         }
     }
 
     private var voiceButtonForeground: Color {
         switch voiceController.phase {
-        case .transcribing, .waitingForHermes: return ScarfColor.foregroundFaint
+        case .preparing, .transcribing, .waitingForHermes: return ScarfColor.foregroundFaint
         default: return ScarfColor.onAccent
+        }
+    }
+
+    private var voicePressGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { _ in beginVoicePressIfNeeded() }
+            .onEnded { _ in endVoicePress() }
+    }
+
+    private func beginVoicePressIfNeeded() {
+        guard !voiceTouchActive, controller.state == .ready else { return }
+        switch voiceController.phase {
+        case .idle, .preparing, .recording, .speaking:
+            break
+        case .transcribing, .waitingForHermes:
+            return
+        }
+
+        voiceTouchActive = true
+        voicePressBeganIdle = voiceController.phase == .idle
+        voicePressHeld = false
+
+        if voicePressBeganIdle {
+            startVoiceRecording()
+            voiceHoldTask?.cancel()
+            voiceHoldTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(360))
+                guard !Task.isCancelled, voiceTouchActive, voicePressBeganIdle else { return }
+                voicePressHeld = true
+            }
+        }
+    }
+
+    private func endVoicePress() {
+        guard voiceTouchActive else { return }
+        voiceHoldTask?.cancel()
+
+        if voicePressBeganIdle {
+            if voicePressHeld {
+                voiceController.finishRecording()
+            }
+        } else {
+            switch voiceController.phase {
+            case .preparing, .recording:
+                voiceController.finishRecording()
+            case .speaking:
+                voiceController.stopSpeaking()
+            case .idle, .transcribing, .waitingForHermes:
+                break
+            }
+        }
+
+        resetVoicePressState()
+    }
+
+    private func resetVoicePressState() {
+        voiceHoldTask?.cancel()
+        voiceHoldTask = nil
+        voiceTouchActive = false
+        voicePressBeganIdle = false
+        voicePressHeld = false
+    }
+
+    private func voicePrimaryAccessibilityAction() {
+        guard controller.state == .ready else { return }
+        switch voiceController.phase {
+        case .idle:
+            startVoiceRecording()
+        case .preparing, .recording:
+            voiceController.finishRecording()
+        case .speaking:
+            voiceController.stopSpeaking()
+        case .transcribing, .waitingForHermes:
+            break
+        }
+    }
+
+    private func startVoiceRecording() {
+        voiceController.startRecording { transcript in
+            voiceController.noteHermesSend(sessionID: controller.vm.sessionId)
+            controller.draft = transcript
+            await controller.send()
         }
     }
 
@@ -1329,6 +1453,66 @@ struct ChatView: View {
     }
 }
 
+private struct IOSVoiceWaveform: View {
+    let level: Float
+    let phase: IOSRealtimeVoiceController.Phase
+
+    private var isAnimated: Bool { phase != .idle }
+
+    private var intensity: CGFloat {
+        switch phase {
+        case .idle: return 0.06
+        case .preparing: return 0.12
+        case .transcribing: return 0.18
+        case .waitingForHermes: return 0.22
+        case .recording, .speaking: return CGFloat(max(0.08, level))
+        }
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimated)) { timeline in
+            Canvas(rendersAsynchronously: true) { context, size in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                let centerY = size.height / 2
+                let amplitude = 10 + min(1, intensity) * 54
+                let colors: [Color] = [.orange, .pink, .cyan, .purple]
+
+                for layer in 0..<colors.count {
+                    var path = Path()
+                    let phaseOffset = Double(layer) * 0.9
+                    let frequency = 1.45 + Double(layer) * 0.24
+                    let layerAmplitude = amplitude * (1 - CGFloat(layer) * 0.13)
+                    let points = max(48, Int(size.width / 4))
+
+                    for index in 0...points {
+                        let progress = CGFloat(index) / CGFloat(points)
+                        let progressDouble = Double(progress)
+                        let x = progress * size.width
+                        let edgeEnvelope = sin(progressDouble * Double.pi)
+                        let spatialPhase = progressDouble * Double.pi * 2 * frequency
+                        let temporalPhase = time * (2.0 + Double(layer) * 0.18)
+                        let primary = sin(spatialPhase + temporalPhase + phaseOffset)
+                        let detailPhase = progressDouble * Double.pi * 5.2 - time * 1.25
+                        let detail = sin(detailPhase + phaseOffset) * 0.24
+                        let combined = CGFloat((primary + detail) * edgeEnvelope)
+                        let y = centerY + combined * layerAmplitude
+                        if index == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                        else { path.addLine(to: CGPoint(x: x, y: y)) }
+                    }
+
+                    context.stroke(
+                        path,
+                        with: .color(colors[layer].opacity(0.78 - Double(layer) * 0.1)),
+                        style: StrokeStyle(lineWidth: 4 - CGFloat(layer) * 0.55, lineCap: .round)
+                    )
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - ChatController
 
 /// Owns the ACPClient + RichChatViewModel lifecycle for one iOS chat
@@ -1519,10 +1703,18 @@ final class ChatController {
     /// detached pushes the I/O off MainActor; the result and the
     /// `pendingStartIntent` / `modelPreflightReason` writes hop back.
     private func passModelPreflight(intent: PendingStart) async -> Bool {
-        let path = context.paths.configYAML
         let ctx = context
-        let raw = await Task.detached { ctx.readText(path) ?? "" }.value
-        let config = HermesConfig(yaml: raw)
+        // Direct read → `cat "$(hermes config path)"` wrapper fallback →
+        // `hermes config show` model-line probe. The probe is the only
+        // read that works when Hermes runs inside a container (gh#112) —
+        // without it, Docker users hit the "pick a model" sheet on every
+        // start even though config.yaml is fully configured.
+        let config: HermesConfig = await Task.detached {
+            if let raw = HermesConfigReader.readRawConfig(context: ctx) {
+                return HermesConfig(yaml: raw)
+            }
+            return HermesConfigReader.probeModelConfig(context: ctx) ?? .empty
+        }.value
         let result = ModelPreflight.check(config)
         if result.isConfigured { return true }
         pendingStartIntent = intent
@@ -1694,8 +1886,16 @@ final class ChatController {
     /// context files from the process cwd, not the ACP session cwd) — the
     /// iOS counterpart to Mac's project-cwd spawn. Single source of truth
     /// for the four chat-start paths (fresh / project / resume / reconnect).
+    /// Test seam (gh#124 regression coverage): when set, `makeClient`
+    /// returns this factory's client instead of the Keychain-wired
+    /// `forIOSApp` one, so unit tests can drive the real start()/send()
+    /// path over an in-memory ACP channel. Nil in production. Mirrors
+    /// `MiniAppAgentSession.clientFactory`.
+    var clientFactory: ((_ projectCwd: String?) -> ACPClient)?
+
     private func makeClient(projectCwd: String? = nil) -> ACPClient {
-        ACPClient.forIOSApp(
+        if let clientFactory { return clientFactory(projectCwd) }
+        return ACPClient.forIOSApp(
             context: context,
             projectCwd: projectCwd,
             keyProvider: {
@@ -1936,6 +2136,9 @@ final class ChatController {
             if case .ready = state {
                 state = .failed("Prompt failed: \(error.localizedDescription)")
             }
+            // Exit the working state on failure too. The `.reconnecting`
+            // early-return above deliberately skips this — its teardown
+            // path already ran `finalizeOnDisconnect()`.
             vm.handleACPEvent(
                 .promptComplete(sessionId: sessionId, response: ACPPromptResult(
                     stopReason: "error",

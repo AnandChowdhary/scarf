@@ -6,7 +6,7 @@ permalink: scarf-wiki/uninstalling
 
 # Uninstalling
 
-> **Removing ScarfGo from your iPhone?** Standard iOS app delete — long-press the icon → Remove App → Delete App. iOS purges the Keychain group (your SSH keys) and app container along with the binary, so nothing lingers. The Hermes host's `~/.ssh/authorized_keys` line you added during onboarding stays — clean it up manually if you want.
+> **Removing Clawdia from your iPhone?** Standard iOS app delete — long-press the icon → Remove App → Delete App. iOS purges the Keychain group (your SSH keys) and app container along with the binary, so nothing lingers. The Hermes host's `~/.ssh/authorized_keys` line you added during onboarding stays — clean it up manually if you want.
 
 This page covers the macOS app. Scarf is a self-contained `.app` bundle with no installers, launch agents, or kernel extensions. Removing it is two steps; cleaning up its caches is one more.
 
@@ -44,4 +44,4 @@ To uninstall Hermes itself, follow the Hermes documentation — that's a separat
 Just for completeness: the GitHub wiki at <https://github.com/awizemann/scarf/wiki> is a separate git repo from the main one. Uninstalling the app has no effect on the wiki.
 
 ---
-_Last updated: 2026-04-25 — Scarf v2.5.0 (added ScarfGo iOS uninstall note)_
+_Last updated: 2026-04-25 — Scarf v2.5.0 (added Clawdia iOS uninstall note)_

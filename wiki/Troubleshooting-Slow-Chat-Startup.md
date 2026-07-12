@@ -6,7 +6,7 @@ permalink: scarf-wiki/troubleshooting-slow-chat-startup
 
 # Troubleshooting: Slow Chat Startup
 
-**Symptom.** You connect to a server (or use the local context), tap **Chat** in ScarfGo (or open Rich Chat in the Mac app), and the chat sits on a connecting / loading state for **10+ seconds** before it becomes interactive. Subsequent prompts feel fine — only the *first* one after opening Chat is slow.
+**Symptom.** You connect to a server (or use the local context), tap **Chat** in Clawdia (or open Rich Chat in the Mac app), and the chat sits on a connecting / loading state for **10+ seconds** before it becomes interactive. Subsequent prompts feel fine — only the *first* one after opening Chat is slow.
 
 This page is for that case. If chat never connects at all, see [Servers & Remote](Servers-and-Remote) first.
 
@@ -86,7 +86,7 @@ If something else is still slow, it's likely Python startup + a working but heav
 - [MCP, Plugins, Webhooks, Tools](MCP-Servers-Plugins-Webhooks-Tools) — the in-app editor for `mcp_servers`.
 - [ACP Subprocess](ACP-Subprocess) — how Scarf talks to `hermes acp`.
 - [Servers & Remote](Servers-and-Remote) — connectivity issues that aren't MCP-related.
-- [ScarfGo Onboarding](ScarfGo-Onboarding) — iOS-specific PATH workarounds (Citadel inlines `$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin` on every command in v2.5+ so pipx-installed tools resolve, but `hermes` sub-tools may still be missing if their PATH isn't covered).
+- [Clawdia Onboarding](ScarfGo-Onboarding) — iOS-specific PATH workarounds (Citadel inlines `$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin` on every command in v2.5+ so pipx-installed tools resolve, but `hermes` sub-tools may still be missing if their PATH isn't covered).
 
 ---
 _Last updated: 2026-04-25 — Scarf v2.5.0_

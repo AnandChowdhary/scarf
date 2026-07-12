@@ -4,13 +4,13 @@ type: note
 permalink: scarf-wiki/platform-differences
 ---
 
-# Platform differences — Scarf (Mac) vs ScarfGo (iOS)
+# Platform differences — Scarf (Mac) vs Clawdia (iOS)
 
 Both clients talk to the same Hermes host with the same paths and the same data. They differ where iOS's constraints make a Mac feature impractical or unnecessary. This page is the canonical "what's missing on iOS, and why" reference.
 
 ## Feature matrix
 
-| Feature | Mac (Scarf) | iOS (ScarfGo) | Why the gap |
+| Feature | Mac (Scarf) | iOS (Clawdia) | Why the gap |
 |---|:---:|:---:|---|
 | **Dashboard** | Full (stats + recent sessions + Surfaces + Connected info) | Stripped (stats + recent + Sessions sub-tab with project filter) | iOS density. Surfaces (gateway state / pgrep / config.yaml health) read Mac-only filesystems. |
 | **Chat (ACP)** | Yes | Yes | — |
@@ -43,7 +43,7 @@ Both clients talk to the same Hermes host with the same paths and the same data.
 
 ## Why the iOS surface is intentionally smaller
 
-ScarfGo is a **monitor + steer** client. It's optimised for:
+Clawdia is a **monitor + steer** client. It's optimised for:
 
 - Running a chat with the agent.
 - Looking at sessions, memory, scheduled jobs.

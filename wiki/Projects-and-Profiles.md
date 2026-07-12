@@ -39,7 +39,7 @@ The full schema is documented in [`scarf/docs/DASHBOARD_SCHEMA.md`](https://gith
 
 **Adding a project:** click + in the Projects sidebar, pick a directory. The project is registered in `~/.hermes/scarf/projects.json`; the dashboard JSON lives in `<project>/.scarf/dashboard.json` (which you should add to your project's `.gitignore` if it's user-specific).
 
-**Per-project tabs** _(v2.3+, v2.5, v2.7.5)_: clicking a project row reveals a tabbed detail view — **Dashboard**, **Sessions**, **Site** (when the dashboard has a webview widget), **Kanban** (v2.7.5+, Hermes v0.12+ only), and **Slash Commands** (v2.5). The Sessions tab lists chats attributed to the project; **New Chat** spawns `hermes acp` with the project's directory as the session cwd and writes a Scarf-managed block into `<project>/AGENTS.md` so the agent boots with project context. Attribution survives across Mac and ScarfGo via the shared `SessionAttributionService`. See [Slash Commands](Slash-Commands) for the per-project authoring tab.
+**Per-project tabs** _(v2.3+, v2.5, v2.7.5)_: clicking a project row reveals a tabbed detail view — **Dashboard**, **Sessions**, **Site** (when the dashboard has a webview widget), **Kanban** (v2.7.5+, Hermes v0.12+ only), and **Slash Commands** (v2.5). The Sessions tab lists chats attributed to the project; **New Chat** spawns `hermes acp` with the project's directory as the session cwd and writes a Scarf-managed block into `<project>/AGENTS.md` so the agent boots with project context. Attribution survives across Mac and Clawdia via the shared `SessionAttributionService`. See [Slash Commands](Slash-Commands) for the per-project authoring tab.
 
 ### Projects grow up _(v2.15)_
 
@@ -88,9 +88,9 @@ A profile is an isolated Hermes installation — separate config, sessions, memo
 
 On the **Mac**, remote SSH contexts don't auto-resolve `active_profile` — `HermesPathSet.defaultRemoteHome` stays at the configured remote home. If you're using profiles on a remote, set the **Hermes data directory** field in Manage Servers to point at `~/.hermes/profiles/<name>` for that server context. Issue [#53](https://github.com/awizemann/scarf/issues/53)'s degraded-pill diagnostics will tell you when this is the cause of an empty dashboard.
 
-### ScarfGo (iOS) profile switching _(#120)_
+### Clawdia (iOS) profile switching _(#120)_
 
-ScarfGo has a built-in **profile switcher** (System → Profiles) so you don't have to hand-edit the remote home per server. Pick a profile and the phone re-scopes everything it shows — dashboard, memory, cron, sessions, gateway, skills, and chat — to that profile.
+Clawdia has a built-in **profile switcher** (System → Profiles) so you don't have to hand-edit the remote home per server. Pick a profile and the phone re-scopes everything it shows — dashboard, memory, cron, sessions, gateway, skills, and chat — to that profile.
 
 Crucially, the switch is **per-connection and view-only**: it does **not** run `hermes profile use` or touch the host's `active_profile`, so your Mac app, terminal, and the running gateway are undisturbed. It works by pointing this phone's reads at the profile's home and prepending `HERMES_HOME=<root>/profiles/<name>` to its `hermes` invocations (chat + CLI) — Hermes' own per-invocation home mechanism. The **Default** entry returns to the root profile; the switcher also shows which profile the **server itself** is on (its `active_profile`) when it differs from what you're viewing. Creating, renaming, deleting, and import/export stay on the Mac app.
 

@@ -76,7 +76,7 @@ For changes that touch UI or remote-host behavior, the maintainer runs:
 
 - Open a local Mac window — Dashboard loads, Sessions browser populates, Memory editor opens.
 - Open a remote Mac window — same Dashboard / Sessions / Memory, against the dogfooding host (`Mardon` Mac mini).
-- Open ScarfGo against the same host — Dashboard / Chat / Skills / System all populate; Browse Hub returns results (regression check on the Citadel `executeCommandStream` v2.5 fix).
+- Open Clawdia against the same host — Dashboard / Chat / Skills / System all populate; Browse Hub returns results (regression check on the Citadel `executeCommandStream` v2.5 fix).
 - Send a Rich Chat message — streamed response, reasoning shows if the model emits it.
 - Edit and save a memory file — change appears in Hermes on next agent turn (Mac + iOS).
 - Trigger `hermes memory reset` from the Memory toolbar — destructive confirm, reset runs, view refreshes.

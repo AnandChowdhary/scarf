@@ -54,7 +54,7 @@ In v2.5 most service code moved out of the Mac target into the shared **ScarfCor
 
 | Service | Purpose |
 |---|---|
-| `NetworkReachabilityService` | `NWPathMonitor` singleton. ScarfGo's reconnect loop suspends attempts while offline and kicks a fresh cycle on link-up. Two new banner states above the message list — `.reconnecting` and `.offline` — render slim ScarfDesign-tinted strips so the user always knows what the chat is doing. |
+| `NetworkReachabilityService` | `NWPathMonitor` singleton. Clawdia's reconnect loop suspends attempts while offline and kicks a fresh cycle on link-up. Two new banner states above the message list — `.reconnecting` and `.offline` — render slim ScarfDesign-tinted strips so the user always knows what the chat is doing. |
 
 ## v2.5.1 additions (in ScarfCore)
 

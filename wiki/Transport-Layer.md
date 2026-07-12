@@ -10,7 +10,7 @@ The `ServerTransport` protocol unifies local and SSH I/O. Services consume `tran
 
 - **`LocalTransport`** — direct `FileManager` + `Process` against the local disk (`scarf/Packages/ScarfCore/Sources/ScarfCore/Transport/LocalTransport.swift`).
 - **`SSHTransport`** — OpenSSH-driven, multiplexed via ControlMaster. **Mac only**; iOS doesn't ship the `/usr/bin/ssh` binary (`scarf/Packages/ScarfCore/Sources/ScarfCore/Transport/SSHTransport.swift`).
-- **`CitadelServerTransport`** — pure-Swift SSH via Citadel + NIO. **iOS only**, used by ScarfGo for every remote primitive (`scarf/Packages/ScarfIOS/Sources/ScarfIOS/CitadelServerTransport.swift`).
+- **`CitadelServerTransport`** — pure-Swift SSH via Citadel + NIO. **iOS only**, used by Clawdia for every remote primitive (`scarf/Packages/ScarfIOS/Sources/ScarfIOS/CitadelServerTransport.swift`).
 
 All three implement the same protocol, so services in [ScarfCore](ScarfCore-Package) can consume any of them without `#if os(...)` shims.
 
@@ -140,7 +140,7 @@ See [Servers & Remote](Servers-and-Remote) for setup and troubleshooting.
 
 ## CitadelServerTransport (iOS, v2.5+)
 
-The iOS app can't shell out to `/usr/bin/ssh` — there's no such binary in the iOS sandbox. Instead, ScarfGo drives [Citadel](https://github.com/orlandos-nl/Citadel), a pure-Swift SSH/SFTP/exec implementation built on SwiftNIO. `CitadelServerTransport` wraps it behind the same `ServerTransport` protocol so all of ScarfCore consumes one shape.
+The iOS app can't shell out to `/usr/bin/ssh` — there's no such binary in the iOS sandbox. Instead, Clawdia drives [Citadel](https://github.com/orlandos-nl/Citadel), a pure-Swift SSH/SFTP/exec implementation built on SwiftNIO. `CitadelServerTransport` wraps it behind the same `ServerTransport` protocol so all of ScarfCore consumes one shape.
 
 ### What's shared with the Mac transports
 
@@ -157,13 +157,13 @@ The iOS app can't shell out to `/usr/bin/ssh` — there's no such binary in the 
 - **Output preservation on non-zero exit.** Citadel's high-level `executeCommand` API throws `CommandFailed` and discards captured stdout when the remote exits non-zero. v2.5 drives `executeCommandStream` directly — drains stdout + stderr regardless of outcome, recovers the actual exit code from the `CommandFailed` catch. This was the bug behind "Skills Browse failed" on iOS while Mac worked.
 - **Keychain-backed SSH key.** Each configured server holds its own Ed25519 keypair in the iOS Keychain (`com.scarf.ssh-key` service, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, account `server-key:<UUID>`). Mac uses the system ssh-agent + `~/.ssh/config`; iOS keys never leave the device.
 - **Watch via mtime polling.** Same 3-second cadence as `SSHTransport` — Citadel doesn't have an equivalent of inotify-over-SSH.
-- **No streamed exec yet.** `streamLines` is a stub on iOS; log tailing in ScarfGo uses periodic refreshes instead. Future work — Citadel exposes the raw exec channel, just hasn't been wired up.
+- **No streamed exec yet.** `streamLines` is a stub on iOS; log tailing in Clawdia uses periodic refreshes instead. Future work — Citadel exposes the raw exec channel, just hasn't been wired up.
 
 ### Connection holder + reuse
 
-Citadel's `SSHClient.connect(...)` handshake costs ~500ms on a warm network. ScarfGo keeps a long-lived per-server `CitadelConnectionHolder` so subsequent calls reuse the same TCP+crypto session — same idea as Mac ControlMaster, different mechanism. The holder is cached per-`ServerID` so two configured remotes don't contend on a single channel pool.
+Citadel's `SSHClient.connect(...)` handshake costs ~500ms on a warm network. Clawdia keeps a long-lived per-server `CitadelConnectionHolder` so subsequent calls reuse the same TCP+crypto session — same idea as Mac ControlMaster, different mechanism. The holder is cached per-`ServerID` so two configured remotes don't contend on a single channel pool.
 
-See [ScarfGo Onboarding](ScarfGo-Onboarding) for user-side setup and [ScarfCore Package](ScarfCore-Package) for why `KeychainSSHKeyStore` lives in `ScarfIOS` and not `ScarfCore`.
+See [Clawdia Onboarding](ScarfGo-Onboarding) for user-side setup and [ScarfCore Package](ScarfCore-Package) for why `KeychainSSHKeyStore` lives in `ScarfIOS` and not `ScarfCore`.
 
 ---
 _Last updated: 2026-04-29 — Scarf v2.5.2 (snapshot fallback via `cachedSnapshotPath`)_

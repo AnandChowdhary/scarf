@@ -6,7 +6,7 @@ permalink: scarf-wiki/release-process
 
 # Release Process
 
-> **Two release tracks as of v2.5.** The Mac app ships through GitHub Releases + Sparkle (this page). ScarfGo (iOS) ships through TestFlight / App Store Connect — see [`releases/v<version>/TESTFLIGHT_CHECKLIST.md`](https://github.com/awizemann/scarf/blob/main/releases/v2.5.0/TESTFLIGHT_CHECKLIST.md) and [`APP_STORE_METADATA.md`](https://github.com/awizemann/scarf/blob/main/releases/v2.5.0/APP_STORE_METADATA.md). The two tracks are independent and don't share a single command — they share the version number by convention.
+> **Two release tracks as of v2.5.** The Mac app ships through GitHub Releases + Sparkle (this page). Clawdia (iOS) ships through TestFlight / App Store Connect — see [`releases/v<version>/TESTFLIGHT_CHECKLIST.md`](https://github.com/awizemann/scarf/blob/main/releases/v2.5.0/TESTFLIGHT_CHECKLIST.md) and [`APP_STORE_METADATA.md`](https://github.com/awizemann/scarf/blob/main/releases/v2.5.0/APP_STORE_METADATA.md). The two tracks are independent and don't share a single command — they share the version number by convention.
 
 Mac releases are produced by a single local script: [`scripts/release.sh`](https://github.com/awizemann/scarf/blob/main/scripts/release.sh) in the main repo. **The script is the source of truth** — this page is a public-facing summary; do not duplicate prerequisites or step-by-step internals here.
 
@@ -61,11 +61,11 @@ The release script enforces the constraint:
 
 - Bump the **Latest release** line on [Home](Home).
 - Append the new version to [Release Notes Index](Release-Notes-Index).
-- If the version includes ScarfGo changes: separately archive + upload via Xcode Organizer per [`TESTFLIGHT_CHECKLIST.md`](https://github.com/awizemann/scarf/blob/main/releases/v2.5.0/TESTFLIGHT_CHECKLIST.md). The Mac release script doesn't touch iOS.
+- If the version includes Clawdia changes: separately archive + upload via Xcode Organizer per [`TESTFLIGHT_CHECKLIST.md`](https://github.com/awizemann/scarf/blob/main/releases/v2.5.0/TESTFLIGHT_CHECKLIST.md). The Mac release script doesn't touch iOS.
 
 ## iOS release flow (separate from `release.sh`)
 
-ScarfGo ships through:
+Clawdia ships through:
 
 1. **Xcode → Product → Archive** for the `scarf mobile` scheme (Any iOS Device destination).
 2. **Organizer → Distribute App → App Store Connect → Upload** — automatic re-sign.

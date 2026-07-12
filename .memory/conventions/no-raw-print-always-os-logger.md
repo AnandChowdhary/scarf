@@ -9,6 +9,11 @@ tags:
 - audit-2026-06-13
 created: 2026-06-13
 updated: 2026-06-13
+source_sha: 2b9ef15cdddcb1fde12a88556bf755a623ae7758
+reviewed: 2026-07-12
+reviewed_by: audit:claude-code (audit)
+source_paths: scarf/scarf/Core/Services/HermesFileService.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/HermesProfileResolver.swift, scarf/scarf/Features/Projects/Views/Widgets/WebviewWidgetView.swift
+source_paths_inferred: false
 ---
 
 ## Observations
@@ -19,5 +24,4 @@ updated: 2026-06-13
 - [history] Found across 6+ sites in the 2026-06-13 Cycle 1 audit: `HermesFileService.swift:599/659/2006`, `WebviewWidgetView.swift:111/115` (macOS), `Scarf iOS/Projects/Widgets/WebviewWidgetView.swift:117/121` (iOS); subsystem mismatch at `HermesProfileResolver.swift:37`. macOS and iOS twins must be fixed together; deferral comments do not exempt code. #history
 
 ## Relations
-- relates_to [[Scarf Architecture Rules]]
 - relates_to [[Scarf Architecture Rules]]

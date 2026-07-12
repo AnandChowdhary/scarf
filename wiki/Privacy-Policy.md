@@ -14,21 +14,21 @@ _Last updated: 2026-04-25._
 
 ## Plain summary
 
-Scarf and ScarfGo are companion clients for the open-source [Hermes AI agent](https://github.com/awizemann/hermes-agent). Both apps connect from your device to a Hermes host you (or your team) operate. **Neither app collects, transmits, or stores your data on any server controlled by the developer.** All data the apps work with stays on your device or on Hermes hosts you configured yourself.
+Scarf and Clawdia are companion clients for the open-source [Hermes AI agent](https://github.com/awizemann/hermes-agent). Both apps connect from your device to a Hermes host you (or your team) operate. **Neither app collects, transmits, or stores your data on any server controlled by the developer.** All data the apps work with stays on your device or on Hermes hosts you configured yourself.
 
 ## Apps covered
 
 - **Scarf** — macOS desktop client. Distributed via direct download (Sparkle) and built-in auto-update.
-- **ScarfGo** — iOS companion. Distributed via TestFlight (and, in future, the App Store).
+- **Clawdia** — iOS companion. Distributed via TestFlight (and, in future, the App Store).
 
 ## What data the apps access
 
 ### On your device
 
-- **SSH credentials.** ScarfGo generates and stores an SSH private key in the iOS Keychain (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, never iCloud-synced). Used solely to authenticate with Hermes hosts you configure. Scarf reads SSH keys from `~/.ssh/` like any other SSH client.
-- **Server configuration.** Host, user, port, nickname, and an optional remote `~/.hermes` path. Stored in `UserDefaults` (ScarfGo) or the standard app container (Scarf). Never transmitted off-device except as the destination address of your own SSH connections.
+- **SSH credentials.** Clawdia generates and stores an SSH private key in the iOS Keychain (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, never iCloud-synced). Used solely to authenticate with Hermes hosts you configure. Scarf reads SSH keys from `~/.ssh/` like any other SSH client.
+- **Server configuration.** Host, user, port, nickname, and an optional remote `~/.hermes` path. Stored in `UserDefaults` (Clawdia) or the standard app container (Scarf). Never transmitted off-device except as the destination address of your own SSH connections.
 - **Hermes state cache.** When you tap a session or open the Dashboard, the app downloads a snapshot of `~/.hermes/state.db` from your Hermes host over SFTP and reads it locally. Cached on-device temporarily for performance; cleared when the app is force-quit or the OS reclaims storage.
-- **Project registry + session attribution sidecar.** Scarf and ScarfGo read (and write, when you opt in) two JSON sidecar files on the Hermes host: `~/.hermes/scarf/projects.json` and `~/.hermes/scarf/session_project_map.json`. These describe the projects you've registered and which Hermes sessions belong to which project. Owned by you on your Hermes host.
+- **Project registry + session attribution sidecar.** Scarf and Clawdia read (and write, when you opt in) two JSON sidecar files on the Hermes host: `~/.hermes/scarf/projects.json` and `~/.hermes/scarf/session_project_map.json`. These describe the projects you've registered and which Hermes sessions belong to which project. Owned by you on your Hermes host.
 
 ### On Hermes hosts you configure
 
@@ -52,20 +52,20 @@ That's the complete list. The apps make no other network requests.
 
 ## Push notifications
 
-ScarfGo includes a push-notification skeleton for future use — pending permissions on a remote agent run. **The Push Notifications capability is disabled in shipping builds** (gated by an internal `apnsEnabled = false` flag) until Apple Developer Program enrollment + a Hermes-side push sender land. No device tokens are registered with Apple's APNs servers in current builds.
+Clawdia includes a push-notification skeleton for future use — pending permissions on a remote agent run. **The Push Notifications capability is disabled in shipping builds** (gated by an internal `apnsEnabled = false` flag) until Apple Developer Program enrollment + a Hermes-side push sender land. No device tokens are registered with Apple's APNs servers in current builds.
 
 When push lands, only the device token will be transmitted, and only to the Hermes host you authorize (so it can address pushes back to your phone). Apple's APNs infrastructure will route the actual push payload, but the developer never sees it.
 
 ## TestFlight beta program
 
-If you join the ScarfGo beta via TestFlight, Apple shares anonymized crash reports + the email you used to redeem the invite with the developer. Apple's standard [TestFlight terms](https://www.apple.com/legal/internet-services/itunes/testflight/) apply to that data — out of scope for this policy.
+If you join the Clawdia beta via TestFlight, Apple shares anonymized crash reports + the email you used to redeem the invite with the developer. Apple's standard [TestFlight terms](https://www.apple.com/legal/internet-services/itunes/testflight/) apply to that data — out of scope for this policy.
 
 ## Security
 
 - iOS Keychain storage uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` so credentials are unreachable while the device is locked and never synced to iCloud.
 - SSH connections use the same protocol stack as `ssh(1)` — strict host-key verification on first connect, key-based auth (no passwords are sent over the wire), and Citadel's pure-Swift implementation on iOS.
 - The macOS app is **notarized via Apple's standard Developer ID flow** (signed + stapled by `xcrun notarytool` on every release). It is **not App-Sandboxed** — Scarf needs direct read access to `~/.hermes/` and the ability to spawn the `hermes` CLI, both of which the App Sandbox forbids. This is why Scarf is distributed via GitHub Releases + Sparkle rather than the Mac App Store.
-- ScarfGo on iOS runs inside the standard iOS app sandbox — no special entitlements beyond Keychain access for the SSH key.
+- Clawdia on iOS runs inside the standard iOS app sandbox — no special entitlements beyond Keychain access for the SSH key.
 
 ## Children's privacy
 
@@ -75,7 +75,7 @@ Neither app is directed at children under 13 and we do not knowingly collect any
 
 Because we don't collect any data on developer-controlled servers, there is nothing for you to opt out of, request deletion of, or export. To remove all app-stored data from your device:
 
-- **ScarfGo**: delete the app. iOS purges the Keychain group + app container.
+- **Clawdia**: delete the app. iOS purges the Keychain group + app container.
 - **Scarf**: delete `Scarf.app` from `/Applications`, then optionally remove `~/Library/Caches/scarf/` (remote SQLite snapshots), `~/Library/Preferences/com.scarf.app.plist` (server registry + preferences), and `~/Library/Application Support/com.scarf/` (skill snapshots). See [Uninstalling](Uninstalling) for the full cleanup.
 
 Your Hermes host's data (`~/.hermes/`) stays untouched — that's yours to manage.
@@ -91,7 +91,7 @@ Material changes to this policy will be announced on the [Scarf wiki](https://gi
 ## Related pages
 
 - [Support](Support) — bug reports, feature requests, security disclosures.
-- [ScarfGo Onboarding](ScarfGo-Onboarding) — how SSH keys are generated and stored.
+- [Clawdia Onboarding](ScarfGo-Onboarding) — how SSH keys are generated and stored.
 - [Architecture Overview](Architecture-Overview) — what the apps actually do at a technical level.
 
 ---

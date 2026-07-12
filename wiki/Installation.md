@@ -6,7 +6,7 @@ permalink: scarf-wiki/installation
 
 # Installation
 
-> **Looking for the iPhone?** This page covers the macOS desktop app. ScarfGo, the iOS companion, ships via TestFlight — see [ScarfGo](ScarfGo) and [ScarfGo Onboarding](ScarfGo-Onboarding) for that flow.
+> **Looking for the iPhone?** This page covers the macOS desktop app. Clawdia, the iOS companion, ships via TestFlight — see [Clawdia](ScarfGo) and [Clawdia Onboarding](ScarfGo-Onboarding) for that flow.
 
 ## System requirements
 
@@ -51,4 +51,4 @@ Scarf uses [Sparkle](https://sparkle-project.org/) for automatic updates from a 
 - [Uninstalling](Uninstalling) — removing the app and its files.
 
 ---
-_Last updated: 2026-04-25 — Scarf v2.5.0 (added ScarfGo cross-link)_
+_Last updated: 2026-04-25 — Scarf v2.5.0 (added Clawdia cross-link)_

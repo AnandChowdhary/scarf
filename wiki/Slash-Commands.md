@@ -98,7 +98,7 @@ Pick one with ↑/↓ + Enter or Tab. Commands with `argumentHint` insert a trai
 
 iOS shows the same menu but as a sheet that slides up from the composer (touch targets too small for a popover). Same picking model: tap a row, fill in the argument field at the bottom, send.
 
-## ScarfGo (iOS) — read-only browser
+## Clawdia (iOS) — read-only browser
 
 iOS ships in v2.5 as **read-only**. The chat-context bar grows a `<N> slash` chip when the project has slash commands; tap to browse them in a sheet. Multi-line markdown editing is a phone keyboard's nightmare, so v2.5 keeps Mac as the canonical editor; iOS catches up in v2.6+.
 
@@ -148,7 +148,7 @@ Implementing them at the client makes the slash a pure UI concern: Hermes never 
 
 - [Project Templates](Project-Templates) — schemaVersion 3 packaging details.
 - [Chat](Chat) — slash menu UX in context.
-- [ScarfGo](ScarfGo) — iOS read-only browser.
+- [Clawdia](ScarfGo) — iOS read-only browser.
 
 ---
 _Last updated: 2026-04-25 — Scarf v2.5.0 (initial publication)_

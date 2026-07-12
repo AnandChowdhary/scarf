@@ -13,10 +13,10 @@
 
 ## Todo
 
+- [ ] Upload the first Clawdia build and finish App Store submission fields (id: t-a52f09) (added: 2026-07-12)
 - [ ] Hermes 0.16.0 - Final Release Pass (id: t-614783) (added: 2026-06-14) (priority: urgent)
 - [ ] **[release · HIGH]** Cut **v2.10.3** — ships three fixes that are on `main` but missed the v2.10.2 cut (tagged 2026-06-05, before they landed): gh#102 100% CPU `720c805`, gh#112 Failure-1 stderr-surfacing `3401cc7`, gh#105 10s menu-bar flash `c7f42a6`. **Publicly promised on gh#102/#112/#105 (2026-06-13)** — users were told "fixed/next build" but no release contains these yet (this was gh#102 reporter aseelye's exact complaint). Until v2.10.3 ships, gh#102/#112(F1)/#105(flash) can't be closed. (id: t-rel-2103) (added: 2026-06-13, source: gh issue triage)
 - [ ] Edit existing remote server connections (id: t-edit-srv) (source: gh#105 part 2) (added: 2026-06-02)
-- [ ] iOS Settings: route config reads through the Hermes CLI wrapper for Docker hosts (config dir is in-container) (id: t-ios-cfg-get) (source: gh#112 failure 2) (added: 2026-06-06)
 - [ ] Images attached to messages ignored. (id: t-77ec00) (source: gh#113) (added: 2026-06-13) — **ROOT-CAUSED against the real Hermes v0.16.0 source (`~/.hermes/hermes-agent/`, build 2026.6.5); gh#113 updated 2026-06-13.** Scarf's wire path is CORRECT (earlier "schema mismatch" guess was WRONG): `ImageEncoder` emits raw base64 (no `data:` prefix), `ACPClient.sendPrompt` sends `{"type":"image","data":<b64>,"mimeType":...}`, which Hermes parses to `ImageContentBlock` and converts via `_content_blocks_to_openai_user_content` → OpenAI `image_url` (verified by Hermes's own passing test `tests/acp_adapter/test_acp_images.py`). **Real cause = Hermes image-input ROUTING** (`agent/image_routing.py::decide_image_input_mode`): default `agent.image_input_mode: auto` → if the active model isn't `supports_vision` (models.dev), the image is routed to the TEXT pipeline (`vision_analyze` → lossy summary; model never sees pixels) and drops without a vision backend. NOT a Scarf bug. User fixes: vision model / `agent.image_input_mode: native` / configure `auxiliary.vision.provider`. **Scarf-side follow-up → t-31img.** Awaiting reporter's model+provider to confirm.
 - [ ] **[enhancement/gh#113]** Composer heads-up when an image is attached to a session whose active model isn't vision-capable (so users aren't left guessing why it didn't land — see t-77ec00 root cause: Hermes routes non-vision-model images to a lossy text pipeline). Needs a per-model vision-capability signal on the Scarf side (models.dev lookup or heuristic; `HermesCapabilities` is version-scoped, not per-model) — design + source TBD. Risk: LOW (additive UX). (id: t-31img) (added: 2026-06-13, source: gh#113 root cause)
 - [ ] iOS - Chat connection Failed - Couldn’t save model+provider to config.yaml (id: t-2c5982) (source: gh#112) (added: 2026-06-13) — **gh#112 commented 2026-06-13** (F1 fix unreleased → v2.10.3); kept open as the tracker for F2 ([[t-ios-cfg-get]]).
@@ -24,7 +24,6 @@
 - [ ] Scarf v2.9.1 - 100% CPU usage on single core when connected to Hermes (id: t-161674) (source: gh#102) (added: 2026-06-13) — **gh#102 commented 2026-06-13** (replied to aseelye: fix now on `main`, ships v2.10.3); keep open until released + reporter retests on real 285 MB DB.
 - [ ] Scarf spawns a new Hermes session on every chat, losing all previous context (id: t-b19e3d) (source: gh#99) — **CLOSED on GitHub 2026-06-13** (fixed `a9fe143`, shipped v2.9.2; reopen-if-recurs note left).
 - [ ] Informational: /model change in Scarf not working properly - Bugs reported to Hermes (id: t-287bba) (source: gh#97) — **CLOSED on GitHub 2026-06-13** (Scarf-side `e741ab8` shipped v2.9.1; remainder is upstream hermes-agent).
-- [ ] Performance and reliability issues on large state.db (lag, crashes, missing sessions) (id: t-b8a6c3) (source: gh#61) (added: 2026-06-13)
 - [ ] Update our app to support the latest Herme (https://github.com/NousResearch/hermes-agent/releases/tag/v2026.6.5) (added: 2026-06-13)
 - [ ] “Chat connection failed” when app switcher used (id: t-e9257e) (source: gh#108) — **CLOSED on GitHub 2026-06-13** (fixed `8023097`, shipped v2.10.1, reporter confirmed).
 - [ ] Send message button not working (id: t-e2b3bc) (source: gh#107) — **CLOSED on GitHub 2026-06-13** (fixed `8023097`, shipped v2.10.1, reporter confirmed).
@@ -66,6 +65,12 @@
 
 ## Done
 
+- [x] Performance and reliability issues on large state.db (lag, crashes, missing sessions) (id: t-b8a6c3) (source: gh#61) (added: 2026-06-13)
+- [x] iOS Settings: route config reads through the Hermes CLI wrapper for Docker hosts (config dir is in-container) (id: t-ios-cfg-get) (source: gh#112 failure 2) (added: 2026-06-06)
+- [x] gh#123: macOS remote dies until remove/re-add — stale ControlMaster recovery (wake observer + reactive -O exit on ACP connect failure) (id: t-8c8fef22) (added: 2026-07-12)
+- [x] Upstream the isolated iOS prompt-completion fix for gh#124 (id: t-124a1c) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Complete Clawdia App Store branding and metadata (id: t-c1a8d4) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Add gpt-realtime voice chat (id: t-9c4a12) (added: 2026-07-11) (completed: 2026-07-11)
 - [x] ModelPreflight: treat custom: providers as aggregators (Hermes v0.17 rule) (id: t-ed3700b2) (added: 2026-07-04)
 - [x] Cron jobs.json lossless round-trip: preserve unknown keys, remap preRunScript→script, model run_claim (Hermes 0.18.2 audit) (id: t-2fff51e4) (added: 2026-07-10) (priority: high)
 - [x] Hermes v0.18.0 parity: compacted-search gate, vertex/moa provider tables, cron attach_to_session + pre-existing web_tools/withEnabled bug fixes (id: t-1f860d6c) (added: 2026-07-04)
@@ -141,4 +146,3 @@
 - [x] “Chat connection failed” when app switcher used (id: t-e9257e) (source: gh#108) — **CLOSED on GitHub 2026-06-13** (fixed `8023097`, shipped v2.10.1, reporter confirmed).
 
 ## Archived
-

@@ -119,11 +119,11 @@ There is no search bar, no collapsible-section state to persist — every sectio
 
 Each window is bound to one `ServerContext` and one `AppCoordinator`. The window menu (and `⌘1…⌘9` keyboard shortcuts) opens additional windows for other servers — see [Keyboard Shortcuts](Keyboard-Shortcuts). Closing a window destroys its coordinator; reopening reads the section back from defaults.
 
-## ScarfGo (iOS) navigation
+## Clawdia (iOS) navigation
 
-ScarfGo uses a different model — a 5-tab `TabView` rather than a sidebar. The tabs (Dashboard | Projects | Chat | Skills | System) are wrapped in their own `NavigationStack`s so push navigation (Cron editor, Memory detail, Project detail, Settings) stays scoped to the tab. Cross-tab signalling (Dashboard row → Chat tab resume, Project Detail → in-project chat handoff, notification deep-link → Chat) flows through `ScarfGoCoordinator`.
+Clawdia uses a different model — a 5-tab `TabView` rather than a sidebar. The tabs (Dashboard | Projects | Chat | Skills | System) are wrapped in their own `NavigationStack`s so push navigation (Cron editor, Memory detail, Project detail, Settings) stays scoped to the tab. Cross-tab signalling (Dashboard row → Chat tab resume, Project Detail → in-project chat handoff, notification deep-link → Chat) flows through `ScarfGoCoordinator`.
 
-`.tabViewStyle(.sidebarAdaptable)` is wired so the system can switch to a sidebar layout on larger devices — but as of v2.5 the iOS target ships **iPhone-only** (`TARGETED_DEVICE_FAMILY = 1`, `SUPPORTS_MACCATALYST = NO`, `SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO`). iPad polish is on the [ScarfGo Roadmap](ScarfGo-Roadmap) but not in scope for v2.5.
+`.tabViewStyle(.sidebarAdaptable)` is wired so the system can switch to a sidebar layout on larger devices — but as of v2.5 the iOS target ships **iPhone-only** (`TARGETED_DEVICE_FAMILY = 1`, `SUPPORTS_MACCATALYST = NO`, `SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO`). iPad polish is on the [Clawdia Roadmap](ScarfGo-Roadmap) but not in scope for v2.5.
 
 The Mac sidebar's "System" / advanced sections collapse into the iOS **System** tab (server identity, Memory link, Cron link, Settings link, Disconnect / Forget). See [Platform Differences](Platform-Differences) for the full Mac↔iOS feature matrix.
 

@@ -11,9 +11,9 @@ permalink: scarf-wiki/sidebar
 - [Updating](Updating)
 - [Uninstalling](Uninstalling)
 
-**ScarfGo (iOS)**
-- [ScarfGo](ScarfGo)
-- [ScarfGo Onboarding](ScarfGo-Onboarding)
+**Clawdia (iOS)**
+- [Clawdia](ScarfGo)
+- [Clawdia Onboarding](ScarfGo-Onboarding)
 - [Platform Differences](Platform-Differences)
 
 **User Guide**
@@ -62,7 +62,7 @@ permalink: scarf-wiki/sidebar
 **Contributing**
 - [Contributing](Contributing)
 - [Wiki Maintenance](Wiki-Maintenance)
-- [ScarfGo Roadmap](ScarfGo-Roadmap)
+- [Clawdia Roadmap](ScarfGo-Roadmap)
 
 **Release History**
 - [Release Notes Index](Release-Notes-Index)

@@ -580,6 +580,39 @@ final class ServerLiveStatusRegistry {
         _ = nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.setLowPowerMode(false) }
         }
+        // gh#123: system sleep usually kills the TCP session behind each
+        // remote's ControlMaster while the master lingers holding its
+        // socket — every ssh after wake (chat connect, these pollers,
+        // file reads) then hangs on the corpse for its full timeout until
+        // something issues `-O exit`. Probe each registered remote on
+        // wake and reset only the provably dead masters. Note: NSWorkspace
+        // notifications post on NSWorkspace's own center, not `.default`.
+        _ = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recoverRemoteControlMastersAfterWake() }
+        }
+    }
+
+    /// Snapshot the registered ssh servers on the MainActor, then probe
+    /// their ControlMasters off-main (each probe is up to ~15s of
+    /// subprocess I/O). Healthy masters are left alone — only one whose
+    /// TCP session died during sleep gets `-O exit`.
+    private func recoverRemoteControlMastersAfterWake() {
+        let remotes: [(ServerID, SSHConfig, String)] = registry.entries.compactMap { entry in
+            guard case .ssh(let config) = entry.kind else { return nil }
+            return (entry.id, config, entry.displayName)
+        }
+        guard !remotes.isEmpty else { return }
+        Task.detached(priority: .utility) {
+            // Give the network stack a beat to re-associate after wake so
+            // a healthy master isn't misread as dead mid-DHCP.
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            for (id, config, name) in remotes {
+                SSHTransport(contextID: id, config: config, displayName: name)
+                    .recoverControlMasterIfDead()
+            }
+        }
     }
 
     private func setLowPowerMode(_ on: Bool) {

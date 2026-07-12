@@ -88,7 +88,7 @@ _Last updated: YYYY-MM-DD — stub_
 - **Release Process** on the wiki is a pointer; the canonical instructions live in `CLAUDE.md` and the header of `scripts/release.sh`.
 - **Hermes Paths** mirrors the Key Paths block in `CLAUDE.md` — update both when paths change.
 - **Release notes** stay in `releases/v<ver>/RELEASE_NOTES.md` on `main`. The wiki's [Release Notes Index](Release-Notes-Index) only links out.
-- **TestFlight + App Store metadata** stay in `releases/v<ver>/TESTFLIGHT_CHECKLIST.md` and `APP_STORE_METADATA.md` on `main`. The wiki's [ScarfGo](ScarfGo) page links to the live TestFlight URL but doesn't duplicate Apple-side metadata.
+- **TestFlight + App Store metadata** stay in `releases/v<ver>/TESTFLIGHT_CHECKLIST.md` and `APP_STORE_METADATA.md` on `main`. The wiki's [Clawdia](ScarfGo) page links to the live TestFlight URL but doesn't duplicate Apple-side metadata.
 - **Privacy Policy** has two copies on purpose: the canonical one at `awizemann.github.io/scarf/privacy/` (linked from the iOS Info.plist + App Store Connect), plus a wiki mirror at [Privacy Policy](Privacy-Policy) for in-wiki readability. The wiki copy is updated alongside major releases.
 - **Internal dev notes** (PRD, Hermes API discovery, raw architecture) live in `scarf/docs/` in the main repo. The wiki carries the public-relevant parts in distilled form, not full duplicates.
 

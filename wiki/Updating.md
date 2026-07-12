@@ -6,7 +6,7 @@ permalink: scarf-wiki/updating
 
 # Updating
 
-> **ScarfGo updates differently.** The iOS app updates through TestFlight (and, in future, the App Store) — Apple's standard update channel. The Sparkle flow described below is **macOS only**.
+> **Clawdia updates differently.** The iOS app updates through TestFlight (and, in future, the App Store) — Apple's standard update channel. The Sparkle flow described below is **macOS only**.
 
 Scarf uses [Sparkle](https://sparkle-project.org/) to deliver automatic updates from a GitHub-Pages-hosted appcast at `https://awizemann.github.io/scarf/appcast.xml`. Each release is EdDSA-signed by the maintainer's private key; Scarf refuses any update whose signature doesn't verify against the embedded `SUPublicEDKey`.
 
@@ -43,4 +43,4 @@ App preferences live in `~/Library/Preferences/com.scarf.app.plist` and are forw
 If Sparkle reports a signature mismatch or download error, see the [Health](Gateway-Cron-Health-Logs) view for details. Re-trigger the check; if it persists, file an issue with the Sparkle log content.
 
 ---
-_Last updated: 2026-04-25 — Scarf v2.5.0 (clarified macOS-only Sparkle vs ScarfGo TestFlight)_
+_Last updated: 2026-04-25 — Scarf v2.5.0 (clarified macOS-only Sparkle vs Clawdia TestFlight)_

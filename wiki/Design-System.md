@@ -6,7 +6,7 @@ permalink: scarf-wiki/design-system
 
 # Design System (ScarfDesign)
 
-Scarf and ScarfGo share a single typed design-token bundle: the **ScarfDesign** Swift Package at [`scarf/Packages/ScarfDesign/`](https://github.com/awizemann/scarf/tree/main/scarf/Packages/ScarfDesign). Both targets `import ScarfDesign` and consume the same `ScarfColor` / `ScarfFont` / `ScarfSpace` / `ScarfRadius` / `ScarfShadow` tokens plus a small set of reusable SwiftUI components.
+Scarf and Clawdia share a single typed design-token bundle: the **ScarfDesign** Swift Package at [`scarf/Packages/ScarfDesign/`](https://github.com/awizemann/scarf/tree/main/scarf/Packages/ScarfDesign). Both targets `import ScarfDesign` and consume the same `ScarfColor` / `ScarfFont` / `ScarfSpace` / `ScarfRadius` / `ScarfShadow` tokens plus a small set of reusable SwiftUI components.
 
 If you're building a new view or polishing an existing one, reach for these tokens first. Hardcoded colors, fonts, paddings, and corner radii are a code smell — convert them.
 
