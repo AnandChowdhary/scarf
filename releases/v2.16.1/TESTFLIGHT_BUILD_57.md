@@ -19,4 +19,4 @@ Report issues through TestFlight feedback.
 - [x] Voice release gate passes.
 - [x] Archive and upload build 57 using automatic Sycamore signing.
 - [x] App Store Connect processing completed successfully.
-- [ ] Submit export compliance and assign build 57 to `Anand Alone`.
+- [x] Submit export compliance and assign build 57 to `Anand Alone`.
