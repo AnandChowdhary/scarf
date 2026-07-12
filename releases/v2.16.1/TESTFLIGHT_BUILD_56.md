@@ -20,4 +20,4 @@ Report issues through TestFlight feedback.
 - [x] Voice release gate passes.
 - [x] Archive and upload build 56 using automatic Sycamore signing.
 - [x] App Store Connect processing completed successfully.
-- [ ] Complete the per-build App Encryption Documentation attestation, then add build 56 to `Anand Alone`.
+- [x] Complete the per-build App Encryption Documentation attestation and add build 56 to `Anand Alone`.
