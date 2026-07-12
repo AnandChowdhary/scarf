@@ -45,3 +45,14 @@ If a future change threads `projectCwd` into the mini-app factory (revisit only 
 ## Future-escalation trigger
 
 Revisit a first-open trust affordance (persisted per project id, mirroring the mini-app gate via [[phase-1-milestone-2-mini-apps-implementation-decisions]]) IF the threat model changes — chiefly if Scarf ever auto-opens chats in projects the user did NOT deliberately add, or if Hermes drops its context-file injection scan. Relates to [[hermes-v0-17-0-audit-findings]].
+
+## Observations
+- [decision] Ship a release-note awareness line for v-next; do NOT add a first-open "trust this project's context?" gate — keep the trust affordance ticketed as a future escalation #projects
+- [fact] Opening a project chat spawns hermes acp with cwd=project dir, so Hermes auto-loads that project's AGENTS.md/CLAUDE.md/.cursorrules from the PROCESS cwd into the system prompt — an untrusted repo's hostile context file becomes a prompt-injection vector #hermes-context-files
+- [constraint] Context files are DATA injected into the prompt, not capabilities — categorically different from agent-generated mini-apps, which DO get a per-(projectId,miniAppId) permission gate #projects
+- [fact] MiniAppAgentSession spawns hermes acp with NO projectCwd, so mini-app agents deliberately do NOT load project context; the awareness line is chats-only and need not expand to mini-apps #mini-apps
+- [convention] The finalized awareness line is queued as board task t-cea43144 so scarf-release-prep folds it into the security/awareness area of RELEASE_NOTES.md rather than a plain feature bullet #release-notes
+
+## Relations
+- relates_to [[phase-1-milestone-2-mini-apps-implementation-decisions]]
+- relates_to [[hermes-v0-17-0-audit-findings]]

@@ -36,6 +36,13 @@ Verified the WS-* "verify against a live host" audit TODOs against the live Herm
 - [minor] `tts.xai.model` is not a real xAI TTS key; ACP compression-count is NOT on the `session/prompt` usage blob (comes via a separate UsageUpdate notification); kanban `max_retries` default is dispatcher `kanban.failure_limit` config, not 3.
 - [keep] google-chat platform spelling (plugin-defined, not yet shipped) and the gateway notice-TTL field (absent in v0.16 config) remain unverifiable — TODOs kept.
 
+## Observations
+- [done] Verified the WS-* "verify against a live host" audit TODOs against live Hermes v0.16 source (2026.6.5) on 2026-06-14; all mismatches resolved on branch fix/v016-mismatches (commits 9bc39b7, 6786e66) by 2026-06-15 #hermes #v016
+- [gotcha] ACP /goal and /subgoal are gateway-only in v0.16 (gateway/slash_commands.py), NOT in the ACP adapter's advertised/handled commands — de-advertised from Scarf's ACP surface #hermes #v016
+- [gotcha] `hermes gateway list --json` does not exist in v0.16 (text output only), `hermes kanban verify <id>` verb does not exist, and `curator list-archived --json` flag doesn't exist #hermes #v016
+- [gotcha] openrouter.response_cache is a SCALAR bool in v0.16 (default True), not nested `.enabled`; addMCPServerSSE's --transport/--sse-read-timeout flags don't exist (SSE config is written to YAML post-add) #hermes #v016
+- [convention] Gateway allowlists live at top-level slack/telegram/matrix/dingtalk keys in v0.16 (allowed_channels/allowed_chats/allowed_rooms), not gateway.platforms.<platform>.* — flagged CRITICAL and re-verified before fixing #hermes #v016
+
 ## Relations
 - relates_to [[Hermes Integration]]
 - relates_to [[Hermes v0.16 Compatibility Decisions]]
