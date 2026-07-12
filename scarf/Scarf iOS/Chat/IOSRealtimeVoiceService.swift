@@ -1,6 +1,7 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import Observation
+import os
 import Security
 
 enum IOSRealtimeVoiceError: LocalizedError, Sendable {
@@ -121,8 +122,18 @@ enum IOSRealtimeProtocol {
         )
     }
 
-    static func transcriptionSessionUpdate() throws -> String {
-        try encode([
+    static func transcriptionSessionUpdate(usesServerVAD: Bool = false) throws -> String {
+        let turnDetection: Any = usesServerVAD
+            ? [
+                "type": "server_vad",
+                "threshold": 0.35,
+                "prefix_padding_ms": 500,
+                "silence_duration_ms": 2_000,
+                "create_response": false,
+                "interrupt_response": false
+            ] as [String: Any]
+            : NSNull()
+        return try encode([
             "type": "session.update",
             "session": [
                 "type": "realtime",
@@ -132,7 +143,8 @@ enum IOSRealtimeProtocol {
                     "input": [
                         "format": ["type": "audio/pcm", "rate": 24_000],
                         "transcription": ["model": "gpt-realtime-whisper", "delay": "low"],
-                        "turn_detection": NSNull()
+                        "noise_reduction": ["type": "far_field"],
+                        "turn_detection": turnDetection
                     ]
                 ]
             ]
@@ -169,26 +181,25 @@ enum IOSRealtimeProtocol {
         try encode(["type": "input_audio_buffer.commit"])
     }
 
-    static func createSpeechItem(_ text: String) throws -> String {
-        try encode([
-            "type": "conversation.item.create",
-            "item": [
-                "type": "message",
-                "role": "user",
-                "content": [[
-                    "type": "input_text",
-                    "text": "Read the text below aloud exactly as written.\n\n\(text)"
-                ]]
-            ]
-        ])
-    }
-
-    static func createAudioResponse() throws -> String {
+    /// Creates an out-of-band speech-rendering response. Reusing one Realtime
+    /// session avoids a WebSocket handshake for every Hermes text chunk, while
+    /// `conversation: none` prevents those renderer-only chunks from building a
+    /// second assistant conversation alongside Hermes.
+    static func createAudioResponse(for text: String) throws -> String {
         try encode([
             "type": "response.create",
             "response": [
+                "conversation": "none",
                 "output_modalities": ["audio"],
-                "instructions": "Act only as a speech renderer. Read the text in the user's message aloud verbatim. Do not answer it, acknowledge it, summarize it, or add any words."
+                "instructions": "Act only as a speech renderer. Read the supplied text aloud verbatim. Do not answer it, acknowledge it, summarize it, or add any words.",
+                "input": [[
+                    "type": "message",
+                    "role": "user",
+                    "content": [[
+                        "type": "input_text",
+                        "text": text
+                    ]]
+                ]]
             ]
         ])
     }
@@ -199,42 +210,6 @@ enum IOSRealtimeProtocol {
             throw IOSRealtimeVoiceError.invalidServerEvent
         }
         return text
-    }
-}
-
-enum IOSWAVPCM16 {
-    static func extract(from data: Data) throws -> Data {
-        guard data.count >= 12,
-              ascii(in: data, range: 0..<4) == "RIFF",
-              ascii(in: data, range: 8..<12) == "WAVE" else {
-            throw IOSRealtimeVoiceError.malformedRecording
-        }
-        var offset = 12
-        while offset + 8 <= data.count {
-            let chunkID = ascii(in: data, range: offset..<(offset + 4))
-            let size = Int(littleEndianUInt32(in: data, at: offset + 4))
-            let payloadStart = offset + 8
-            let payloadEnd = payloadStart + size
-            guard payloadEnd <= data.count else { throw IOSRealtimeVoiceError.malformedRecording }
-            if chunkID == "data" {
-                guard size >= 2 else { throw IOSRealtimeVoiceError.emptyRecording }
-                return data.subdata(in: payloadStart..<payloadEnd)
-            }
-            offset = payloadEnd + (size.isMultiple(of: 2) ? 0 : 1)
-        }
-        throw IOSRealtimeVoiceError.malformedRecording
-    }
-
-    private static func ascii(in data: Data, range: Range<Int>) -> String? {
-        guard range.upperBound <= data.count else { return nil }
-        return String(data: data.subdata(in: range), encoding: .ascii)
-    }
-
-    private static func littleEndianUInt32(in data: Data, at offset: Int) -> UInt32 {
-        guard offset + 4 <= data.count else { return 0 }
-        return data[offset..<(offset + 4)].enumerated().reduce(0) { partial, pair in
-            partial | (UInt32(pair.element) << UInt32(pair.offset * 8))
-        }
     }
 }
 
@@ -265,72 +240,147 @@ nonisolated enum IOSPCM16Meter {
     }
 }
 
-nonisolated struct IOSVoiceActivityTracker {
-    enum Decision: Equatable, Sendable {
-        case keepListening
-        case finishUtterance
-        case timedOut
-    }
+nonisolated enum IOSAutomaticListeningPolicy {
+    static let noSpeechTimeout: TimeInterval = 10
 
-    let startedAt: TimeInterval
-    var speechThreshold: Float = 0.22
-    var noSpeechTimeout: TimeInterval = 7
-    var trailingSilence: TimeInterval = 1.15
-
-    private(set) var detectedSpeech = false
-    private var lastSpeechAt: TimeInterval?
-
-    init(
+    static func shouldStop(
         startedAt: TimeInterval,
-        speechThreshold: Float = 0.22,
-        noSpeechTimeout: TimeInterval = 7,
-        trailingSilence: TimeInterval = 1.15
-    ) {
-        self.startedAt = startedAt
-        self.speechThreshold = speechThreshold
-        self.noSpeechTimeout = noSpeechTimeout
-        self.trailingSilence = trailingSilence
+        now: TimeInterval,
+        serverDetectedSpeech: Bool
+    ) -> Bool {
+        !serverDetectedSpeech && now - startedAt >= noSpeechTimeout
+    }
+}
+
+/// Turns an append-only Hermes message stream into nonduplicated speech input.
+/// Realtime has no text equivalent of `input_audio_buffer.append`, so every
+/// emitted chunk becomes one ordered out-of-band response on a persistent
+/// speech session. Boundaries are adaptive: punctuation is preferred, long
+/// text is capped, and a short debounce may release a multiword phrase.
+nonisolated struct IOSStreamingSpeechBuffer {
+    private(set) var fullText = ""
+    private(set) var deliveredCharacterCount = 0
+
+    var hasPendingText: Bool { deliveredCharacterCount < fullText.count }
+
+    mutating func ingest(_ text: String) {
+        fullText = text
+        if deliveredCharacterCount > fullText.count {
+            // Hermes streams append-only in normal operation. If a provider
+            // revises/shrinks an already rendered prefix, audio cannot be
+            // "unspoken"; skip over the surviving prefix without replaying it.
+            deliveredCharacterCount = fullText.count
+        }
     }
 
-    mutating func observe(level: Float, at time: TimeInterval) -> Decision {
-        if level >= speechThreshold {
-            detectedSpeech = true
-            lastSpeechAt = time
-            return .keepListening
+    mutating func takeChunk(force: Bool = false, allowPhraseBoundary: Bool = false) -> String? {
+        guard hasPendingText else { return nil }
+        let pending = String(fullText.dropFirst(deliveredCharacterCount))
+        let consumedCount: Int
+        if force {
+            consumedCount = pending.count
+        } else if let punctuationCount = Self.punctuationBoundary(in: pending) {
+            consumedCount = punctuationCount
+        } else if pending.count >= 120,
+                  let wordCount = Self.wordBoundary(in: pending, limit: 180, minimum: 80) {
+            consumedCount = wordCount
+        } else if allowPhraseBoundary,
+                  pending.split(whereSeparator: \Character.isWhitespace).count >= 6,
+                  let wordCount = Self.wordBoundary(in: pending, limit: pending.count, minimum: 1) {
+            consumedCount = wordCount
+        } else {
+            return nil
         }
-        if !detectedSpeech, time - startedAt >= noSpeechTimeout {
-            return .timedOut
+
+        let raw = String(pending.prefix(consumedCount))
+        deliveredCharacterCount += consumedCount
+        let spoken = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return spoken.isEmpty ? nil : spoken
+    }
+
+    private static func punctuationBoundary(in text: String) -> Int? {
+        var index = text.startIndex
+        while index < text.endIndex {
+            let character = text[index]
+            let isNewline = character == "\n"
+            let isTerminal = character == "." || character == "!" || character == "?"
+            guard isNewline || isTerminal else {
+                index = text.index(after: index)
+                continue
+            }
+            var end = text.index(after: index)
+            while end < text.endIndex, "\"'”’)]}".contains(text[end]) {
+                end = text.index(after: end)
+            }
+            let isStable = isNewline
+                || character == "!"
+                || character == "?"
+                || (end < text.endIndex && text[end].isWhitespace)
+            if isStable {
+                while end < text.endIndex, text[end].isWhitespace {
+                    end = text.index(after: end)
+                }
+                return text.distance(from: text.startIndex, to: end)
+            }
+            index = text.index(after: index)
         }
-        if detectedSpeech,
-           let lastSpeechAt,
-           time - lastSpeechAt >= trailingSilence {
-            return .finishUtterance
-        }
-        return .keepListening
+        return nil
+    }
+
+    private static func wordBoundary(in text: String, limit: Int, minimum: Int) -> Int? {
+        let capped = min(limit, text.count)
+        guard capped >= minimum else { return nil }
+        let prefix = String(text.prefix(capped))
+        guard let boundary = prefix.lastIndex(where: \Character.isWhitespace) else { return nil }
+        let count = prefix.distance(from: prefix.startIndex, to: prefix.index(after: boundary))
+        return count >= minimum ? count : nil
     }
 }
 
 actor IOSRealtimeClient {
-    private static let audioChunkBytes = 24_000
-
-    func transcribe(apiKey: String, pcm: Data) async throws -> String {
+    func transcribe(
+        apiKey: String,
+        pcmStream: AsyncStream<Data>,
+        onSpeechStarted: @escaping @Sendable () async -> Void,
+        onSpeechStopped: @escaping @Sendable () async -> Void
+    ) async throws -> String {
         let connection = makeConnection(apiKey: apiKey)
         defer { connection.close() }
         try await wait(for: "session.created", socket: connection.socket)
-        try await send(IOSRealtimeProtocol.transcriptionSessionUpdate(), to: connection.socket)
+        try await send(
+            IOSRealtimeProtocol.transcriptionSessionUpdate(usesServerVAD: true),
+            to: connection.socket
+        )
         try await wait(for: "session.updated", socket: connection.socket)
-        var offset = 0
-        while offset < pcm.count {
-            let end = min(offset + Self.audioChunkBytes, pcm.count)
-            try await send(IOSRealtimeProtocol.appendAudio(pcm.subdata(in: offset..<end)), to: connection.socket)
-            offset = end
+
+        // Audio input and server events are full-duplex. The sender commits only
+        // when the local stream is explicitly stopped (tap/hold-to-talk); in the
+        // automatic path server VAD commits first and the task is cancelled when
+        // the completed transcript arrives.
+        let sender = Task { [weak self] in
+            do {
+                for await chunk in pcmStream {
+                    try Task.checkCancellation()
+                    try await self?.send(IOSRealtimeProtocol.appendAudio(chunk), to: connection.socket)
+                }
+                try Task.checkCancellation()
+                try await self?.send(IOSRealtimeProtocol.commitAudio(), to: connection.socket)
+            } catch is CancellationError {
+                return
+            } catch {
+                connection.close()
+            }
         }
-        try await send(IOSRealtimeProtocol.commitAudio(), to: connection.socket)
+        defer { sender.cancel() }
 
         var transcript = ""
         while true {
             let event = try await receive(from: connection.socket)
             switch event.type {
+            case "input_audio_buffer.speech_started":
+                await onSpeechStarted()
+            case "input_audio_buffer.speech_stopped":
+                await onSpeechStopped()
             case "conversation.item.input_audio_transcription.delta":
                 transcript += event.delta ?? ""
             case "conversation.item.input_audio_transcription.completed":
@@ -348,7 +398,7 @@ actor IOSRealtimeClient {
 
     func speak(
         apiKey: String,
-        text: String,
+        textStream: AsyncStream<String>,
         onAudioChunk: @escaping @Sendable (Data) async -> Void
     ) async throws {
         let connection = makeConnection(apiKey: apiKey)
@@ -356,21 +406,27 @@ actor IOSRealtimeClient {
         try await wait(for: "session.created", socket: connection.socket)
         try await send(IOSRealtimeProtocol.speechSessionUpdate(), to: connection.socket)
         try await wait(for: "session.updated", socket: connection.socket)
-        try await send(IOSRealtimeProtocol.createSpeechItem(text), to: connection.socket)
-        try await send(IOSRealtimeProtocol.createAudioResponse(), to: connection.socket)
-        while true {
-            let event = try await receive(from: connection.socket)
-            switch event.type {
-            case "response.output_audio.delta":
-                if let encoded = event.delta, let chunk = Data(base64Encoded: encoded) {
-                    await onAudioChunk(chunk)
+
+        for await text in textStream {
+            try Task.checkCancellation()
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            try await send(IOSRealtimeProtocol.createAudioResponse(for: trimmed), to: connection.socket)
+            while true {
+                let event = try await receive(from: connection.socket)
+                switch event.type {
+                case "response.output_audio.delta":
+                    if let encoded = event.delta, let chunk = Data(base64Encoded: encoded) {
+                        await onAudioChunk(chunk)
+                    }
+                case "response.done":
+                    break
+                case "error":
+                    throw IOSRealtimeVoiceError.api(event.errorMessage ?? "OpenAI Realtime speech failed.")
+                default:
+                    continue
                 }
-            case "response.done":
-                return
-            case "error":
-                throw IOSRealtimeVoiceError.api(event.errorMessage ?? "OpenAI Realtime speech failed.")
-            default:
-                continue
+                if event.type == "response.done" { break }
             }
         }
     }
@@ -426,11 +482,33 @@ actor IOSRealtimeClient {
 }
 
 @MainActor
-final class IOSRealtimeMicrophoneRecorder {
-    private var recorder: AVAudioRecorder?
-    private var fileURL: URL?
+enum IOSRealtimeAudioSession {
+    static func activate() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(
+            .playAndRecord,
+            mode: .voiceChat,
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
+        )
+        try session.setActive(true)
+    }
 
-    func start() async throws {
+    static func deactivate() {
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: .notifyOthersOnDeactivation
+        )
+    }
+}
+
+@MainActor
+final class IOSRealtimeMicrophoneRecorder {
+    private let engine = AVAudioEngine()
+    private var continuation: AsyncStream<Data>.Continuation?
+    private var tapInstalled = false
+    private var level: Float = 0
+
+    func start() async throws -> AsyncStream<Data> {
         let audioApplication = AVAudioApplication.shared
         let granted: Bool
         switch audioApplication.recordPermission {
@@ -444,53 +522,92 @@ final class IOSRealtimeMicrophoneRecorder {
             granted = false
         }
         guard granted else { throw IOSRealtimeVoiceError.microphoneDenied }
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
-        try session.setActive(true)
+        try IOSRealtimeAudioSession.activate()
 
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("scarfgo-voice-\(UUID().uuidString)")
-            .appendingPathExtension("wav")
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: 24_000.0,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsFloatKey: false,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
-        let newRecorder = try AVAudioRecorder(url: url, settings: settings)
-        newRecorder.isMeteringEnabled = true
-        guard newRecorder.prepareToRecord(), newRecorder.record() else {
+        stop()
+        let input = engine.inputNode
+        let inputFormat = input.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0,
+              let outputFormat = AVAudioFormat(
+                commonFormat: .pcmFormatInt16,
+                sampleRate: 24_000,
+                channels: 1,
+                interleaved: false
+              ),
+              let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
             throw IOSRealtimeVoiceError.recordingFailed
         }
-        fileURL = url
-        recorder = newRecorder
-    }
 
-    func stopAndReadPCM() throws -> Data {
-        guard let recorder, let fileURL else { throw IOSRealtimeVoiceError.recordingFailed }
-        let duration = recorder.currentTime
-        recorder.stop()
-        self.recorder = nil
-        self.fileURL = nil
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        guard duration >= 0.15 else { throw IOSRealtimeVoiceError.emptyRecording }
-        return try IOSWAVPCM16.extract(from: Data(contentsOf: fileURL))
+        var streamContinuation: AsyncStream<Data>.Continuation?
+        let stream = AsyncStream<Data> { streamContinuation = $0 }
+        continuation = streamContinuation
+        level = 0
+        input.installTap(onBus: 0, bufferSize: 2_048, format: inputFormat) { [weak self] buffer, _ in
+            guard let data = Self.convert(buffer, using: converter, outputFormat: outputFormat) else { return }
+            let measured = IOSPCM16Meter.level(in: data)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                level = max(measured, level * 0.78)
+                continuation?.yield(data)
+            }
+        }
+        tapInstalled = true
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            stop()
+            throw IOSRealtimeVoiceError.recordingFailed
+        }
+        return stream
     }
 
     func currentLevel() -> Float {
-        guard let recorder, recorder.isRecording else { return 0 }
-        recorder.updateMeters()
-        return IOSPCM16Meter.level(decibels: recorder.averagePower(forChannel: 0))
+        level
     }
 
     func cancel() {
-        recorder?.stop()
-        recorder = nil
-        if let fileURL { try? FileManager.default.removeItem(at: fileURL) }
-        fileURL = nil
+        stop()
+    }
+
+    func stop() {
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        engine.stop()
+        continuation?.finish()
+        continuation = nil
+        level = 0
+    }
+
+    nonisolated private static func convert(
+        _ input: AVAudioPCMBuffer,
+        using converter: AVAudioConverter,
+        outputFormat: AVAudioFormat
+    ) -> Data? {
+        let ratio = outputFormat.sampleRate / input.format.sampleRate
+        let capacity = AVAudioFrameCount(ceil(Double(input.frameLength) * ratio) + 16)
+        guard capacity > 0,
+              let output = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else {
+            return nil
+        }
+        var suppliedInput = false
+        var conversionError: NSError?
+        let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
+            if suppliedInput {
+                inputStatus.pointee = .noDataNow
+                return nil
+            }
+            suppliedInput = true
+            inputStatus.pointee = .haveData
+            return input
+        }
+        guard conversionError == nil,
+              status != .error,
+              output.frameLength > 0,
+              let samples = output.int16ChannelData?[0] else { return nil }
+        return Data(bytes: samples, count: Int(output.frameLength) * MemoryLayout<Int16>.size)
     }
 }
 
@@ -515,9 +632,7 @@ final class IOSRealtimePCMStreamPlayer {
 
     func start() throws {
         stop()
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .spokenAudio)
-        try session.setActive(true)
+        try IOSRealtimeAudioSession.activate()
         engine.prepare()
         try engine.start()
     }
@@ -565,6 +680,10 @@ final class IOSRealtimePCMStreamPlayer {
 
 @MainActor
 final class IOSRealtimeWaitingSoundPlayer {
+    private static let logger = Logger(
+        subsystem: "so.sycamore.clawdia",
+        category: "RealtimeWaitingSound"
+    )
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let format = AVAudioFormat(
@@ -580,13 +699,18 @@ final class IOSRealtimeWaitingSoundPlayer {
         engine.connect(player, to: engine.mainMixerNode, format: format)
     }
 
-    func start() throws {
+    func start() {
         guard loopTask == nil else { return }
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.ambient, mode: .default)
-        try session.setActive(true)
-        engine.prepare()
-        try engine.start()
+        do {
+            try IOSRealtimeAudioSession.activate()
+            engine.prepare()
+            try engine.start()
+        } catch {
+            player.stop()
+            engine.stop()
+            Self.logger.error("Could not start waiting sound: \(error.localizedDescription, privacy: .public)")
+            return
+        }
         loopTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -638,7 +762,96 @@ final class IOSRealtimeWaitingSoundPlayer {
                 let harmonic = sin(4 * .pi * note.frequency * localTime) * note.secondHarmonic
                 value += (fundamental + harmonic) * attack * release * note.amplitude
             }
-            samples[frame] = Float(value)
+            samples[frame] = Float(value * 1.55)
+        }
+        return buffer
+    }
+}
+
+@MainActor
+final class IOSRealtimeStateCuePlayer {
+    enum Cue {
+        case listening
+        case understood
+        case speaking
+        case paused
+
+        var frequencies: [Double] {
+            switch self {
+            case .listening: return [523.25, 659.25]
+            case .understood: return [659.25, 783.99]
+            case .speaking: return [440.00, 659.25, 880.00]
+            case .paused: return [493.88, 369.99]
+            }
+        }
+    }
+
+    private let engine = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private let format = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
+        sampleRate: 24_000,
+        channels: 1,
+        interleaved: false
+    )!
+    private var stopTask: Task<Void, Never>?
+
+    init() {
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+    }
+
+    func play(_ cue: Cue) {
+        stop()
+        do {
+            try IOSRealtimeAudioSession.activate()
+            engine.prepare()
+            try engine.start()
+            player.scheduleBuffer(makeBuffer(for: cue))
+            player.play()
+            stopTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(420))
+                guard !Task.isCancelled else { return }
+                self?.stop()
+            }
+        } catch {
+            stop()
+        }
+    }
+
+    func stop() {
+        stopTask?.cancel()
+        stopTask = nil
+        player.stop()
+        engine.stop()
+    }
+
+    private func makeBuffer(for cue: Cue) -> AVAudioPCMBuffer {
+        let noteDuration = 0.105
+        let noteGap = 0.018
+        let duration = Double(cue.frequencies.count) * noteDuration
+            + Double(max(0, cue.frequencies.count - 1)) * noteGap
+        let frameCount = AVAudioFrameCount(format.sampleRate * duration)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
+        buffer.frameLength = frameCount
+        guard let samples = buffer.floatChannelData?[0] else { return buffer }
+
+        for frame in 0..<Int(frameCount) {
+            let time = Double(frame) / format.sampleRate
+            let stride = noteDuration + noteGap
+            let noteIndex = min(cue.frequencies.count - 1, Int(time / stride))
+            let localTime = time - Double(noteIndex) * stride
+            guard localTime <= noteDuration else {
+                samples[frame] = 0
+                continue
+            }
+            let progress = localTime / noteDuration
+            let attack = min(1, localTime / 0.012)
+            let release = pow(max(0, 1 - progress), 1.8)
+            let frequency = cue.frequencies[noteIndex]
+            let fundamental = sin(2 * .pi * frequency * localTime)
+            let harmonic = sin(4 * .pi * frequency * localTime) * 0.08
+            samples[frame] = Float((fundamental + harmonic) * attack * release * 0.11)
         }
         return buffer
     }
@@ -669,14 +882,17 @@ final class IOSRealtimeVoiceController {
     private let microphone = IOSRealtimeMicrophoneRecorder()
     private let player = IOSRealtimePCMStreamPlayer()
     private let waitingSound = IOSRealtimeWaitingSoundPlayer()
+    private let stateCue = IOSRealtimeStateCuePlayer()
     private let client = IOSRealtimeClient()
     private var operationTask: Task<Void, Never>?
     private var meterTask: Task<Void, Never>?
+    private var speechFlushTask: Task<Void, Never>?
     private var awaitingHermesReply = false
     private var pendingSessionID: String?
-    private var lastSpokenMessageID: Int?
     private var stopWhenRecordingStarts = false
-    private var voiceActivityTracker: IOSVoiceActivityTracker?
+    private var serverDetectedSpeech = false
+    private var speechBuffer = IOSStreamingSpeechBuffer()
+    private var speechContinuation: AsyncStream<String>.Continuation?
     private var transcriptHandler: (@MainActor (String) async -> Void)?
 
     init() {
@@ -699,7 +915,7 @@ final class IOSRealtimeVoiceController {
         case .idle: return "Tap once for hands-free · hold to talk"
         case .preparing: return "Release after speaking when holding"
         case .recording where isAutomaticListening:
-            return "Listening for your next question · stops after 7 seconds"
+            return "Speak naturally · sends after you stop · closes after 10 seconds of no speech"
         case .recording: return "Tap again to send · or release if you're holding"
         case .transcribing: return "Turning your voice into a Hermes message"
         case .waitingForHermes: return "Your text response continues streaming above"
@@ -708,6 +924,12 @@ final class IOSRealtimeVoiceController {
     }
 
     var canRecord: Bool { phase == .idle || phase == .preparing || phase == .recording }
+
+    /// Background audio is justified only while a live voice turn is active.
+    /// Once automatic listening times out to idle, normal iOS suspension resumes.
+    var shouldContinueInBackground: Bool {
+        mode == .voice && phase != .idle
+    }
 
     func selectMode(_ newMode: ComposerMode) {
         if newMode == .voice, !hasAPIKey {
@@ -755,6 +977,7 @@ final class IOSRealtimeVoiceController {
         transcriptHandler = onTranscript
         isAutomaticListening = automatic
         stopWhenRecordingStarts = false
+        serverDetectedSpeech = false
         activityLevel = 0
         waitingSound.stop()
         operationTask?.cancel()
@@ -762,19 +985,60 @@ final class IOSRealtimeVoiceController {
         operationTask = Task { [weak self] in
             guard let self else { return }
             do {
-                try await microphone.start()
+                guard let apiKey = try IOSRealtimeAPIKeyStore.load() else {
+                    throw IOSRealtimeVoiceError.missingAPIKey
+                }
+                let pcmStream = try await microphone.start()
                 guard !Task.isCancelled else {
                     microphone.cancel()
                     return
                 }
                 phase = .recording
-                operationTask = nil
+                stateCue.play(.listening)
                 startMetering(automatic: automatic)
                 if stopWhenRecordingStarts {
                     stopWhenRecordingStarts = false
                     finishRecording()
                 }
+                let transcript = try await client.transcribe(
+                    apiKey: apiKey,
+                    pcmStream: pcmStream,
+                    onSpeechStarted: {
+                        await MainActor.run { self.serverDetectedSpeech = true }
+                    },
+                    onSpeechStopped: {
+                        await MainActor.run {
+                            guard self.phase == .recording else { return }
+                            self.phase = .transcribing
+                            self.isAutomaticListening = false
+                        }
+                    }
+                )
+                meterTask?.cancel()
+                meterTask = nil
+                microphone.stop()
+                isAutomaticListening = false
+                activityLevel = 0
+                stateCue.play(.understood)
+                waitingSound.start()
+                speechBuffer = IOSStreamingSpeechBuffer()
+                awaitingHermesReply = true
+                phase = .waitingForHermes
+                operationTask = nil
+                if let transcriptHandler { await transcriptHandler(transcript) }
             } catch {
+                if error is CancellationError {
+                    microphone.cancel()
+                    waitingSound.stop()
+                    phase = .idle
+                    isAutomaticListening = false
+                    operationTask = nil
+                    return
+                }
+                meterTask?.cancel()
+                meterTask = nil
+                microphone.cancel()
+                waitingSound.stop()
                 phase = .idle
                 isAutomaticListening = false
                 operationTask = nil
@@ -791,36 +1055,13 @@ final class IOSRealtimeVoiceController {
         guard phase == .recording else { return }
         meterTask?.cancel()
         meterTask = nil
-        voiceActivityTracker = nil
         isAutomaticListening = false
         activityLevel = 0
         phase = .transcribing
-        let handler = transcriptHandler
-        operationTask?.cancel()
-        operationTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let pcm = try microphone.stopAndReadPCM()
-                guard let apiKey = try IOSRealtimeAPIKeyStore.load() else {
-                    throw IOSRealtimeVoiceError.missingAPIKey
-                }
-                let transcript = try await client.transcribe(apiKey: apiKey, pcm: pcm)
-                awaitingHermesReply = true
-                phase = .waitingForHermes
-                try? waitingSound.start()
-                operationTask = nil
-                if let handler { await handler(transcript) }
-            } catch is CancellationError {
-                microphone.cancel()
-                phase = .idle
-                operationTask = nil
-            } catch {
-                microphone.cancel()
-                phase = .idle
-                operationTask = nil
-                errorMessage = error.localizedDescription
-            }
-        }
+        // Ending the local PCM stream makes the sender commit the buffer. The
+        // existing operation task stays alive to receive the final transcript.
+        microphone.stop()
+        waitingSound.start()
     }
 
     func noteHermesSend(sessionID: String?) {
@@ -840,16 +1081,46 @@ final class IOSRealtimeVoiceController {
         }
     }
 
-    func speakHermesReply(sessionID: String?, messageID: Int, text: String) {
+    func observeHermesReply(sessionID: String?, text: String, isComplete: Bool) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard mode == .voice,
               awaitingHermesReply,
               pendingSessionID == nil || pendingSessionID == sessionID,
-              !trimmed.isEmpty,
-              lastSpokenMessageID != messageID else { return }
-        awaitingHermesReply = false
-        pendingSessionID = nil
-        lastSpokenMessageID = messageID
+              !trimmed.isEmpty else { return }
+
+        speechBuffer.ingest(text)
+        while let chunk = speechBuffer.takeChunk() {
+            enqueueSpeechText(chunk)
+        }
+
+        speechFlushTask?.cancel()
+        if isComplete {
+            if let chunk = speechBuffer.takeChunk(force: true) {
+                enqueueSpeechText(chunk)
+            }
+            awaitingHermesReply = false
+            pendingSessionID = nil
+            speechContinuation?.finish()
+        } else if speechBuffer.hasPendingText {
+            speechFlushTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(450))
+                guard !Task.isCancelled, let self,
+                      let chunk = speechBuffer.takeChunk(allowPhraseBoundary: true) else { return }
+                enqueueSpeechText(chunk)
+            }
+        }
+    }
+
+    private func enqueueSpeechText(_ text: String) {
+        if speechContinuation == nil { startSpeechStream() }
+        speechContinuation?.yield(text)
+    }
+
+    private func startSpeechStream() {
+        var continuation: AsyncStream<String>.Continuation?
+        let textStream = AsyncStream<String> { continuation = $0 }
+        guard let continuation else { return }
+        speechContinuation = continuation
         waitingSound.stop()
         operationTask?.cancel()
         operationTask = Task { [weak self] in
@@ -860,11 +1131,14 @@ final class IOSRealtimeVoiceController {
                 }
                 phase = .speaking
                 activityLevel = 0.18
+                stateCue.play(.speaking)
                 try player.start()
-                try await client.speak(apiKey: apiKey, text: trimmed) { [weak self] chunk in
+                try await client.speak(apiKey: apiKey, textStream: textStream) { [weak self] chunk in
                     await self?.enqueueAudio(chunk)
                 }
                 await player.finish()
+                speechContinuation = nil
+                speechBuffer = IOSStreamingSpeechBuffer()
                 activityLevel = 0
                 phase = .idle
                 operationTask = nil
@@ -873,11 +1147,15 @@ final class IOSRealtimeVoiceController {
                 startRecording(automatic: true, onTranscript: transcriptHandler)
             } catch is CancellationError {
                 player.stop()
+                speechContinuation = nil
                 activityLevel = 0
                 phase = .idle
                 operationTask = nil
             } catch {
                 player.stop()
+                speechContinuation = nil
+                awaitingHermesReply = false
+                pendingSessionID = nil
                 activityLevel = 0
                 phase = .idle
                 operationTask = nil
@@ -888,11 +1166,20 @@ final class IOSRealtimeVoiceController {
 
     func stopSpeaking() {
         guard phase == .speaking else { return }
+        speechContinuation?.finish()
+        speechContinuation = nil
+        speechFlushTask?.cancel()
+        speechFlushTask = nil
         operationTask?.cancel()
         player.stop()
+        stateCue.play(.paused)
+        awaitingHermesReply = false
+        pendingSessionID = nil
+        speechBuffer = IOSStreamingSpeechBuffer()
         activityLevel = 0
         phase = .idle
         operationTask = nil
+        deactivateAudioSessionAfterCue()
     }
 
     func resetVoiceTurn() {
@@ -900,17 +1187,24 @@ final class IOSRealtimeVoiceController {
         operationTask = nil
         meterTask?.cancel()
         meterTask = nil
+        speechFlushTask?.cancel()
+        speechFlushTask = nil
+        speechContinuation?.finish()
+        speechContinuation = nil
         microphone.cancel()
         player.stop()
         waitingSound.stop()
+        stateCue.stop()
         awaitingHermesReply = false
         pendingSessionID = nil
         stopWhenRecordingStarts = false
-        voiceActivityTracker = nil
+        serverDetectedSpeech = false
+        speechBuffer = IOSStreamingSpeechBuffer()
         isAutomaticListening = false
         activityLevel = 0
         phase = .idle
         errorMessage = nil
+        IOSRealtimeAudioSession.deactivate()
     }
 
     private func enqueueAudio(_ data: Data) {
@@ -921,39 +1215,42 @@ final class IOSRealtimeVoiceController {
     }
 
     private func startMetering(automatic: Bool) {
-        voiceActivityTracker = automatic
-            ? IOSVoiceActivityTracker(startedAt: Date.timeIntervalSinceReferenceDate)
-            : nil
+        let startedAt = Date.timeIntervalSinceReferenceDate
         meterTask?.cancel()
         meterTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self, phase == .recording else { return }
                 let measured = microphone.currentLevel()
                 activityLevel = max(measured, activityLevel * 0.78)
-                if var tracker = voiceActivityTracker {
-                    let decision = tracker.observe(
-                        level: measured,
-                        at: Date.timeIntervalSinceReferenceDate
-                    )
-                    voiceActivityTracker = tracker
-                    switch decision {
-                    case .keepListening:
-                        break
-                    case .finishUtterance:
-                        finishRecording()
-                        return
-                    case .timedOut:
-                        microphone.cancel()
-                        voiceActivityTracker = nil
-                        isAutomaticListening = false
-                        activityLevel = 0
-                        phase = .idle
-                        meterTask = nil
-                        return
-                    }
+                let now = Date.timeIntervalSinceReferenceDate
+                // The ten-second limit is only a no-speech escape hatch. Once
+                // Realtime reports speech_started it can never end an utterance;
+                // only the server's post-speech silence event can do that.
+                if automatic, IOSAutomaticListeningPolicy.shouldStop(
+                    startedAt: startedAt,
+                    now: now,
+                    serverDetectedSpeech: serverDetectedSpeech
+                ) {
+                    operationTask?.cancel()
+                    microphone.cancel()
+                    isAutomaticListening = false
+                    activityLevel = 0
+                    phase = .idle
+                    meterTask = nil
+                    stateCue.play(.paused)
+                    deactivateAudioSessionAfterCue()
+                    return
                 }
                 try? await Task.sleep(for: .milliseconds(50))
             }
+        }
+    }
+
+    private func deactivateAudioSessionAfterCue() {
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard let self, phase == .idle else { return }
+            IOSRealtimeAudioSession.deactivate()
         }
     }
 }

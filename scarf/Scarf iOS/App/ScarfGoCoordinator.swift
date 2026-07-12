@@ -82,9 +82,17 @@ final class ScarfGoCoordinator {
     /// notification-center peeks don't). `nil` until the first
     /// background transition.
     private(set) var lastBackgroundedAt: Date?
+    /// Active Realtime voice turns own a background audio session. While one
+    /// is running, keep the pooled transport alive so locking the phone does
+    /// not sever Hermes in the middle of a hands-free conversation.
+    private(set) var isVoiceConversationActive = false
+
+    func setVoiceConversationActive(_ isActive: Bool) {
+        isVoiceConversationActive = isActive
+    }
 
     func setScenePhase(_ phase: ScenePhase) {
-        if phase == .background, scenePhase != .background {
+        if phase == .background, scenePhase != .background, !isVoiceConversationActive {
             lastBackgroundedAt = Date()
             // Close this server's pooled SSH connection on background. iOS
             // suspends the socket regardless; evicting guarantees a clean

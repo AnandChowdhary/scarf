@@ -197,12 +197,17 @@ struct ChatView: View {
         }
         .onAppear {
             updateVoiceIdleTimer()
+            updateVoiceBackgroundActivity()
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
         }
         .onChange(of: voiceController.mode) { _, _ in
             updateVoiceIdleTimer()
+            updateVoiceBackgroundActivity()
+        }
+        .onChange(of: voiceController.phase) { _, _ in
+            updateVoiceBackgroundActivity()
         }
         // React to coordinator changes that happen while Chat is
         // already mounted (e.g., user is in Chat, taps Projects, opens
@@ -234,23 +239,25 @@ struct ChatView: View {
         // app backgrounds; sees Chat after resume).
         .onChange(of: coordinator?.scenePhaseTick) { _, _ in
             guard let phase = coordinator?.scenePhase else { return }
+            let continuesVoiceConversation = voiceController.shouldContinueInBackground
             if phase != .active {
                 UIApplication.shared.isIdleTimerDisabled = false
-                voiceController.resetVoiceTurn()
-                resetVoicePressState()
+                if !continuesVoiceConversation {
+                    voiceController.resetVoiceTurn()
+                    resetVoicePressState()
+                }
             } else {
                 updateVoiceIdleTimer()
             }
-            Task { await controller.handleScenePhase(phase) }
+            if phase != .background || !continuesVoiceConversation {
+                Task { await controller.handleScenePhase(phase) }
+            }
         }
-        .onChange(of: controller.vm.isGenerating) { _, isGenerating in
-            if !isGenerating { speakLatestHermesReplyIfNeeded() }
+        .onChange(of: currentHermesVoiceReplyText) { _, _ in
+            streamLatestHermesReplyIfNeeded()
         }
-        .onChange(of: controller.vm.isPostProcessing) { _, isPostProcessing in
-            if !isPostProcessing { speakLatestHermesReplyIfNeeded() }
-        }
-        .onChange(of: controller.vm.messages.last?.id ?? Int.min) { _, _ in
-            speakLatestHermesReplyIfNeeded()
+        .onChange(of: controller.vm.isAgentWorking) { _, _ in
+            streamLatestHermesReplyIfNeeded()
         }
         .onChange(of: controller.vm.sessionId) { _, sessionID in
             voiceController.handleSessionChange(to: sessionID)
@@ -317,6 +324,10 @@ struct ChatView: View {
     /// system's normal auto-lock behavior.
     private func updateVoiceIdleTimer() {
         UIApplication.shared.isIdleTimerDisabled = voiceController.mode == .voice
+    }
+
+    private func updateVoiceBackgroundActivity() {
+        coordinator?.setVoiceConversationActive(voiceController.shouldContinueInBackground)
     }
 
     /// Resolve a project absolute path to a `ProjectEntry` via the
@@ -934,18 +945,25 @@ struct ChatView: View {
         }
     }
 
-    private func speakLatestHermesReplyIfNeeded() {
-        guard !controller.vm.isGenerating,
-              !controller.vm.isPostProcessing,
-              let message = controller.vm.messages.last(where: {
-                  $0.isAssistant
-                      && $0.id != 0
-                      && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-              }) else { return }
-        voiceController.speakHermesReply(
+    private var currentHermesVoiceReplyText: String {
+        guard let userIndex = controller.vm.messages.lastIndex(where: \HermesMessage.isUser) else {
+            return ""
+        }
+        return controller.vm.messages[controller.vm.messages.index(after: userIndex)...]
+            .lazy
+            .filter(\.isAssistant)
+            .map(\.content)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n\n")
+    }
+
+    private func streamLatestHermesReplyIfNeeded() {
+        let text = currentHermesVoiceReplyText
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        voiceController.observeHermesReply(
             sessionID: controller.vm.sessionId,
-            messageID: message.id,
-            text: message.content
+            text: text,
+            isComplete: !controller.vm.isAgentWorking
         )
     }
 
