@@ -98,7 +98,7 @@
         </picture>
         <picture class="hero-iphone">
           <img src="assets/screenshots/ios-chat.png"
-               alt="ScarfGo on iPhone — chat with the Hermes agent over SSH"
+               alt="Clawdia on iPhone — chat with the Hermes agent over SSH"
                width="430" height="932"
                decoding="async">
         </picture>
@@ -262,13 +262,13 @@
       </article>
     </section>
 
-    <!-- iOS / ScarfGo -->
+    <!-- iOS / Clawdia -->
     <section class="ios" id="ios" aria-labelledby="ios-title">
       <div class="ios-copy">
-        <p class="eyebrow">ScarfGo for iPhone</p>
+        <p class="eyebrow">Clawdia for iPhone</p>
         <h2 id="ios-title">Your Hermes agent, on your phone.</h2>
         <p>
-          ScarfGo is the native iOS companion to Scarf. It speaks SSH directly to your Hermes
+          Clawdia is the native iOS companion to Scarf. It speaks SSH directly to your Hermes
           host using <a href="https://github.com/orlandos-nl/Citadel" rel="noopener">Citadel</a> — a
           pure-Swift SSH stack, no companion service, no developer-controlled relay. Generate an
           Ed25519 keypair on the device, paste the public half into <code>authorized_keys</code>,
@@ -287,21 +287,21 @@
         </a>
       </div>
 
-      <div class="ios-gallery" role="list" aria-label="ScarfGo screenshots">
+      <div class="ios-gallery" role="list" aria-label="Clawdia screenshots">
         <div class="phone-frame" role="listitem">
-          <img src="assets/screenshots/ios-servers.png" alt="ScarfGo — server picker with two configured Hermes hosts" loading="lazy" decoding="async" width="430" height="932">
+          <img src="assets/screenshots/ios-servers.png" alt="Clawdia — server picker with two configured Hermes hosts" loading="lazy" decoding="async" width="430" height="932">
         </div>
         <div class="phone-frame" role="listitem">
-          <img src="assets/screenshots/ios-chat.png" alt="ScarfGo — chat with the Hermes agent" loading="lazy" decoding="async" width="430" height="932">
+          <img src="assets/screenshots/ios-chat.png" alt="Clawdia — chat with the Hermes agent" loading="lazy" decoding="async" width="430" height="932">
         </div>
         <div class="phone-frame" role="listitem">
-          <img src="assets/screenshots/ios-project-dashboard.png" alt="ScarfGo — project dashboard" loading="lazy" decoding="async" width="430" height="932">
+          <img src="assets/screenshots/ios-project-dashboard.png" alt="Clawdia — project dashboard" loading="lazy" decoding="async" width="430" height="932">
         </div>
         <div class="phone-frame" role="listitem">
-          <img src="assets/screenshots/ios-skills.png" alt="ScarfGo — skills browser" loading="lazy" decoding="async" width="430" height="932">
+          <img src="assets/screenshots/ios-skills.png" alt="Clawdia — skills browser" loading="lazy" decoding="async" width="430" height="932">
         </div>
         <div class="phone-frame" role="listitem">
-          <img src="assets/screenshots/ios-system.png" alt="ScarfGo — system tab" loading="lazy" decoding="async" width="430" height="932">
+          <img src="assets/screenshots/ios-system.png" alt="Clawdia — system tab" loading="lazy" decoding="async" width="430" height="932">
         </div>
       </div>
     </section>
@@ -370,7 +370,7 @@
         </article>
 
         <article class="download-card">
-          <h3>ScarfGo for iPhone</h3>
+          <h3>Clawdia for iPhone</h3>
           <p class="download-meta">iOS 18.0 or later · iPhone · public TestFlight</p>
           <ul class="download-points">
             <li>Pure-Swift SSH — no companion service required</li>
@@ -401,7 +401,7 @@
         <details>
           <summary>What is Scarf?</summary>
           <div>
-            <p>Scarf is a native macOS and iOS GUI for the <a href="https://github.com/hermes-ai/hermes-agent" rel="noopener">Hermes AI agent</a>. It surfaces Hermes's sessions, projects, memory, skills, MCP servers, cron jobs, messaging gateways, logs, and configuration through a sidebar-driven Mac app and a tab-based iPhone companion called ScarfGo.</p>
+            <p>Scarf is a native macOS and iOS GUI for the <a href="https://github.com/hermes-ai/hermes-agent" rel="noopener">Hermes AI agent</a>. It surfaces Hermes's sessions, projects, memory, skills, MCP servers, cron jobs, messaging gateways, logs, and configuration through a sidebar-driven Mac app and a tab-based iPhone companion called Clawdia.</p>
           </div>
         </details>
 
@@ -422,21 +422,21 @@
         <details>
           <summary>Is Scarf open source?</summary>
           <div>
-            <p>Yes. Both Scarf and ScarfGo are <a href="https://github.com/awizemann/scarf/blob/main/LICENSE" rel="noopener">MIT licensed</a> and built from the same open repository at <a href="https://github.com/awizemann/scarf" rel="noopener">github.com/awizemann/scarf</a>. There are no closed-source components and no telemetry.</p>
+            <p>Yes. Both Scarf and Clawdia are <a href="https://github.com/awizemann/scarf/blob/main/LICENSE" rel="noopener">MIT licensed</a> and built from the same open repository at <a href="https://github.com/awizemann/scarf" rel="noopener">github.com/awizemann/scarf</a>. There are no closed-source components and no telemetry.</p>
           </div>
         </details>
 
         <details>
           <summary>What macOS and iOS versions are supported?</summary>
           <div>
-            <p>Scarf for Mac requires macOS 14.6 Sonoma or later, on Apple Silicon or Intel. ScarfGo for iPhone requires iOS 18.0 or later. Both are universal builds; there is no separate Apple Silicon download.</p>
+            <p>Scarf for Mac requires macOS 14.6 Sonoma or later, on Apple Silicon or Intel. Clawdia for iPhone requires iOS 18.0 or later. Both are universal builds; there is no separate Apple Silicon download.</p>
           </div>
         </details>
 
         <details>
-          <summary>How does ScarfGo connect to my Mac?</summary>
+          <summary>How does Clawdia connect to my Mac?</summary>
           <div>
-            <p>ScarfGo speaks SSH directly to your Hermes host using a pure-Swift SSH stack (Citadel). On first launch it generates an Ed25519 keypair on the device — the private key lives in the iOS Keychain (with <code>kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly</code>) and is excluded from iCloud sync. Paste the public key into the host's <code>~/.ssh/authorized_keys</code>, and ScarfGo can run <code>hermes acp</code> over the SSH session for chat and read the SQLite database for everything else. There is no companion service or developer-controlled relay.</p>
+            <p>Clawdia speaks SSH directly to your Hermes host using a pure-Swift SSH stack (Citadel). On first launch it generates an Ed25519 keypair on the device — the private key lives in the iOS Keychain (with <code>kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly</code>) and is excluded from iCloud sync. Paste the public key into the host's <code>~/.ssh/authorized_keys</code>, and Clawdia can run <code>hermes acp</code> over the SSH session for chat and read the SQLite database for everything else. There is no companion service or developer-controlled relay.</p>
           </div>
         </details>
 
@@ -450,21 +450,21 @@
         <details>
           <summary>Where are my conversations stored?</summary>
           <div>
-            <p>In Hermes's own data directory — <code>~/.hermes/state.db</code> for session history and <code>~/.hermes/sessions/session_*.json</code> for full transcripts. Scarf reads these files but never writes to <code>state.db</code>. ScarfGo reads them through SSH-initiated SQLite snapshots and never caches them locally on the device.</p>
+            <p>In Hermes's own data directory — <code>~/.hermes/state.db</code> for session history and <code>~/.hermes/sessions/session_*.json</code> for full transcripts. Scarf reads these files but never writes to <code>state.db</code>. Clawdia reads them through SSH-initiated SQLite snapshots and never caches them locally on the device.</p>
           </div>
         </details>
 
         <details>
           <summary>How do updates work?</summary>
           <div>
-            <p>Scarf for Mac uses <a href="https://sparkle-project.org/" rel="noopener">Sparkle</a> for in-app updates — signed and notarized zips with EdDSA signature verification. The appcast lives at <a href="appcast.xml">awizemann.github.io/scarf/appcast.xml</a>. ScarfGo updates through TestFlight in the usual way until it ships on the App Store.</p>
+            <p>Scarf for Mac uses <a href="https://sparkle-project.org/" rel="noopener">Sparkle</a> for in-app updates — signed and notarized zips with EdDSA signature verification. The appcast lives at <a href="appcast.xml">awizemann.github.io/scarf/appcast.xml</a>. Clawdia updates through TestFlight in the usual way until it ships on the App Store.</p>
           </div>
         </details>
 
         <details>
           <summary>Can I use Scarf with a remote or headless Hermes server?</summary>
           <div>
-            <p>Yes — that is one of the main use cases. Add the host through <strong>File → Open Server… → Add Server</strong> on Mac, or tap <strong>Add Server</strong> on the ScarfGo Servers tab. Scarf uses the system SSH config (Mac) or a device-generated key (iOS), so anything reachable through your normal terminal SSH workflow works without extra setup. The remote host needs <code>sqlite3</code> and <code>pgrep</code> on its <code>$PATH</code> and the SSH user needs read access to <code>~/.hermes/</code>.</p>
+            <p>Yes — that is one of the main use cases. Add the host through <strong>File → Open Server… → Add Server</strong> on Mac, or tap <strong>Add Server</strong> on the Clawdia Servers tab. Scarf uses the system SSH config (Mac) or a device-generated key (iOS), so anything reachable through your normal terminal SSH workflow works without extra setup. The remote host needs <code>sqlite3</code> and <code>pgrep</code> on its <code>$PATH</code> and the SSH user needs read access to <code>~/.hermes/</code>.</p>
           </div>
         </details>
 
@@ -556,7 +556,7 @@
       },
       {
         "@type": "MobileApplication",
-        "name": "ScarfGo",
+        "name": "Clawdia",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "iOS 18.0 or later",
         "description": "Native iPhone companion to Scarf. Multi-server Hermes management over SSH, project-aware chat, memory editor, cron browser, skills browser.",
@@ -582,7 +582,7 @@
             "name": "What is Scarf?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Scarf is a native macOS and iOS GUI for the Hermes AI agent. It surfaces Hermes's sessions, projects, memory, skills, MCP servers, cron jobs, messaging gateways, logs, and configuration through a sidebar-driven Mac app and a tab-based iPhone companion called ScarfGo."
+              "text": "Scarf is a native macOS and iOS GUI for the Hermes AI agent. It surfaces Hermes's sessions, projects, memory, skills, MCP servers, cron jobs, messaging gateways, logs, and configuration through a sidebar-driven Mac app and a tab-based iPhone companion called Clawdia."
             }
           },
           {
@@ -606,7 +606,7 @@
             "name": "Is Scarf open source?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes. Both Scarf and ScarfGo are MIT licensed and built from the same open repository at github.com/awizemann/scarf. There are no closed-source components and no telemetry."
+              "text": "Yes. Both Scarf and Clawdia are MIT licensed and built from the same open repository at github.com/awizemann/scarf. There are no closed-source components and no telemetry."
             }
           },
           {
@@ -614,15 +614,15 @@
             "name": "What macOS and iOS versions are supported?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Scarf for Mac requires macOS 14.6 Sonoma or later, on Apple Silicon or Intel. ScarfGo for iPhone requires iOS 18.0 or later. Both are universal builds."
+              "text": "Scarf for Mac requires macOS 14.6 Sonoma or later, on Apple Silicon or Intel. Clawdia for iPhone requires iOS 18.0 or later. Both are universal builds."
             }
           },
           {
             "@type": "Question",
-            "name": "How does ScarfGo connect to my Mac?",
+            "name": "How does Clawdia connect to my Mac?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "ScarfGo speaks SSH directly to your Hermes host using Citadel, a pure-Swift SSH stack. On first launch it generates an Ed25519 keypair on the device — the private key lives in the iOS Keychain and never leaves the phone. Paste the public key into the host's authorized_keys and ScarfGo can run hermes acp over the SSH session for chat and read the SQLite database for everything else. There is no companion service or relay."
+              "text": "Clawdia speaks SSH directly to your Hermes host using Citadel, a pure-Swift SSH stack. On first launch it generates an Ed25519 keypair on the device — the private key lives in the iOS Keychain and never leaves the phone. Paste the public key into the host's authorized_keys and Clawdia can run hermes acp over the SSH session for chat and read the SQLite database for everything else. There is no companion service or relay."
             }
           },
           {
@@ -638,7 +638,7 @@
             "name": "Where are my conversations stored?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "In Hermes's own data directory — ~/.hermes/state.db for session history and ~/.hermes/sessions/session_*.json for full transcripts. Scarf reads these files but never writes to state.db. ScarfGo reads them through SSH-initiated SQLite snapshots and never caches them locally on the device."
+              "text": "In Hermes's own data directory — ~/.hermes/state.db for session history and ~/.hermes/sessions/session_*.json for full transcripts. Scarf reads these files but never writes to state.db. Clawdia reads them through SSH-initiated SQLite snapshots and never caches them locally on the device."
             }
           },
           {
@@ -646,7 +646,7 @@
             "name": "How do updates work?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Scarf for Mac uses Sparkle for in-app updates — signed and notarized zips with EdDSA signature verification. The appcast lives at awizemann.github.io/scarf/appcast.xml. ScarfGo updates through TestFlight in the usual way until it ships on the App Store."
+              "text": "Scarf for Mac uses Sparkle for in-app updates — signed and notarized zips with EdDSA signature verification. The appcast lives at awizemann.github.io/scarf/appcast.xml. Clawdia updates through TestFlight in the usual way until it ships on the App Store."
             }
           },
           {
@@ -654,7 +654,7 @@
             "name": "Can I use Scarf with a remote or headless Hermes server?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes. Add the host through File → Open Server… → Add Server on Mac, or Add Server on ScarfGo. Scarf uses the system SSH config (Mac) or a device-generated key (iOS), so anything reachable through normal terminal SSH works without extra setup. The remote host needs sqlite3 and pgrep on its PATH and the SSH user needs read access to ~/.hermes/."
+              "text": "Yes. Add the host through File → Open Server… → Add Server on Mac, or Add Server on Clawdia. Scarf uses the system SSH config (Mac) or a device-generated key (iOS), so anything reachable through normal terminal SSH works without extra setup. The remote host needs sqlite3 and pgrep on its PATH and the SSH user needs read access to ~/.hermes/."
             }
           },
           {
