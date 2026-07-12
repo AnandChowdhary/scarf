@@ -1,14 +1,14 @@
 ---
 id: t-ios-cfg-get
 title: iOS Settings: route config reads through the Hermes CLI wrapper for Docker hosts (config dir is in-container)
-status: todo
+status: done
 added: 2026-06-06
 source: gh#112 failure 2
 ---
 
 ## Description
 
-
+DONE 2026-07-12, commit 5dc1c55 on main (unreleased). Implemented per the corrected plan: HermesConfigReader (ScarfCore, remote-only) — (1) direct read, (2) cat "$(hermes config path)" in ONE wrapper shell (covers HERMES_HOME overrides + bind-mounted homes), (3) hermes config show Model-line probe (Python-dict repr, per-key regex, either quote style) synthesizing a minimal model config — the only read that works for pure in-container Docker; enough to pass the chat preflight gate. Wired into IOSSettingsViewModel.load (with container-topology guidance message + bind-mount recipe) and iOS ChatView.passModelPreflight. Unit tests against real v0.17 config show output; M5 fake-hermes contexts got hermesBinaryHint=/nonexistent for hermeticity. Residual (needs bind mount, no code path possible): raw YAML view, memory files, state.db/Dashboard for in-container installs.
 
 ## Plan
 
