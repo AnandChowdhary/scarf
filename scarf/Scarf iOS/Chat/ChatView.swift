@@ -29,6 +29,7 @@ struct ChatView: View {
     @Environment(\.serverContext) private var envContext
     @Environment(\.hermesCapabilities) private var capabilitiesStore
     @State private var controller: ChatController
+    @State private var voiceController = IOSRealtimeVoiceController()
     @State private var showProjectPicker = false
     @State private var showSlashCommandsSheet = false
     /// Drives the inline slash-command autocomplete above the composer.
@@ -158,6 +159,9 @@ struct ChatView: View {
                 }
             )
         }
+        .sheet(isPresented: $voiceController.showsCredentialSheet) {
+            realtimeCredentialSheet
+        }
         // Forward the env-injected capabilities snapshot into the
         // shared `RichChatViewModel` whenever it changes. Drives the
         // capability gate `RichChatViewModel.availableCommands` reads.
@@ -216,7 +220,20 @@ struct ChatView: View {
         // app backgrounds; sees Chat after resume).
         .onChange(of: coordinator?.scenePhaseTick) { _, _ in
             guard let phase = coordinator?.scenePhase else { return }
+            if phase != .active { voiceController.resetVoiceTurn() }
             Task { await controller.handleScenePhase(phase) }
+        }
+        .onChange(of: controller.vm.isGenerating) { _, isGenerating in
+            if !isGenerating { speakLatestHermesReplyIfNeeded() }
+        }
+        .onChange(of: controller.vm.isPostProcessing) { _, isPostProcessing in
+            if !isPostProcessing { speakLatestHermesReplyIfNeeded() }
+        }
+        .onChange(of: controller.vm.messages.last?.id ?? Int.min) { _, _ in
+            speakLatestHermesReplyIfNeeded()
+        }
+        .onChange(of: controller.vm.sessionId) { _, sessionID in
+            voiceController.handleSessionChange(to: sessionID)
         }
         // Deliberately NOT tearing down the ACP session on .onDisappear.
         // `TabView` unmounts tab content when the user switches tabs
@@ -572,7 +589,8 @@ struct ChatView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: ScarfSpace.s2) {
-            if showSlashMenu {
+            composerModePicker
+            if voiceController.mode == .text, showSlashMenu {
                 IOSSlashCommandMenu(
                     commands: filteredSlashCommands,
                     agentHasCommands: !controller.vm.availableCommands.isEmpty,
@@ -593,10 +611,15 @@ struct ChatView: View {
                 .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 2)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
-            if !controller.attachments.isEmpty || isEncodingAttachment || attachmentError != nil {
+            if voiceController.mode == .text,
+               (!controller.attachments.isEmpty || isEncodingAttachment || attachmentError != nil) {
                 attachmentStrip
             }
-            composerRow
+            if voiceController.mode == .text {
+                composerRow
+            } else {
+                voiceComposer
+            }
         }
         .padding(.horizontal, ScarfSpace.s3)
         .padding(.top, ScarfSpace.s2)
@@ -619,6 +642,187 @@ struct ChatView: View {
             ingestPickerItems(items)
         }
         #endif
+    }
+
+    private var composerModePicker: some View {
+        HStack(spacing: ScarfSpace.s2) {
+            Picker(
+                "Composer mode",
+                selection: Binding(
+                    get: { voiceController.mode },
+                    set: { voiceController.selectMode($0) }
+                )
+            ) {
+                ForEach(IOSRealtimeVoiceController.ComposerMode.allCases) { mode in
+                    Label(mode.rawValue, systemImage: mode == .text ? "keyboard" : "waveform")
+                        .tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if voiceController.mode == .voice {
+                Button {
+                    voiceController.apiKeyDraft = ""
+                    voiceController.showsCredentialSheet = true
+                } label: {
+                    Image(systemName: "key")
+                        .frame(width: 36, height: 32)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Manage OpenAI API key")
+            }
+        }
+    }
+
+    private var voiceComposer: some View {
+        VStack(spacing: ScarfSpace.s2) {
+            Text(voiceController.statusTitle)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(ScarfColor.foregroundPrimary)
+
+            Button {
+                if voiceController.phase == .speaking {
+                    voiceController.stopSpeaking()
+                } else {
+                    voiceController.toggleRecording { transcript in
+                        voiceController.noteHermesSend(sessionID: controller.vm.sessionId)
+                        controller.draft = transcript
+                        await controller.send()
+                    }
+                }
+            } label: {
+                Image(systemName: voiceButtonSymbol)
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(voiceButtonForeground)
+                    .frame(width: 72, height: 72)
+                    .background(Circle().fill(voiceButtonBackground))
+                    .overlay(
+                        Circle().strokeBorder(
+                            voiceController.phase == .recording
+                                ? ScarfColor.danger.opacity(0.35)
+                                : ScarfColor.borderStrong,
+                            lineWidth: 1
+                        )
+                    )
+                    .contentShape(Circle())
+                    .symbolEffect(.pulse, isActive: voiceController.phase == .recording)
+            }
+            .buttonStyle(.plain)
+            .disabled(
+                controller.state != .ready
+                    || (!voiceController.canRecord && voiceController.phase != .speaking)
+            )
+            .accessibilityLabel(voiceButtonHelp)
+
+            Text("gpt-realtime audio · Hermes agent")
+                .font(.caption2)
+                .foregroundStyle(ScarfColor.foregroundMuted)
+
+            if let error = voiceController.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(ScarfColor.danger)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, ScarfSpace.s2)
+    }
+
+    private var voiceButtonSymbol: String {
+        switch voiceController.phase {
+        case .recording: return "stop.fill"
+        case .speaking: return "speaker.slash.fill"
+        case .transcribing, .waitingForHermes: return "ellipsis"
+        case .idle: return "mic.fill"
+        }
+    }
+
+    private var voiceButtonHelp: String {
+        switch voiceController.phase {
+        case .recording: return "Stop recording and send to Hermes"
+        case .speaking: return "Stop spoken response"
+        case .transcribing, .waitingForHermes: return voiceController.statusTitle
+        case .idle: return "Start voice message"
+        }
+    }
+
+    private var voiceButtonBackground: Color {
+        switch voiceController.phase {
+        case .recording: return ScarfColor.danger
+        case .idle, .speaking: return ScarfColor.accent
+        case .transcribing, .waitingForHermes: return ScarfColor.backgroundTertiary
+        }
+    }
+
+    private var voiceButtonForeground: Color {
+        switch voiceController.phase {
+        case .transcribing, .waitingForHermes: return ScarfColor.foregroundFaint
+        default: return ScarfColor.onAccent
+        }
+    }
+
+    private var realtimeCredentialSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField(
+                        voiceController.hasAPIKey ? "Enter a replacement key" : "sk-…",
+                        text: $voiceController.apiKeyDraft
+                    )
+                    if let error = voiceController.errorMessage {
+                        Text(error).foregroundStyle(ScarfColor.danger)
+                    }
+                } header: {
+                    Text("OpenAI API key")
+                } footer: {
+                    Text("Stored only in this device's Keychain. OpenAI Realtime handles transcription and speech; your conversation and agent tools still run through Hermes.")
+                }
+
+                if voiceController.hasAPIKey {
+                    Section {
+                        Button("Forget Key", role: .destructive) {
+                            voiceController.forgetAPIKey()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Realtime Voice")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        voiceController.apiKeyDraft = ""
+                        voiceController.showsCredentialSheet = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(voiceController.hasAPIKey ? "Replace" : "Save") {
+                        voiceController.saveAPIKey()
+                    }
+                    .disabled(
+                        voiceController.apiKeyDraft
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                            .isEmpty
+                    )
+                }
+            }
+        }
+    }
+
+    private func speakLatestHermesReplyIfNeeded() {
+        guard !controller.vm.isGenerating,
+              !controller.vm.isPostProcessing,
+              let message = controller.vm.messages.last(where: {
+                  $0.isAssistant
+                      && $0.id != 0
+                      && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              }) else { return }
+        voiceController.speakHermesReply(
+            sessionID: controller.vm.sessionId,
+            messageID: message.id,
+            text: message.content
+        )
     }
 
     @ViewBuilder
