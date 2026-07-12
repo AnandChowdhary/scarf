@@ -19,6 +19,15 @@
   <a href="https://www.buymeacoffee.com/awizemann"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="28"></a>
 </p>
 
+## What's New in 2.16.1
+
+A focused connection-reliability patch.
+
+- **Remotes heal themselves** — a remote that "stopped working after a while" was a dead SSH ControlMaster holding its socket: every subsequent ssh hung on the corpse, and only removing and re-adding the server reset it. Scarf now probes the master on chat failures, before reconnect attempts, and on wake from sleep — resetting only provably dead connections, so a plain retry just works. ([#123](https://github.com/awizemann/scarf/issues/123))
+- **Hermes-in-Docker configs are readable** — when `~/.hermes` lives inside a container, config reads now fall back through the Hermes CLI wrapper (`config path`, then a `config show` probe), so the chat preflight stops demanding a model that's already configured and Settings explains the bind-mount fix instead of "not found". Ships to ScarfGo with the next TestFlight build. ([#112](https://github.com/awizemann/scarf/issues/112))
+
+See the full [v2.16.1 release notes](https://github.com/awizemann/scarf/releases/tag/v2.16.1).
+
 ## What's New in 2.16.0
 
 Scarf now targets the **Hermes v0.18 line** — audited against v0.18.0 (v2026.7.1) and re-audited against the v0.18.1/v0.18.2 patches — and the audits fixed long-standing bugs along the way.

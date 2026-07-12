@@ -530,6 +530,21 @@ final class ChatViewModel {
         await richChatViewModel.recordACPFailure(error, client: client)
     }
 
+    /// gh#123: a remote start failure or dead stream usually means the
+    /// shared ControlMaster TCP session died with it (sleep/wake, network
+    /// change) while the master keeps holding its socket — every retry
+    /// then hangs on the corpse and the chat reads as permanently stuck.
+    /// Do explicitly what remove-and-re-add did as a side effect: probe
+    /// the master and tell a dead one to exit so the next attempt
+    /// handshakes fresh. No-op on Local and when no master exists.
+    private func recoverRemoteTransportAfterFailure() async {
+        let ctx = context
+        guard ctx.isRemote else { return }
+        await Task.detached(priority: .utility) {
+            (ctx.makeTransport() as? SSHTransport)?.recoverControlMasterIfDead()
+        }.value
+    }
+
     // MARK: - Session Lifecycle
 
     func startNewSession(projectPath: String? = nil) {
@@ -787,6 +802,7 @@ final class ChatViewModel {
                 await recordACPFailure(error, client: client, context: "Auto-start ACP failed")
                 hasActiveProcess = false
                 acpClient = nil
+                await recoverRemoteTransportAfterFailure()
             }
         }
     }
@@ -1348,6 +1364,7 @@ final class ChatViewModel {
                 await recordACPFailure(error, client: client, context: "Failed to start ACP session")
                 hasActiveProcess = false
                 acpClient = nil
+                await recoverRemoteTransportAfterFailure()
             }
         }
     }
@@ -1447,6 +1464,17 @@ final class ChatViewModel {
             // across retry attempts.
             let knownProject = self.currentProjectPath
             let ctx = self.context
+
+            // gh#123: the stream just died — on a remote that usually
+            // means the ControlMaster's TCP died with it. Reset a dead
+            // master BEFORE the attribution read below and the reconnect
+            // attempts, or every one of them (and the read itself) hangs
+            // on the corpse and the retry loop burns out against a
+            // connection that can never succeed. Surface a status first —
+            // the probe can take up to ~15s when the master is wedged.
+            acpStatus = "Reconnecting…"
+            await recoverRemoteTransportAfterFailure()
+
             let projectPath = await Task.detached {
                 SessionAttributionService(context: ctx).resolveProjectPath(known: knownProject, sessionID: sessionId)
             }.value

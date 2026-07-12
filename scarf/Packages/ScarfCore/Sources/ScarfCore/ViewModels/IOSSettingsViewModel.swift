@@ -39,14 +39,29 @@ public final class IOSSettingsViewModel {
         let ctx = context
         let path = ctx.paths.configYAML
 
+        // Direct file read, then the `cat "$(hermes config path)"`
+        // wrapper fallback — covers HERMES_HOME overrides and wrappers
+        // whose config lives somewhere the default path guess misses
+        // (gh#112).
         let text: String? = await Task.detached {
-            ctx.readText(path)
+            HermesConfigReader.readRawConfig(context: ctx)
         }.value
 
         guard let text else {
-            config = .empty
+            // Neither read found the file. If the Hermes CLI still
+            // answers, the install is containerized (Docker et al.) —
+            // the file exists only inside the container, invisible to
+            // the file transport. Populate what the CLI can tell us
+            // (the model section) and explain the topology instead of
+            // the misleading "not found" (gh#112 failure 2).
+            let probed: HermesConfig? = await Task.detached {
+                HermesConfigReader.probeModelConfig(context: ctx)
+            }.value
+            config = probed ?? .empty
             rawYAML = ""
-            lastError = "`\(path)` not found on \(ctx.displayName). Once Hermes is configured on this host, Settings will light up."
+            lastError = probed != nil
+                ? "Hermes answers on \(ctx.displayName), but its config.yaml isn't visible over the file transport — it likely lives inside a container. Model settings above were read via the Hermes CLI. To unlock full Settings, bind-mount the container's Hermes home to `~/.hermes` on this host (or add the server again with Advanced → Remote home pointed at the mounted path)."
+                : "`\(path)` not found on \(ctx.displayName). Once Hermes is configured on this host, Settings will light up."
             isLoading = false
             return
         }

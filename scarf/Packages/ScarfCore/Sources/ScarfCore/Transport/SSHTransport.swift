@@ -137,6 +137,39 @@ public struct SSHTransport: ServerTransport {
         _ = try? runLocal(executable: sshBinary, args: args, stdin: nil, timeout: 10)
     }
 
+    /// Recover from a ControlMaster whose TCP session died while its master
+    /// lingers holding the socket — the post-sleep/network-change state
+    /// behind gh#123. `ControlMaster=auto` routes every subsequent ssh
+    /// through the corpse, where it hangs for its full timeout, so a
+    /// "worked yesterday" remote reads as permanently stuck; until now the
+    /// only path that issued `-O exit` was removing the server.
+    ///
+    /// Two steps so healthy masters are spared: `-O check` asks whether a
+    /// master owns the socket at all (local round-trip, no TCP), and only
+    /// when one does, a trivial muxed remote command probes the session
+    /// behind it. A hang or non-zero exit → `-O exit`, so the next caller
+    /// handshakes fresh instead of joining the corpse.
+    public func recoverControlMasterIfDead(probeTimeout: TimeInterval = 10) {
+        ensureControlDir()
+        let check = try? runLocal(
+            executable: sshBinary,
+            args: sshArgs(extra: ["-O", "check", hostSpec]),
+            stdin: nil,
+            timeout: 5
+        )
+        guard let check, check.exitCode == 0 else { return }
+
+        let probe = try? runLocal(
+            executable: sshBinary,
+            args: sshArgs(extra: [hostSpec, "true"]),
+            stdin: nil,
+            timeout: probeTimeout
+        )
+        if (probe?.exitCode ?? 1) != 0 {
+            closeControlMaster()
+        }
+    }
+
     /// Common ssh options used by every invocation. Keep every `-o` flag
     /// here so we never drift between calls.
     ///

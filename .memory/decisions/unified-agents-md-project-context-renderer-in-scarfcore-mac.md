@@ -31,6 +31,13 @@ Do NOT add a second/divergent block renderer. Any change to block content goes i
 
 ScarfCore 775/775; new `ProjectContextBlockManagedTests` (cron filter/format, config fields secret-safe, full block, idempotency); `M9SlashCommandTests` migrated to the unified renderer; Mac `ProjectAgentContextServiceTests` 13/13 (byte parity + secret-safety + idempotency); iOS app `scarf mobile` builds. Commit f738298 (after the process-cwd fix a58a1cf).
 
+## Observations
+- [decision] ONE renderer for the Scarf-managed AGENTS.md block — ProjectContextBlock.renderManagedBlock in ScarfCore, fed by ProjectStore.renderAgentContextBlock; both Mac and iOS call it so they emit byte-identical blocks #projects
+- [gotcha] Before unification, iOS's renderMinimalBlock (name/dir/dashboard/slash only) OVERWROTE the richer Mac block on a project-chat start → cron/config vanished from the agent's context, flip-flopping by last-writer #ios
+- [done] renderMinimalBlock DELETED; Mac's ProjectAgentContextService.renderBlock is now a thin delegate to ProjectStore.renderAgentContextBlock with byte-identical output #projects
+- [constraint] Invariant: do NOT add a second/divergent block renderer — all block-content changes go in renderManagedBlock + shared formatters so Mac and iOS stay byte-identical #projects
+- [fact] The iOS resume path previously wrote NO block; it now refreshes cron/config on every project-scoped start, matching the Mac's rewrite-on-every-start #ios
+
 ## Relations
 - relates_to [[scarf/architecture/scarfgo-ios-does-not-load-project-context-process-cwd-gap]]
 - relates_to [[scarf/features/project-scoped-chat-and-agents.md-context]]

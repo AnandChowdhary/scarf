@@ -4,8 +4,11 @@ type: note
 permalink: scarf/architecture/scarfgo-ios-does-not-load-project-context-process-cwd-gap
 created: 2026-06-28
 updated: 2026-06-28
-source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
+source_sha: 2b9ef15cdddcb1fde12a88556bf755a623ae7758
 source_paths: AGENTS.md, CLAUDE.md, scarf/scarf/Core/Services/ACPClient+Mac.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Transport/SSHTransport.swift, scarf/Packages/ScarfIOS/Sources/ScarfIOS/ACPClient+iOS.swift
+status: resolved
+reviewed: 2026-07-12
+reviewed_by: audit:claude-code (audit)
 ---
 
 ## Summary
@@ -32,6 +35,13 @@ Silent correctness bug with **misleading UI**: iOS shows the project chip + git-
 
 ## Fix shape (small, localized)
 Thread `projectCwd` into `forIOSApp` → `makeSSHExecChannel`, and prepend `cd <quoted projectCwd>; ` before `PATH=… exec hermes acp`. `SSHExecACPChannel`'s own doc (line 57-58) anticipates a leading `cd …;`. Mirror SSHTransport's choices: `;` not `&&` (stale/missing dir degrades to home instead of failing the session) and `remotePathArg`-style quoting (`~/`→`$HOME/`, double-quote spaces/metachars). Apply to BOTH the new-chat (`startInternal`, projectPath branch) and resume paths. Caveat: keep working over the profile `HERMES_HOME=` prefix — `cd X; PATH=… HERMES_HOME=… exec hermes acp` is valid.
+
+## Observations
+- [gotcha] The macOS "project chat loads project context" fix (b421280 new-chat + 5538e30 resume) is NOT mirrored on iOS — a project chat spawns hermes acp from the SSH user's HOME, so the project's AGENTS.md/CLAUDE.md/.cursorrules are never loaded #ios #scarfgo
+- [root-cause] Hermes reads the first matching context file from the hermes acp PROCESS cwd, not the ACP session/new cwd; iOS setting the session cwd via newSession(cwd:) does NOT trigger context loading #ios
+- [fact] ACPClient.forIOSApp has no projectCwd param and builds its command with no `cd`, unlike forMacApp which sets currentDirectoryURL locally / prepends `cd <cwd>;` remotely (SSHTransport.makeProcess is #if !os(iOS)) #ios
+- [gotcha] Silent correctness bug with misleading UI — iOS shows the project chip, git branch, and slash-commands (plus a yellow banner if the AGENTS.md write fails), all implying project context the agent does not actually have #ios
+- [todo] Fix: thread projectCwd into forIOSApp → makeSSHExecChannel and prepend `cd <quoted projectCwd>;` before hermes acp on BOTH new-chat and resume paths, using `;` not `&&` and $HOME-style quoting #ios
 
 ## Relations
 - relates_to [[scarf/features/project-scoped-chat-and-agents.md-context]]

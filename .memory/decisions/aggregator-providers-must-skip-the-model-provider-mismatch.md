@@ -4,11 +4,11 @@ type: note
 permalink: scarf/decisions/aggregator-providers-must-skip-the-model-provider-mismatch
 created: 2026-07-03
 updated: 2026-07-04
-source_sha: cc5d3945a2d0813c6559f9a538a83425582641c2
-source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelPreflight.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelCatalogService.swift, scarf/scarf/Features/Chat/ViewModels/ChatViewModel.swift, scarf/scarf/Features/Chat/Views/ChatView.swift, scripts/check-hermes-tables.py
+source_sha: 2b9ef15cdddcb1fde12a88556bf755a623ae7758
+source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelPreflight.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/ModelCatalogService.swift, scripts/check-hermes-tables.py
 source_paths_inferred: false
-reviewed: 2026-07-04
-reviewed_by: claude-fable-5
+reviewed: 2026-07-12
+reviewed_by: audit:claude-code (audit)
 ---
 
 ## Observations
@@ -38,4 +38,4 @@ reviewed_by: claude-fable-5
 
 ## v0.17 re-verification (2026-07-04, post-v2.15.1 cut)
 - [fact] check-hermes-tables.py also passes against the ACTUAL Hermes target tag v2026.6.19 (v0.17.0) via `git show v2026.6.19:hermes_cli/providers.py` — ALIASES and aggregator overlay data are byte-identical v0.16→v0.17, so v2.15.1 shipped correct tables despite the vendored checkout sitting on v0.16.0. #verified
-- [gotcha] Hermes v0.17 changed `is_aggregator()` behavior: it now normalizes aliases first and returns True for any `custom:`-prefixed provider. ModelPreflight's aggregator skip does NOT mirror the custom: rule — a custom provider (e.g. LiteLLM proxy) serving org/model IDs can still raise the false mismatch banner on Scarf while Hermes accepts the config. Follow-up task t-ed3700b2. #gotcha
+- [done] Hermes v0.17 changed `is_aggregator()` to normalize aliases first and return True for any `custom:`-prefixed provider. ModelPreflight now MIRRORS this: `detectMismatch` skips `custom` and any `custom:*` provider outright (ModelPreflight.swift:122-123, citing Hermes #48305), so a custom provider (e.g. LiteLLM proxy) serving org/model IDs no longer raises the false mismatch banner. Landed via task t-ed3700b2 (TASKS.md Done). #fixed
