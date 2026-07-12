@@ -13,8 +13,8 @@ tags:
 - acp
 created: 2026-06-16
 updated: 2026-06-16
-source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
-reviewed: 2026-06-28
+source_sha: 2b9ef15cdddcb1fde12a88556bf755a623ae7758
+reviewed: 2026-07-12
 reviewed_by: audit:claude-code (audit)
 source_paths: scarf/Packages/ScarfCore/Sources/ScarfCore/Services/MiniAppBridge.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/MiniAppService.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/MiniAppGrantStore.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/MiniAppAssetResolver.swift, scarf/scarf/Features/Projects/MiniApp/ScarfMiniAppBridge.swift, scarf/scarf/Features/Projects/MiniApp/MiniAppSchemeHandler.swift
 ---

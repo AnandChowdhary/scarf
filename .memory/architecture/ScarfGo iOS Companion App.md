@@ -6,11 +6,11 @@ tags:
 - ios
 - scarfgo
 - ssh
-source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
+source_sha: 2b9ef15cdddcb1fde12a88556bf755a623ae7758
 source_paths: README.md, scarf/scarf.xcodeproj/project.pbxproj, scarf/Packages/ScarfDesign, scarf/Packages/ScarfIOS
 updated: 2026-06-25
 created: 2026-05-29
-reviewed: 2026-06-28
+reviewed: 2026-07-12
 reviewed_by: audit:claude-code (audit)
 ---
 

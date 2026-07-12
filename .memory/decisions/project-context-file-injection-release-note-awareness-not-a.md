@@ -4,13 +4,16 @@ type: note
 permalink: scarf/decisions/project-context-file-injection-release-note-awareness-not-a
 created: 2026-06-28
 updated: 2026-06-28
-source_sha: 40f8d1c9d4836d5854e0964e08d71d77d528b533
-source_paths: scarf/scarf/Features/Chat/ViewModels/ChatViewModel.swift, scarf/scarf/Core/Services/ProjectAgentContextService.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Services/MiniAppGrantStore.swift
+source_sha: 2b9ef15cdddcb1fde12a88556bf755a623ae7758
+source_paths: scarf/scarf/Features/Projects/MiniApp/MiniAppAgentSession.swift, wiki/Release-Notes-Index.md
 tags:
 - security
 - projects
 - design-decision
 - hermes-context-files
+reviewed: 2026-07-12
+reviewed_by: audit:claude-code (audit)
+source_paths_inferred: false
 ---
 
 ## Context
@@ -28,9 +31,9 @@ Opening a project chat spawns `hermes acp` with cwd = the project dir (shipped i
 - **A gate fights t-24594c4a.** The safe version ("don't load context until trusted") would degrade EVERY project chat to "no project context until you click trust" — friction on the primary action for a user-chosen, Hermes-mitigated threat.
 - **Awareness already partly exists.** The chat header project chip (currentProjectName, from t-24594c4a) signals chat↔project scope; a release-note line closes the remaining awareness gap.
 
-## Finalized release-note line — queued for the next release (t-cea43144)
+## Finalized release-note line — SHIPPED in v2.15.0 (t-cea43144)
 
-**Status (2026-06-28):** FINAL and **chat-only**, reconciled with t-0b850b5b (shipped option (b) — mini-app agents deliberately do NOT load project context). The chat context-loading behavior is **unreleased** — commits `b421280` ("load project AGENTS.md in ACP chats — spawn hermes acp with cwd=project") and `5538e30` ("project cwd for resume/reconnect/auto-start chats") sit in `v2.13.0..main` — so this line ships with the **next** cut (first release after v2.13.0). Queued as board task **t-cea43144** so the next `scarf-release-prep` folds it into the security/awareness area of `RELEASE_NOTES.md` instead of rendering it as a plain feature bullet that drops the trust caution. Verbatim line below.
+**Status (shipped v2.15.0, 2026-06-28):** FINAL and **chat-only**, reconciled with t-0b850b5b (shipped option (b) — mini-app agents deliberately do NOT load project context). The chat context-loading commits `b421280` ("load project AGENTS.md in ACP chats — spawn hermes acp with cwd=project") and `5538e30` ("project cwd for resume/reconnect/auto-start chats") shipped in **v2.15.0** ("Projects grow up"), the first cut after v2.13.0, and this awareness line shipped with them — folded into the security/awareness framing of the release notes (v2.15.0 verbatim: "treat a project's context files like its code — only open chats in projects you trust (mini-apps deliberately do **not** load them)") rather than a plain feature bullet that would drop the trust caution. Board task **t-cea43144** is closed. Original verbatim line below.
 
 ### Scope: chats only — does NOT need to expand to mini-apps (t-0b850b5b, 2026-06-28)
 
@@ -51,7 +54,7 @@ Revisit a first-open trust affordance (persisted per project id, mirroring the m
 - [fact] Opening a project chat spawns hermes acp with cwd=project dir, so Hermes auto-loads that project's AGENTS.md/CLAUDE.md/.cursorrules from the PROCESS cwd into the system prompt — an untrusted repo's hostile context file becomes a prompt-injection vector #hermes-context-files
 - [constraint] Context files are DATA injected into the prompt, not capabilities — categorically different from agent-generated mini-apps, which DO get a per-(projectId,miniAppId) permission gate #projects
 - [fact] MiniAppAgentSession spawns hermes acp with NO projectCwd, so mini-app agents deliberately do NOT load project context; the awareness line is chats-only and need not expand to mini-apps #mini-apps
-- [convention] The finalized awareness line is queued as board task t-cea43144 so scarf-release-prep folds it into the security/awareness area of RELEASE_NOTES.md rather than a plain feature bullet #release-notes
+- [done] The awareness line SHIPPED in v2.15.0 (2026-06-28), folded into the security/awareness framing of the release notes ("treat a project's context files like its code — only open chats in projects you trust; mini-apps deliberately do not load them"); board task t-cea43144 closed #release-notes
 
 ## Relations
 - relates_to [[phase-1-milestone-2-mini-apps-implementation-decisions]]

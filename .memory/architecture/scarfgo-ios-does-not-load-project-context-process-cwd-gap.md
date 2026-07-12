@@ -4,8 +4,11 @@ type: note
 permalink: scarf/architecture/scarfgo-ios-does-not-load-project-context-process-cwd-gap
 created: 2026-06-28
 updated: 2026-06-28
-source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
+source_sha: 2b9ef15cdddcb1fde12a88556bf755a623ae7758
 source_paths: AGENTS.md, CLAUDE.md, scarf/scarf/Core/Services/ACPClient+Mac.swift, scarf/Packages/ScarfCore/Sources/ScarfCore/Transport/SSHTransport.swift, scarf/Packages/ScarfIOS/Sources/ScarfIOS/ACPClient+iOS.swift
+status: resolved
+reviewed: 2026-07-12
+reviewed_by: audit:claude-code (audit)
 ---
 
 ## Summary

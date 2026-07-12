@@ -6,11 +6,11 @@ tags:
 - release
 - sparkle
 - distribution
-source_sha: 64bb87b88f785636aea2386ba3837723f7b81eec
+source_sha: 2b9ef15cdddcb1fde12a88556bf755a623ae7758
 source_paths: scripts/release.sh, README.md
 created: 2026-05-29
 updated: 2026-06-06
-reviewed: 2026-06-28
+reviewed: 2026-07-12
 reviewed_by: audit:claude-code (audit)
 ---
 
