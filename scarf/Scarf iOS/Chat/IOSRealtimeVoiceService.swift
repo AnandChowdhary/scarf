@@ -676,6 +676,16 @@ actor IOSRealtimeClient {
     }
 }
 
+nonisolated enum IOSRealtimeAudioRoutePolicy {
+    /// `.defaultToSpeaker` normally promotes a receiver route to the
+    /// loudspeaker, but iOS can retain the receiver across audio-engine and
+    /// route transitions. Only repair that one built-in route: connected
+    /// Bluetooth, wired, AirPlay, and other outputs must remain selected.
+    static func shouldOverrideToSpeaker(outputPortTypes: [AVAudioSession.Port]) -> Bool {
+        outputPortTypes == [.builtInReceiver]
+    }
+}
+
 @MainActor
 enum IOSRealtimeAudioSession {
     private static var continuousVoiceHoldsSession = false
@@ -689,6 +699,7 @@ enum IOSRealtimeAudioSession {
                 options: [.defaultToSpeaker, .allowBluetoothHFP]
             )
             try session.setActive(true)
+            try enforceSpeakerDefault(on: session)
         } catch {
             let code = (error as NSError).code
             switch code {
@@ -701,6 +712,18 @@ enum IOSRealtimeAudioSession {
                 throw error
             }
         }
+    }
+
+    static func enforceSpeakerDefault() throws {
+        try enforceSpeakerDefault(on: AVAudioSession.sharedInstance())
+    }
+
+    private static func enforceSpeakerDefault(on session: AVAudioSession) throws {
+        let outputPortTypes = session.currentRoute.outputs.map(\.portType)
+        guard IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
+            outputPortTypes: outputPortTypes
+        ) else { return }
+        try session.overrideOutputAudioPort(.speaker)
     }
 
     static func beginContinuousVoice() throws {
@@ -2064,6 +2087,11 @@ final class IOSRealtimeVoiceController {
         case .routeUnavailable:
             pauseConversation(for: .routeUnavailable)
         case .routeAvailable:
+            do {
+                try IOSRealtimeAudioSession.enforceSpeakerDefault()
+            } catch {
+                errorMessage = "Clawdia couldn't switch audio to the loudspeaker: \(error.localizedDescription)"
+            }
             switch conversationPauseReason {
             case .outputDisconnected, .routeUnavailable, .mediaServices:
                 resumeConversation()

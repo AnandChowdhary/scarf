@@ -213,6 +213,27 @@ struct Scarf_iOSTests {
         #expect(available == .routeAvailable)
     }
 
+    @Test func voiceAudioOverridesOnlyTheBuiltInReceiverToSpeaker() {
+        #expect(IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
+            outputPortTypes: [.builtInReceiver]
+        ))
+        #expect(!IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
+            outputPortTypes: [.builtInSpeaker]
+        ))
+        #expect(!IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
+            outputPortTypes: [.bluetoothHFP]
+        ))
+        #expect(!IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
+            outputPortTypes: [.headphones]
+        ))
+        #expect(!IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
+            outputPortTypes: [.airPlay]
+        ))
+        #expect(!IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
+            outputPortTypes: [.builtInReceiver, .bluetoothHFP]
+        ))
+    }
+
     @Test func appDeclaresAudioBackgroundMode() {
         let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
         #expect(modes?.contains("audio") == true)
