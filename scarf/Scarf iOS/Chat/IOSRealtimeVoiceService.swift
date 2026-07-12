@@ -21,13 +21,13 @@ enum IOSRealtimeVoiceError: LocalizedError, Sendable {
         case .invalidAPIKey:
             return "Enter a valid OpenAI API key."
         case .microphoneDenied:
-            return "Microphone access is off. Enable it for ScarfGo in Settings → Privacy & Security → Microphone."
+            return "Microphone access is off. Enable it for Clawdia in Settings → Privacy & Security → Microphone."
         case .recordingFailed:
-            return "ScarfGo couldn't start microphone recording."
+            return "Clawdia couldn't start microphone recording."
         case .emptyRecording:
             return "No speech was recorded. Try again and speak after the mic turns red."
         case .malformedRecording:
-            return "ScarfGo couldn't read the recorded audio."
+            return "Clawdia couldn't read the recorded audio."
         case .invalidServerEvent:
             return "OpenAI returned an unreadable Realtime event."
         case .emptyTranscript:
@@ -39,7 +39,7 @@ enum IOSRealtimeVoiceError: LocalizedError, Sendable {
 }
 
 enum IOSRealtimeAPIKeyStore {
-    private static let service = "com.scarf.openai-realtime"
+    private static let service = "so.sycamore.clawdia.openai-realtime"
     private static let account = "api-key"
 
     static func load() throws -> String? {
@@ -57,7 +57,7 @@ enum IOSRealtimeAPIKeyStore {
               let data = item as? Data,
               let value = String(data: data, encoding: .utf8),
               !value.isEmpty else {
-            throw IOSRealtimeVoiceError.api("ScarfGo couldn't read the OpenAI key from Keychain.")
+            throw IOSRealtimeVoiceError.api("Clawdia couldn't read the OpenAI key from Keychain.")
         }
         return value
     }
@@ -76,12 +76,12 @@ enum IOSRealtimeAPIKeyStore {
         let updateStatus = SecItemUpdate(lookup as CFDictionary, update as CFDictionary)
         if updateStatus == errSecSuccess { return }
         guard updateStatus == errSecItemNotFound else {
-            throw IOSRealtimeVoiceError.api("ScarfGo couldn't update the OpenAI key in Keychain.")
+            throw IOSRealtimeVoiceError.api("Clawdia couldn't update the OpenAI key in Keychain.")
         }
         var add = lookup
         add[kSecValueData] = Data(trimmed.utf8)
         guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else {
-            throw IOSRealtimeVoiceError.api("ScarfGo couldn't save the OpenAI key in Keychain.")
+            throw IOSRealtimeVoiceError.api("Clawdia couldn't save the OpenAI key in Keychain.")
         }
     }
 
@@ -93,26 +93,32 @@ enum IOSRealtimeAPIKeyStore {
         ]
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw IOSRealtimeVoiceError.api("ScarfGo couldn't remove the OpenAI key from Keychain.")
+            throw IOSRealtimeVoiceError.api("Clawdia couldn't remove the OpenAI key from Keychain.")
         }
     }
 }
 
 enum IOSRealtimeProtocol {
-    struct ServerEvent: Decodable, Sendable {
-        struct APIError: Decodable, Sendable { let message: String? }
-        let type: String
-        let delta: String?
-        let transcript: String?
-        let error: APIError?
-    }
+    typealias ServerEvent = (
+        type: String,
+        delta: String?,
+        transcript: String?,
+        errorMessage: String?
+    )
 
-    static func decode(_ text: String) throws -> ServerEvent {
+    nonisolated static func decode(_ text: String) throws -> ServerEvent {
         guard let data = text.data(using: .utf8),
-              let event = try? JSONDecoder().decode(ServerEvent.self, from: data) else {
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = object["type"] as? String else {
             throw IOSRealtimeVoiceError.invalidServerEvent
         }
-        return event
+        let error = object["error"] as? [String: Any]
+        return (
+            type: type,
+            delta: object["delta"] as? String,
+            transcript: object["transcript"] as? String,
+            errorMessage: error?["message"] as? String
+        )
     }
 
     static func transcriptionSessionUpdate() throws -> String {
@@ -261,7 +267,7 @@ actor IOSRealtimeClient {
                 guard !trimmed.isEmpty else { throw IOSRealtimeVoiceError.emptyTranscript }
                 return trimmed
             case "error":
-                throw IOSRealtimeVoiceError.api(event.error?.message ?? "OpenAI Realtime transcription failed.")
+                throw IOSRealtimeVoiceError.api(event.errorMessage ?? "OpenAI Realtime transcription failed.")
             default:
                 continue
             }
@@ -290,7 +296,7 @@ actor IOSRealtimeClient {
             case "response.done":
                 return
             case "error":
-                throw IOSRealtimeVoiceError.api(event.error?.message ?? "OpenAI Realtime speech failed.")
+                throw IOSRealtimeVoiceError.api(event.errorMessage ?? "OpenAI Realtime speech failed.")
             default:
                 continue
             }
@@ -313,7 +319,7 @@ actor IOSRealtimeClient {
             let event = try await receive(from: socket)
             if event.type == expectedType { return }
             if event.type == "error" {
-                throw IOSRealtimeVoiceError.api(event.error?.message ?? "OpenAI Realtime connection failed.")
+                throw IOSRealtimeVoiceError.api(event.errorMessage ?? "OpenAI Realtime connection failed.")
             }
         }
     }
@@ -353,21 +359,20 @@ final class IOSRealtimeMicrophoneRecorder {
     private var fileURL: URL?
 
     func start() async throws {
-        let session = AVAudioSession.sharedInstance()
+        let audioApplication = AVAudioApplication.shared
         let granted: Bool
-        switch session.recordPermission {
+        switch audioApplication.recordPermission {
         case .granted:
             granted = true
         case .denied:
             granted = false
         case .undetermined:
-            granted = await withCheckedContinuation { continuation in
-                session.requestRecordPermission { continuation.resume(returning: $0) }
-            }
+            granted = await AVAudioApplication.requestRecordPermission()
         @unknown default:
             granted = false
         }
         guard granted else { throw IOSRealtimeVoiceError.microphoneDenied }
+        let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
         try session.setActive(true)
 

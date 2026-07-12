@@ -82,7 +82,7 @@ struct ProfilesView: View {
                 Button("Cancel", role: .cancel) { pendingChoice = nil }
             }
         } message: {
-            Text("ScarfGo will reload to show this profile. The server's own active profile — what the Mac app and terminal use — won't change.")
+            Text("Clawdia will reload to show this profile. The server's own active profile — what the Mac app and terminal use — won't change.")
         }
     }
 
@@ -116,7 +116,7 @@ struct ProfilesView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel(for: choice, isSelected: isSelected))
-        .accessibilityHint(isSelected ? "" : "Switches ScarfGo to this profile")
+        .accessibilityHint(isSelected ? "" : "Switches Clawdia to this profile")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
@@ -134,7 +134,7 @@ struct ProfilesView: View {
     @ViewBuilder
     private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Switching changes only what this phone shows — it points ScarfGo at the selected profile's data and chat. The server's active profile is unchanged.")
+            Text("Switching changes only what this phone shows — it points Clawdia at the selected profile's data and chat. The server's active profile is unchanged.")
             if namedProfiles.isEmpty && !isLoading {
                 Text("No named profiles yet. Create one with `hermes profile create <name>` from the Mac app. Renaming, deleting, and import/export also live there.")
             } else {
