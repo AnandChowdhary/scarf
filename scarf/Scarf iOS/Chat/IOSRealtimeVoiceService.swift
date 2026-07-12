@@ -13,6 +13,8 @@ enum IOSRealtimeVoiceError: LocalizedError, Sendable {
     case malformedRecording
     case invalidServerEvent
     case emptyTranscript
+    case audioSessionInUse
+    case audioRouteUnavailable
     case api(String)
 
     var errorDescription: String? {
@@ -33,8 +35,12 @@ enum IOSRealtimeVoiceError: LocalizedError, Sendable {
             return "OpenAI returned an unreadable Realtime event."
         case .emptyTranscript:
             return "OpenAI didn't detect any speech."
+        case .audioSessionInUse:
+            return "iPhone audio is busy. End the current call, Siri session, or other recording app, then try again."
+        case .audioRouteUnavailable:
+            return "No microphone or audio output is currently available. Reconnect your audio device, then try again."
         case .api(let message):
-            return message
+            return "OpenAI Realtime: \(message)"
         }
     }
 }
@@ -213,7 +219,10 @@ enum IOSRealtimeProtocol {
         let turnDetection: Any = usesServerVAD
             ? [
                 "type": "server_vad",
-                "threshold": 0.35,
+                // JSONSerialization expands some Swift Doubles (notably
+                // 0.35) to 17 decimal places. Realtime rejects threshold
+                // values with more than 16, so preserve the intended decimal.
+                "threshold": NSDecimalNumber(string: "0.35"),
                 "prefix_padding_ms": 500,
                 "silence_duration_ms": 2_000,
                 "create_response": false,
@@ -229,7 +238,7 @@ enum IOSRealtimeProtocol {
                 "audio": [
                     "input": [
                         "format": ["type": "audio/pcm", "rate": 24_000],
-                        "transcription": ["model": "gpt-realtime-whisper", "delay": "low"],
+                        "transcription": ["model": "gpt-4o-mini-transcribe"],
                         "noise_reduction": ["type": "far_field"],
                         "turn_detection": turnDetection
                     ]
@@ -256,7 +265,7 @@ enum IOSRealtimeProtocol {
                     "output": [
                         "format": ["type": "audio/pcm", "rate": 24_000],
                         "voice": preferences.voice.rawValue,
-                        "speed": preferences.speed
+                        "speed": decimalNumber(preferences.speed, fractionDigits: 2)
                     ]
                 ]
             ]
@@ -304,6 +313,20 @@ enum IOSRealtimeProtocol {
         }
         return text
     }
+
+    private static func decimalNumber(
+        _ value: Double,
+        fractionDigits: Int
+    ) -> NSDecimalNumber {
+        let format = "%.\(fractionDigits)f"
+        return NSDecimalNumber(
+            string: String(
+                format: format,
+                locale: Locale(identifier: "en_US_POSIX"),
+                value
+            )
+        )
+    }
 }
 
 nonisolated enum IOSPCM16Meter {
@@ -322,7 +345,35 @@ nonisolated enum IOSPCM16Meter {
         }
         guard sampleCount > 0 else { return 0 }
         let rms = sqrt(sumOfSquares / Double(sampleCount))
-        return Float(min(1, sqrt(rms * 2.4)))
+        return normalizedLevel(rms: rms)
+    }
+
+    /// Downsamples a PCM16 chunk into a small RMS envelope suitable for a
+    /// real-time UI. This preserves the shape within the chunk instead of
+    /// collapsing all audio into the controller's single scalar meter.
+    static func envelope(in data: Data, bucketCount requestedBucketCount: Int) -> [Float] {
+        let sampleCount = data.count / 2
+        guard sampleCount > 0, requestedBucketCount > 0 else { return [] }
+        let bucketCount = min(requestedBucketCount, sampleCount)
+        var sums = Array(repeating: 0.0, count: bucketCount)
+        var counts = Array(repeating: 0, count: bucketCount)
+
+        data.withUnsafeBytes { rawBuffer in
+            let bytes = rawBuffer.bindMemory(to: UInt8.self)
+            for sampleIndex in 0..<sampleCount {
+                let offset = sampleIndex * 2
+                let bits = UInt16(bytes[offset]) | (UInt16(bytes[offset + 1]) << 8)
+                let sample = Double(Int16(bitPattern: bits)) / Double(Int16.max)
+                let bucket = min(bucketCount - 1, sampleIndex * bucketCount / sampleCount)
+                sums[bucket] += sample * sample
+                counts[bucket] += 1
+            }
+        }
+
+        return zip(sums, counts).map { sum, count in
+            guard count > 0 else { return 0 }
+            return normalizedLevel(rms: sqrt(sum / Double(count)))
+        }
     }
 
     static func level(decibels: Float) -> Float {
@@ -330,6 +381,24 @@ nonisolated enum IOSPCM16Meter {
         guard decibels > floor else { return 0 }
         let linear = min(1, max(0, (decibels - floor) / -floor))
         return pow(linear, 1.45)
+    }
+
+    private static func normalizedLevel(rms: Double) -> Float {
+        Float(min(1, sqrt(rms * 2.4)))
+    }
+}
+
+nonisolated enum IOSVoiceWaveformHistory {
+    static let capacity = 64
+    static var silence: [Float] { Array(repeating: 0, count: capacity) }
+
+    static func appending(_ levels: [Float], to history: [Float]) -> [Float] {
+        let clamped = levels.map { min(1, max(0, $0)) }
+        let combined = history + clamped
+        if combined.count >= capacity {
+            return Array(combined.suffix(capacity))
+        }
+        return Array(repeating: 0, count: capacity - combined.count) + combined
     }
 }
 
@@ -342,6 +411,16 @@ nonisolated enum IOSAutomaticListeningPolicy {
         serverDetectedSpeech: Bool
     ) -> Bool {
         !serverDetectedSpeech && now - startedAt >= noSpeechTimeout
+    }
+}
+
+nonisolated enum IOSRealtimeAudioBufferPolicy {
+    /// Realtime rejects manual commits shorter than 100 ms. Input is mono
+    /// PCM16 at 24 kHz: 24,000 samples × 2 bytes × 0.1 seconds.
+    static let minimumCommitBytes = 4_800
+
+    static func shouldCommit(byteCount: Int) -> Bool {
+        byteCount >= minimumCommitBytes
     }
 }
 
@@ -434,6 +513,7 @@ actor IOSRealtimeClient {
     func transcribe(
         apiKey: String,
         pcmStream: AsyncStream<Data>,
+        commitOnStreamEnd: Bool,
         onSpeechStarted: @escaping @Sendable () async -> Void,
         onSpeechStopped: @escaping @Sendable () async -> Void
     ) async throws -> String {
@@ -452,11 +532,26 @@ actor IOSRealtimeClient {
         // the completed transcript arrives.
         let sender = Task { [weak self] in
             do {
+                var appendedByteCount = 0
                 for await chunk in pcmStream {
                     try Task.checkCancellation()
                     try await self?.send(IOSRealtimeProtocol.appendAudio(chunk), to: connection.socket)
+                    appendedByteCount += chunk.count
                 }
                 try Task.checkCancellation()
+                guard commitOnStreamEnd else {
+                    // In automatic listening, server VAD owns the commit. A
+                    // locally-ended stream means cancellation/no-speech; close
+                    // to unblock receive without committing an empty new turn.
+                    connection.close()
+                    return
+                }
+                guard IOSRealtimeAudioBufferPolicy.shouldCommit(
+                    byteCount: appendedByteCount
+                ) else {
+                    connection.close()
+                    return
+                }
                 try await self?.send(IOSRealtimeProtocol.commitAudio(), to: connection.socket)
             } catch is CancellationError {
                 return
@@ -583,33 +678,46 @@ actor IOSRealtimeClient {
 
 @MainActor
 enum IOSRealtimeAudioSession {
-    private static var driveModeHoldsSession = false
+    private static var continuousVoiceHoldsSession = false
 
     static func activate() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(
-            .playAndRecord,
-            mode: .voiceChat,
-            options: [.defaultToSpeaker, .allowBluetoothHFP]
-        )
-        try session.setActive(true)
+        do {
+            try session.setCategory(
+                .playAndRecord,
+                mode: .voiceChat,
+                options: [.defaultToSpeaker, .allowBluetoothHFP]
+            )
+            try session.setActive(true)
+        } catch {
+            let code = (error as NSError).code
+            switch code {
+            case AVAudioSession.ErrorCode.insufficientPriority.rawValue,
+                 AVAudioSession.ErrorCode.cannotInterruptOthers.rawValue:
+                throw IOSRealtimeVoiceError.audioSessionInUse
+            case AVAudioSession.ErrorCode.resourceNotAvailable.rawValue:
+                throw IOSRealtimeVoiceError.audioRouteUnavailable
+            default:
+                throw error
+            }
+        }
     }
 
-    static func beginDriveMode() throws {
+    static func beginContinuousVoice() throws {
         try activate()
-        driveModeHoldsSession = true
+        continuousVoiceHoldsSession = true
     }
 
     static func deactivate() {
-        guard !driveModeHoldsSession else { return }
+        guard !continuousVoiceHoldsSession else { return }
         try? AVAudioSession.sharedInstance().setActive(
             false,
             options: .notifyOthersOnDeactivation
         )
     }
 
-    static func endDriveMode() {
-        driveModeHoldsSession = false
+    static func endContinuousVoice() {
+        continuousVoiceHoldsSession = false
         deactivate()
     }
 }
@@ -734,7 +842,7 @@ final class IOSRealtimeAudioSessionMonitor: NSObject {
     }
 }
 
-nonisolated enum IOSDriveModeInactivityPolicy {
+nonisolated enum IOSVoiceConversationInactivityPolicy {
     static let shutdownInterval: TimeInterval = 10 * 60
 
     static func shouldEnd(lastActivity: TimeInterval, now: TimeInterval) -> Bool {
@@ -748,8 +856,39 @@ final class IOSRealtimeMicrophoneRecorder {
     private var continuation: AsyncStream<Data>.Continuation?
     private var tapInstalled = false
     private var level: Float = 0
+    private var capturedByteCount = 0
+    private var waveformSamples = IOSVoiceWaveformHistory.silence
+    #if DEBUG
+    private var syntheticFixtureConsumed = false
+    private var syntheticFixtureTask: Task<Void, Never>?
+    private var syntheticSpeechSynthesizer: AVSpeechSynthesizer?
+    #endif
 
     func start() async throws -> AsyncStream<Data> {
+        #if DEBUG
+        if let phrase = ProcessInfo.processInfo.environment["CLAWDIA_VOICE_E2E_PHRASE"],
+           !phrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !syntheticFixtureConsumed {
+            syntheticFixtureConsumed = true
+            try IOSRealtimeAudioSession.activate()
+            stop()
+            capturedByteCount = 0
+            waveformSamples = IOSVoiceWaveformHistory.silence
+            return syntheticSpeechStream(for: phrase)
+        }
+        if syntheticFixtureConsumed,
+           ProcessInfo.processInfo.environment["CLAWDIA_VOICE_E2E_SILENT_FOLLOWUP"] == "1" {
+            try IOSRealtimeAudioSession.activate()
+            stop()
+            capturedByteCount = 0
+            waveformSamples = IOSVoiceWaveformHistory.silence
+            var silentContinuation: AsyncStream<Data>.Continuation?
+            let stream = AsyncStream<Data> { silentContinuation = $0 }
+            continuation = silentContinuation
+            return stream
+        }
+        #endif
+
         let audioApplication = AVAudioApplication.shared
         let granted: Bool
         switch audioApplication.recordPermission {
@@ -766,6 +905,8 @@ final class IOSRealtimeMicrophoneRecorder {
         try IOSRealtimeAudioSession.activate()
 
         stop()
+        capturedByteCount = 0
+        waveformSamples = IOSVoiceWaveformHistory.silence
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0,
@@ -789,6 +930,11 @@ final class IOSRealtimeMicrophoneRecorder {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 level = max(measured, level * 0.78)
+                capturedByteCount += data.count
+                waveformSamples = IOSVoiceWaveformHistory.appending(
+                    IOSPCM16Meter.envelope(in: data, bucketCount: 6),
+                    to: waveformSamples
+                )
                 continuation?.yield(data)
             }
         }
@@ -807,11 +953,25 @@ final class IOSRealtimeMicrophoneRecorder {
         level
     }
 
+    func currentWaveformSamples() -> [Float] {
+        waveformSamples
+    }
+
+    func hasMinimumCommitAudio() -> Bool {
+        IOSRealtimeAudioBufferPolicy.shouldCommit(byteCount: capturedByteCount)
+    }
+
     func cancel() {
         stop()
     }
 
     func stop() {
+        #if DEBUG
+        syntheticFixtureTask?.cancel()
+        syntheticFixtureTask = nil
+        syntheticSpeechSynthesizer?.stopSpeaking(at: .immediate)
+        syntheticSpeechSynthesizer = nil
+        #endif
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
@@ -821,6 +981,107 @@ final class IOSRealtimeMicrophoneRecorder {
         continuation = nil
         level = 0
     }
+
+    #if DEBUG
+    /// Deterministic end-to-end test seam. A UI test opts in with a launch
+    /// environment variable; production builds never compile this path.
+    /// Synthesized speech is converted to the same 24 kHz mono PCM16 stream as
+    /// the microphone and paced in 100 ms chunks so Realtime server VAD sees a
+    /// realistic utterance followed by enough silence to complete the turn.
+    private func syntheticSpeechStream(for phrase: String) -> AsyncStream<Data> {
+        var streamContinuation: AsyncStream<Data>.Continuation?
+        let stream = AsyncStream<Data> { streamContinuation = $0 }
+        continuation = streamContinuation
+        level = 0
+
+        syntheticFixtureTask = Task { [weak self] in
+            guard let self else { return }
+            let pcm = await synthesizePCM16(phrase)
+            guard !Task.isCancelled, !pcm.isEmpty else {
+                continuation?.finish()
+                return
+            }
+
+            let chunkSize = 4_800 // 100 ms at 24 kHz mono PCM16.
+            var offset = 0
+            while offset < pcm.count, !Task.isCancelled {
+                let end = min(offset + chunkSize, pcm.count)
+                let chunk = pcm.subdata(in: offset..<end)
+                capturedByteCount += chunk.count
+                level = max(IOSPCM16Meter.level(in: chunk), level * 0.78)
+                waveformSamples = IOSVoiceWaveformHistory.appending(
+                    IOSPCM16Meter.envelope(in: chunk, bucketCount: 6),
+                    to: waveformSamples
+                )
+                continuation?.yield(chunk)
+                offset = end
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+
+            // The production session uses a 2 s server-VAD silence threshold.
+            // Give the live gate a full extra network round-trip window so the
+            // completed transcript arrives before the synthetic stream closes;
+            // 2.4 s proved too narrow under transient Realtime latency.
+            let silence = Data(count: chunkSize)
+            for _ in 0..<40 where !Task.isCancelled {
+                capturedByteCount += silence.count
+                level *= 0.72
+                waveformSamples = IOSVoiceWaveformHistory.appending(
+                    IOSPCM16Meter.envelope(in: silence, bucketCount: 6),
+                    to: waveformSamples
+                )
+                continuation?.yield(silence)
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            continuation?.finish()
+        }
+        return stream
+    }
+
+    private func synthesizePCM16(_ phrase: String) async -> Data {
+        await withCheckedContinuation { continuation in
+            let synthesizer = AVSpeechSynthesizer()
+            syntheticSpeechSynthesizer = synthesizer
+            let utterance = AVSpeechUtterance(string: phrase)
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+
+            var accumulated = Data()
+            var converter: AVAudioConverter?
+            var didResume = false
+            synthesizer.write(utterance) { [weak self] buffer in
+                guard !didResume else { return }
+                guard let pcmBuffer = buffer as? AVAudioPCMBuffer else {
+                    didResume = true
+                    self?.syntheticSpeechSynthesizer = nil
+                    continuation.resume(returning: Data())
+                    return
+                }
+                guard pcmBuffer.frameLength > 0 else {
+                    didResume = true
+                    self?.syntheticSpeechSynthesizer = nil
+                    continuation.resume(returning: accumulated)
+                    return
+                }
+                guard let outputFormat = AVAudioFormat(
+                    commonFormat: .pcmFormatInt16,
+                    sampleRate: 24_000,
+                    channels: 1,
+                    interleaved: false
+                ) else { return }
+                if converter == nil {
+                    converter = AVAudioConverter(from: pcmBuffer.format, to: outputFormat)
+                }
+                guard let converter,
+                      let data = Self.convert(
+                        pcmBuffer,
+                        using: converter,
+                        outputFormat: outputFormat
+                      ) else { return }
+                accumulated.append(data)
+            }
+        }
+    }
+    #endif
 
     nonisolated private static func convert(
         _ input: AVAudioPCMBuffer,
@@ -1098,7 +1359,7 @@ final class IOSRealtimeStateCuePlayer {
     }
 }
 
-enum IOSDriveModePauseReason: Equatable, Sendable {
+enum IOSVoiceConversationPauseReason: Equatable, Sendable {
     case noSpeech
     case user
     case interruption
@@ -1109,17 +1370,17 @@ enum IOSDriveModePauseReason: Equatable, Sendable {
     var message: String {
         switch self {
         case .noSpeech:
-            return "No speech detected. Tap Resume when you're ready."
+            return "No speech detected. Tap the microphone when you're ready."
         case .user:
-            return "Conversation paused. Tap Resume to keep talking."
+            return "Conversation paused. Tap the microphone to keep talking."
         case .interruption:
             return "A call, Siri, or another app is using audio. Clawdia will resume when available."
         case .outputDisconnected(let wasBluetooth):
             return wasBluetooth
-                ? "Bluetooth disconnected. Reconnect it or tap Resume to use iPhone audio."
-                : "The audio device disconnected. Tap Resume to use the current route."
+                ? "Bluetooth disconnected. Reconnect it or tap the microphone to use iPhone audio."
+                : "The audio device disconnected. Tap the microphone to use the current route."
         case .routeUnavailable:
-            return "No usable audio route is available. Connect an audio device, then tap Resume."
+            return "No usable audio route is available. Connect an audio device, then tap the microphone."
         case .mediaServices:
             return "iOS restarted its audio system. Clawdia will reconnect when it is ready."
         }
@@ -1146,10 +1407,11 @@ final class IOSRealtimeVoiceController {
     var apiKeyDraft = ""
     private(set) var errorMessage: String?
     private(set) var activityLevel: Float = 0
+    private(set) var waveformSamples = IOSVoiceWaveformHistory.silence
     private(set) var isAutomaticListening = false
-    private(set) var isDriveModeActive = false
-    private(set) var driveModePauseReason: IOSDriveModePauseReason?
-    private(set) var driveModeNotice: String?
+    private(set) var isConversationActive = false
+    private(set) var conversationPauseReason: IOSVoiceConversationPauseReason?
+    private(set) var conversationNotice: String?
 
     private let microphone = IOSRealtimeMicrophoneRecorder()
     private let player = IOSRealtimePCMStreamPlayer()
@@ -1167,8 +1429,8 @@ final class IOSRealtimeVoiceController {
     private var speechContinuation: AsyncStream<String>.Continuation?
     private var transcriptHandler: (@MainActor (String) async -> Void)?
     private var pausedHermesReplyIsComplete = false
-    private var driveModeLastActivity = Date.timeIntervalSinceReferenceDate
-    private var driveModeInactivityTask: Task<Void, Never>?
+    private var conversationLastActivity = Date.timeIntervalSinceReferenceDate
+    private var conversationInactivityTask: Task<Void, Never>?
     @ObservationIgnored
     private lazy var audioSessionMonitor = IOSRealtimeAudioSessionMonitor { [weak self] event in
         self?.handleAudioLifecycleEvent(event)
@@ -1180,13 +1442,13 @@ final class IOSRealtimeVoiceController {
 
     var statusTitle: String {
         switch phase {
-        case .idle: return "Tap the microphone to speak"
+        case .idle: return "Tap the microphone to start"
         case .preparing: return "Starting the microphone…"
         case .recording: return "Listening…"
         case .transcribing: return "Transcribing…"
         case .waitingForHermes: return "Clawdia is responding…"
         case .speaking: return "Clawdia is speaking…"
-        case .paused: return "Drive Mode paused"
+        case .paused: return "Voice conversation paused"
         }
     }
 
@@ -1194,7 +1456,7 @@ final class IOSRealtimeVoiceController {
         switch phase {
         case .idle: return "Tap once for hands-free · hold to talk"
         case .preparing: return "Release after speaking when holding"
-        case .recording where isAutomaticListening && isDriveModeActive:
+        case .recording where isAutomaticListening && isConversationActive:
             return "Speak naturally · pauses after 10 seconds with no speech"
         case .recording where isAutomaticListening:
             return "Speak naturally · sends after you stop · closes after 10 seconds of no speech"
@@ -1202,16 +1464,16 @@ final class IOSRealtimeVoiceController {
         case .transcribing: return "Turning your voice into a Clawdia message"
         case .waitingForHermes: return "Your text response continues streaming above"
         case .speaking: return "Tap to stop · listening resumes when speech ends"
-        case .paused: return driveModePauseReason?.message ?? "Tap Resume to continue"
+        case .paused: return conversationPauseReason?.message ?? "Tap the microphone to resume"
         }
     }
 
     var canRecord: Bool { phase == .idle || phase == .preparing || phase == .recording }
 
-    /// Only an explicit, user-started Drive Mode owns background audio. A
-    /// regular one-shot Voice turn still follows the normal scene lifecycle.
+    /// A microphone-started Voice conversation owns background audio until
+    /// the user ends it, switches to Text, or the inactivity policy expires.
     var shouldContinueInBackground: Bool {
-        isDriveModeActive
+        isConversationActive
     }
 
     func selectMode(_ newMode: ComposerMode) {
@@ -1221,8 +1483,8 @@ final class IOSRealtimeVoiceController {
             return
         }
         if newMode == .text {
-            if isDriveModeActive {
-                endDriveMode()
+            if isConversationActive {
+                endConversation()
             } else {
                 resetVoiceTurn()
             }
@@ -1230,36 +1492,37 @@ final class IOSRealtimeVoiceController {
         mode = newMode
     }
 
-    func startDriveMode(
+    func startConversation(
+        pushToTalk: Bool = false,
         onTranscript: @escaping @MainActor (String) async -> Void
     ) {
-        guard mode == .voice, hasAPIKey, !isDriveModeActive, phase == .idle else { return }
+        guard mode == .voice, hasAPIKey, !isConversationActive, phase == .idle else { return }
         do {
-            try IOSRealtimeAudioSession.beginDriveMode()
+            try IOSRealtimeAudioSession.beginContinuousVoice()
             transcriptHandler = onTranscript
-            isDriveModeActive = true
-            driveModePauseReason = nil
-            driveModeNotice = nil
+            isConversationActive = true
+            conversationPauseReason = nil
+            conversationNotice = nil
             pausedHermesReplyIsComplete = false
             audioSessionMonitor.start()
-            markDriveModeActivity()
-            startRecording(automatic: true, onTranscript: onTranscript)
+            markConversationActivity()
+            startRecording(automatic: !pushToTalk, onTranscript: onTranscript)
         } catch {
-            IOSRealtimeAudioSession.endDriveMode()
-            errorMessage = "Clawdia couldn't start Drive Mode: \(error.localizedDescription)"
+            IOSRealtimeAudioSession.endContinuousVoice()
+            errorMessage = "Clawdia couldn't start the voice conversation: \(error.localizedDescription)"
         }
     }
 
-    func endDriveMode() {
-        finishDriveMode(notice: "Drive Mode ended.")
+    func endConversation() {
+        finishConversation(notice: "Voice conversation ended.")
     }
 
-    func resumeDriveMode() {
-        guard isDriveModeActive, phase == .paused else { return }
+    func resumeConversation() {
+        guard isConversationActive, phase == .paused else { return }
         do {
             try IOSRealtimeAudioSession.activate()
-            markDriveModeActivity()
-            driveModePauseReason = nil
+            markConversationActivity()
+            conversationPauseReason = nil
             phase = .idle
 
             if speechBuffer.hasPendingText {
@@ -1289,10 +1552,10 @@ final class IOSRealtimeVoiceController {
             guard let transcriptHandler else { return }
             startRecording(automatic: true, onTranscript: transcriptHandler)
         } catch {
-            driveModePauseReason = .routeUnavailable
+            conversationPauseReason = .routeUnavailable
             phase = .paused
             errorMessage = "Clawdia couldn't resume audio: \(error.localizedDescription)"
-            scheduleDriveModeInactivityShutdown()
+            scheduleConversationInactivityShutdown()
         }
     }
 
@@ -1316,8 +1579,8 @@ final class IOSRealtimeVoiceController {
             apiKeyDraft = ""
             showsCredentialSheet = false
             mode = .text
-            if isDriveModeActive {
-                finishDriveMode(notice: nil)
+            if isConversationActive {
+                finishConversation(notice: nil)
             } else {
                 resetVoiceTurn()
             }
@@ -1326,20 +1589,25 @@ final class IOSRealtimeVoiceController {
         }
     }
 
-    func startRecording(
+    func dismissError() {
+        errorMessage = nil
+    }
+
+    private func startRecording(
         automatic: Bool = false,
         onTranscript: @escaping @MainActor (String) async -> Void
     ) {
         guard mode == .voice else { return }
         guard phase == .idle else { return }
         errorMessage = nil
-        driveModeNotice = nil
+        conversationNotice = nil
         transcriptHandler = onTranscript
-        markDriveModeActivity()
+        markConversationActivity()
         isAutomaticListening = automatic
         stopWhenRecordingStarts = false
         serverDetectedSpeech = false
         activityLevel = 0
+        waveformSamples = IOSVoiceWaveformHistory.silence
         waitingSound.stop()
         operationTask?.cancel()
         phase = .preparing
@@ -1364,6 +1632,7 @@ final class IOSRealtimeVoiceController {
                 let transcript = try await client.transcribe(
                     apiKey: apiKey,
                     pcmStream: pcmStream,
+                    commitOnStreamEnd: !automatic,
                     onSpeechStarted: {
                         await MainActor.run { self.serverDetectedSpeech = true }
                     },
@@ -1389,12 +1658,12 @@ final class IOSRealtimeVoiceController {
                 if let transcriptHandler { await transcriptHandler(transcript) }
             } catch {
                 let message = error.localizedDescription
-                if error is CancellationError {
+                if Task.isCancelled || error is CancellationError {
                     microphone.cancel()
                     waitingSound.stop()
                     isAutomaticListening = false
                     operationTask = nil
-                    if isDriveModeActive, driveModePauseReason != nil { return }
+                    if isConversationActive, conversationPauseReason != nil { return }
                     phase = .idle
                     return
                 }
@@ -1405,8 +1674,8 @@ final class IOSRealtimeVoiceController {
                 phase = .idle
                 isAutomaticListening = false
                 operationTask = nil
-                if isDriveModeActive {
-                    finishDriveMode(notice: nil)
+                if isConversationActive {
+                    finishConversation(notice: nil)
                 }
                 errorMessage = message
             }
@@ -1419,6 +1688,25 @@ final class IOSRealtimeVoiceController {
             return
         }
         guard phase == .recording else { return }
+        guard microphone.hasMinimumCommitAudio() else {
+            operationTask?.cancel()
+            meterTask?.cancel()
+            meterTask = nil
+            microphone.cancel()
+            isAutomaticListening = false
+            activityLevel = 0
+            if isConversationActive {
+                conversationPauseReason = .noSpeech
+                phase = .paused
+                stateCue.play(.paused)
+                scheduleConversationInactivityShutdown()
+            } else {
+                phase = .idle
+                errorMessage = IOSRealtimeVoiceError.emptyRecording.localizedDescription
+                deactivateAudioSessionAfterCue()
+            }
+            return
+        }
         meterTask?.cancel()
         meterTask = nil
         isAutomaticListening = false
@@ -1455,14 +1743,14 @@ final class IOSRealtimeVoiceController {
               !trimmed.isEmpty else { return }
 
         speechBuffer.ingest(text)
-        markDriveModeActivity()
-        if isDriveModeActive, phase == .paused {
+        markConversationActivity()
+        if isConversationActive, phase == .paused {
             if isComplete {
                 awaitingHermesReply = false
                 pendingSessionID = nil
                 pausedHermesReplyIsComplete = true
             }
-            scheduleDriveModeInactivityShutdown()
+            scheduleConversationInactivityShutdown()
             return
         }
         while let chunk = speechBuffer.takeChunk() {
@@ -1506,9 +1794,10 @@ final class IOSRealtimeVoiceController {
                 guard let apiKey = try IOSRealtimeAPIKeyStore.load() else {
                     throw IOSRealtimeVoiceError.missingAPIKey
                 }
-                markDriveModeActivity()
+                markConversationActivity()
                 phase = .speaking
                 activityLevel = 0.18
+                waveformSamples = IOSVoiceWaveformHistory.silence
                 stateCue.play(.speaking)
                 try player.start()
                 try await client.speak(
@@ -1532,7 +1821,7 @@ final class IOSRealtimeVoiceController {
                 speechContinuation = nil
                 activityLevel = 0
                 operationTask = nil
-                if isDriveModeActive, driveModePauseReason != nil { return }
+                if isConversationActive, conversationPauseReason != nil { return }
                 phase = .idle
             } catch {
                 player.stop()
@@ -1561,10 +1850,10 @@ final class IOSRealtimeVoiceController {
         speechBuffer = IOSStreamingSpeechBuffer()
         activityLevel = 0
         operationTask = nil
-        if isDriveModeActive {
-            driveModePauseReason = .user
+        if isConversationActive {
+            conversationPauseReason = .user
             phase = .paused
-            scheduleDriveModeInactivityShutdown()
+            scheduleConversationInactivityShutdown()
         } else {
             phase = .idle
             deactivateAudioSessionAfterCue()
@@ -1572,14 +1861,14 @@ final class IOSRealtimeVoiceController {
     }
 
     func resetVoiceTurn() {
-        if isDriveModeActive {
-            stopDriveModeOwnership()
+        if isConversationActive {
+            stopConversationOwnership()
         }
-        resetActiveTurnForDriveModeTransition()
+        resetActiveTurnForConversationTransition()
         errorMessage = nil
     }
 
-    private func resetActiveTurnForDriveModeTransition() {
+    private func resetActiveTurnForConversationTransition() {
         operationTask?.cancel()
         operationTask = nil
         meterTask?.cancel()
@@ -1600,6 +1889,7 @@ final class IOSRealtimeVoiceController {
         pausedHermesReplyIsComplete = false
         isAutomaticListening = false
         activityLevel = 0
+        waveformSamples = IOSVoiceWaveformHistory.silence
         phase = .idle
         IOSRealtimeAudioSession.deactivate()
     }
@@ -1608,6 +1898,10 @@ final class IOSRealtimeVoiceController {
         guard phase == .speaking else { return }
         let measured = IOSPCM16Meter.level(in: data)
         activityLevel = max(measured, activityLevel * 0.72)
+        waveformSamples = IOSVoiceWaveformHistory.appending(
+            IOSPCM16Meter.envelope(in: data, bucketCount: 8),
+            to: waveformSamples
+        )
         player.enqueue(data)
     }
 
@@ -1619,6 +1913,7 @@ final class IOSRealtimeVoiceController {
                 guard let self, phase == .recording else { return }
                 let measured = microphone.currentLevel()
                 activityLevel = max(measured, activityLevel * 0.78)
+                waveformSamples = microphone.currentWaveformSamples()
                 let now = Date.timeIntervalSinceReferenceDate
                 // The ten-second limit is only a no-speech escape hatch. Once
                 // Realtime reports speech_started it can never end an utterance;
@@ -1634,10 +1929,10 @@ final class IOSRealtimeVoiceController {
                     activityLevel = 0
                     meterTask = nil
                     stateCue.play(.paused)
-                    if isDriveModeActive {
-                        driveModePauseReason = .noSpeech
+                    if isConversationActive {
+                        conversationPauseReason = .noSpeech
                         phase = .paused
-                        scheduleDriveModeInactivityShutdown()
+                        scheduleConversationInactivityShutdown()
                     } else {
                         phase = .idle
                         deactivateAudioSessionAfterCue()
@@ -1652,43 +1947,43 @@ final class IOSRealtimeVoiceController {
     private func deactivateAudioSessionAfterCue() {
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(450))
-            guard let self, phase == .idle, !isDriveModeActive else { return }
+            guard let self, phase == .idle, !isConversationActive else { return }
             IOSRealtimeAudioSession.deactivate()
         }
     }
 
     private func handleAudioLifecycleEvent(_ event: IOSRealtimeAudioLifecycleEvent) {
-        guard isDriveModeActive else { return }
+        guard isConversationActive else { return }
         switch event {
         case .interruptionBegan:
-            pauseDriveMode(for: .interruption, playCue: false)
+            pauseConversation(for: .interruption, playCue: false)
         case .interruptionEnded(let shouldResume):
-            if shouldResume { resumeDriveMode() }
+            if shouldResume { resumeConversation() }
         case .outputDisconnected(let wasBluetooth):
-            pauseDriveMode(for: .outputDisconnected(wasBluetooth: wasBluetooth))
+            pauseConversation(for: .outputDisconnected(wasBluetooth: wasBluetooth))
         case .routeUnavailable:
-            pauseDriveMode(for: .routeUnavailable)
+            pauseConversation(for: .routeUnavailable)
         case .routeAvailable:
-            switch driveModePauseReason {
+            switch conversationPauseReason {
             case .outputDisconnected, .routeUnavailable, .mediaServices:
-                resumeDriveMode()
+                resumeConversation()
             default:
                 break
             }
         case .mediaServicesLost:
-            pauseDriveMode(for: .mediaServices, playCue: false)
+            pauseConversation(for: .mediaServices, playCue: false)
         case .mediaServicesReset:
-            resumeDriveMode()
+            resumeConversation()
         }
     }
 
-    private func pauseDriveMode(
-        for reason: IOSDriveModePauseReason,
+    private func pauseConversation(
+        for reason: IOSVoiceConversationPauseReason,
         playCue: Bool = true
     ) {
-        guard isDriveModeActive else { return }
-        driveModePauseReason = reason
-        driveModeLastActivity = Date.timeIntervalSinceReferenceDate
+        guard isConversationActive else { return }
+        conversationPauseReason = reason
+        conversationLastActivity = Date.timeIntervalSinceReferenceDate
         operationTask?.cancel()
         operationTask = nil
         meterTask?.cancel()
@@ -1705,45 +2000,45 @@ final class IOSRealtimeVoiceController {
         activityLevel = 0
         phase = .paused
         if playCue { stateCue.play(.paused) }
-        scheduleDriveModeInactivityShutdown()
+        scheduleConversationInactivityShutdown()
     }
 
-    private func markDriveModeActivity() {
-        guard isDriveModeActive else { return }
-        driveModeLastActivity = Date.timeIntervalSinceReferenceDate
-        driveModeInactivityTask?.cancel()
-        driveModeInactivityTask = nil
+    private func markConversationActivity() {
+        guard isConversationActive else { return }
+        conversationLastActivity = Date.timeIntervalSinceReferenceDate
+        conversationInactivityTask?.cancel()
+        conversationInactivityTask = nil
     }
 
-    private func scheduleDriveModeInactivityShutdown() {
-        guard isDriveModeActive else { return }
-        driveModeInactivityTask?.cancel()
-        let lastActivity = driveModeLastActivity
-        driveModeInactivityTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(IOSDriveModeInactivityPolicy.shutdownInterval))
-            guard !Task.isCancelled, let self, isDriveModeActive,
+    private func scheduleConversationInactivityShutdown() {
+        guard isConversationActive else { return }
+        conversationInactivityTask?.cancel()
+        let lastActivity = conversationLastActivity
+        conversationInactivityTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(IOSVoiceConversationInactivityPolicy.shutdownInterval))
+            guard !Task.isCancelled, let self, isConversationActive,
                   phase == .paused || phase == .idle,
-                  IOSDriveModeInactivityPolicy.shouldEnd(
+                  IOSVoiceConversationInactivityPolicy.shouldEnd(
                     lastActivity: lastActivity,
                     now: Date.timeIntervalSinceReferenceDate
                   ) else { return }
-            finishDriveMode(notice: "Drive Mode ended after 10 minutes of inactivity.")
+            finishConversation(notice: "Voice conversation ended after 10 minutes of inactivity.")
         }
     }
 
-    private func finishDriveMode(notice: String?) {
-        guard isDriveModeActive else { return }
-        stopDriveModeOwnership()
-        resetActiveTurnForDriveModeTransition()
-        driveModeNotice = notice
+    private func finishConversation(notice: String?) {
+        guard isConversationActive else { return }
+        stopConversationOwnership()
+        resetActiveTurnForConversationTransition()
+        conversationNotice = notice
     }
 
-    private func stopDriveModeOwnership() {
-        isDriveModeActive = false
-        driveModePauseReason = nil
-        driveModeInactivityTask?.cancel()
-        driveModeInactivityTask = nil
+    private func stopConversationOwnership() {
+        isConversationActive = false
+        conversationPauseReason = nil
+        conversationInactivityTask?.cancel()
+        conversationInactivityTask = nil
         audioSessionMonitor.stop()
-        IOSRealtimeAudioSession.endDriveMode()
+        IOSRealtimeAudioSession.endContinuousVoice()
     }
 }

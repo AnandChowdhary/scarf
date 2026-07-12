@@ -122,7 +122,9 @@ struct ScarfIOSApp: App {
 /// state so users can manage multiple servers instead of being
 /// stuck with a single-server app. Transitions:
 ///
-/// - `.loading` → `.serverList` when `load()` finds 1+ servers.
+/// - `.loading` → `.connected(id)` when `load()` finds one usable server.
+/// - `.loading` → `.serverList` when `load()` finds multiple servers or an
+///    incomplete single-server configuration.
 /// - `.loading` → `.onboarding(newID)` on fresh install.
 /// - `.serverList` → `.onboarding(newID)` via the "+" button.
 /// - `.serverList` → `.connected(id)` when the user taps a row.
@@ -193,14 +195,12 @@ final class RootModel {
                 // straight to onboarding with a new ID reserved so
                 // completion writes under the right slot.
                 state = .onboarding(forNewServer: ServerID())
-            } else if ClawdiaSystemEntryStore.pendingRequest() != nil,
-                      all.count == 1,
+            } else if all.count == 1,
                       let (id, config) = all.first,
                       let key = try? await keyStore.load(for: id) {
-                // A Siri/Shortcut invocation should not strand the user on a
-                // redundant server picker when there is only one possible
-                // destination. Multiple-server setups still require an
-                // explicit choice and leave the durable request queued.
+                // With one usable destination there is no choice to make.
+                // Multiple-server setups still require an explicit choice;
+                // an incomplete entry stays visible so it can be repaired.
                 state = .connected(id, config, key)
             } else {
                 state = .serverList

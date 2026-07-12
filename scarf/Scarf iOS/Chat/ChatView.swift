@@ -211,7 +211,7 @@ struct ChatView: View {
         .onChange(of: voiceController.phase) { _, _ in
             updateVoiceBackgroundActivity()
         }
-        .onChange(of: voiceController.isDriveModeActive) { _, _ in
+        .onChange(of: voiceController.isConversationActive) { _, _ in
             updateVoiceBackgroundActivity()
         }
         // React to coordinator changes that happen while Chat is
@@ -369,7 +369,7 @@ struct ChatView: View {
         switch request.kind {
         case .startConversation:
             await controller.resetAndStartNewSession()
-            enterDriveModeIfAvailable()
+            enterVoiceConversationIfAvailable()
 
         case .continueLastSession:
             let ctx = config.toServerContext(id: Self.sharedContextID)
@@ -397,7 +397,7 @@ struct ChatView: View {
                     ? "Clawdia couldn't determine which project you requested."
                     : "No registered project matched “\(requestedName)”. Clawdia started a new chat instead."
             }
-            enterDriveModeIfAvailable()
+            enterVoiceConversationIfAvailable()
 
         case .captureIdea:
             let idea = request.value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -413,10 +413,10 @@ struct ChatView: View {
         }
     }
 
-    private func enterDriveModeIfAvailable() {
+    private func enterVoiceConversationIfAvailable() {
         voiceController.selectMode(.voice)
         guard voiceController.hasAPIKey, controller.state == .ready else { return }
-        startDriveMode()
+        startVoiceConversation()
     }
 
     // MARK: - Subviews
@@ -765,6 +765,7 @@ struct ChatView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("clawdia.composer.mode")
 
             if voiceController.mode == .voice {
                 Button {
@@ -781,123 +782,137 @@ struct ChatView: View {
     }
 
     private var voiceComposer: some View {
-        VStack(spacing: ScarfSpace.s3) {
-            driveModeControl
+        ScrollView(.vertical) {
+            VStack(spacing: ScarfSpace.s3) {
+                if let error = voiceController.errorMessage {
+                    voiceErrorCard(error)
+                }
 
-            Text(voiceController.statusTitle)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(ScarfColor.foregroundPrimary)
+                if let notice = voiceController.conversationNotice {
+                    Label(notice, systemImage: "waveform.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(ScarfColor.info)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
-            Text(voicePressHeld && voiceController.phase == .recording
-                 ? "Release to send"
-                 : voiceController.statusSubtitle)
-                .font(.caption)
-                .foregroundStyle(ScarfColor.foregroundMuted)
-                .multilineTextAlignment(.center)
+                Text(voiceController.statusTitle)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(ScarfColor.foregroundPrimary)
+                    .accessibilityIdentifier("clawdia.voice.status")
 
-            ZStack {
-                IOSVoiceWaveform(
-                    level: voiceController.activityLevel,
-                    phase: voiceController.phase
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: 190)
+                Text(voicePressHeld && voiceController.phase == .recording
+                     ? "Release to send"
+                     : voiceController.statusSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(ScarfColor.foregroundMuted)
+                    .multilineTextAlignment(.center)
 
-                Circle()
-                    .fill(voiceButtonBackground.gradient)
-                    .frame(width: 164, height: 164)
-                    .shadow(color: voiceButtonBackground.opacity(0.26), radius: 28)
-                    .overlay(
-                        Circle().strokeBorder(
-                            voiceController.phase == .recording
-                                ? ScarfColor.danger.opacity(0.5)
-                                : Color.white.opacity(0.22),
-                            lineWidth: 2
+                if voiceController.isConversationActive {
+                    Button(role: .destructive) {
+                        voiceController.endConversation()
+                        resetVoicePressState()
+                    } label: {
+                        Label("End conversation", systemImage: "stop.circle")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .tint(ScarfColor.danger)
+                    .accessibilityIdentifier("clawdia.voice.conversation.end")
+                }
+
+                ZStack {
+                    IOSVoiceWaveform(
+                        samples: voiceController.waveformSamples,
+                        phase: voiceController.phase
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 190)
+
+                    Circle()
+                        .fill(voiceButtonBackground.gradient)
+                        .frame(width: 164, height: 164)
+                        .shadow(color: voiceButtonBackground.opacity(0.26), radius: 28)
+                        .overlay(
+                            Circle().strokeBorder(
+                                voiceController.phase == .recording
+                                    ? ScarfColor.danger.opacity(0.5)
+                                    : Color.white.opacity(0.22),
+                                lineWidth: 2
+                            )
                         )
-                    )
 
-                Image(systemName: voiceButtonSymbol)
-                    .font(.system(size: 62, weight: .medium))
-                    .foregroundStyle(voiceButtonForeground)
-                    .symbolEffect(
-                        .pulse,
-                        options: .repeating,
-                        isActive: voiceController.phase == .recording
-                    )
+                    Image(systemName: voiceButtonSymbol)
+                        .font(.system(size: 62, weight: .medium))
+                        .foregroundStyle(voiceButtonForeground)
+                        .symbolEffect(
+                            .pulse,
+                            options: .repeating,
+                            isActive: voiceController.phase == .recording
+                        )
+                }
+                .frame(maxWidth: .infinity, minHeight: 210)
+                .contentShape(Rectangle())
+                .gesture(voicePressGesture)
+                .disabled(controller.state != .ready)
+                .opacity(controller.state == .ready ? 1 : 0.55)
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(voiceButtonHelp)
+                .accessibilityHint(voiceController.statusSubtitle)
+                .accessibilityAction { voicePrimaryAccessibilityAction() }
+                .accessibilityIdentifier("clawdia.voice.microphone")
+
+                // iOS 26's floating tab bar intentionally overlays tab content.
+                // A scrollable voice surface plus explicit trailing clearance
+                // keeps the last status row reachable on compact phones.
+                Color.clear
+                    .frame(height: 76)
+                    .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity, minHeight: 210)
-            .contentShape(Rectangle())
-            .gesture(voicePressGesture)
-            .opacity(controller.state == .ready ? 1 : 0.55)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(voiceButtonHelp)
-            .accessibilityHint(voiceController.statusSubtitle)
-            .accessibilityAction { voicePrimaryAccessibilityAction() }
-
-            Text("gpt-realtime audio · Clawdia · continuous conversation")
-                .font(.caption2)
-                .foregroundStyle(ScarfColor.foregroundMuted)
-
-            if let error = voiceController.errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(ScarfColor.danger)
-                    .multilineTextAlignment(.center)
-            }
-
-            if let notice = voiceController.driveModeNotice {
-                Label(notice, systemImage: "car.fill")
-                    .font(.caption)
-                    .foregroundStyle(ScarfColor.info)
-                    .multilineTextAlignment(.center)
-            }
+            .frame(maxWidth: .infinity)
         }
+        .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity)
-        .frame(minHeight: 320)
+        .frame(minHeight: 320, idealHeight: 460, maxHeight: 560)
         .padding(.top, ScarfSpace.s2)
-        .padding(.bottom, ScarfSpace.s3)
     }
 
-    @ViewBuilder
-    private var driveModeControl: some View {
-        if voiceController.isDriveModeActive {
-            HStack(spacing: ScarfSpace.s2) {
-                Label("Drive Mode", systemImage: "car.fill")
-                    .font(.headline)
-                    .foregroundStyle(ScarfColor.success)
-                Spacer()
-                if voiceController.phase == .paused {
-                    Button("Resume") {
-                        voiceController.resumeDriveMode()
-                    }
-                    .buttonStyle(.bordered)
-                }
-                Button("End Drive Mode", role: .destructive) {
-                    voiceController.endDriveMode()
-                    resetVoicePressState()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(ScarfColor.danger)
+    private func voiceErrorCard(_ error: String) -> some View {
+        VStack(alignment: .leading, spacing: ScarfSpace.s2) {
+            Label {
+                Text(error)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("clawdia.voice.error")
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
             }
-            .padding(ScarfSpace.s2)
-            .background(ScarfColor.success.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        } else {
-            Button {
-                startDriveMode()
-            } label: {
-                Label("Start Drive Mode", systemImage: "car.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(controller.state != .ready || voiceController.phase != .idle)
+            .font(.caption)
+            .foregroundStyle(ScarfColor.danger)
 
-            Text("Hands-free conversation through screen lock · ends after 10 minutes idle")
-                .font(.caption2)
-                .foregroundStyle(ScarfColor.foregroundMuted)
-                .multilineTextAlignment(.center)
+            HStack(spacing: ScarfSpace.s2) {
+                Button("Manage API Key") {
+                    voiceController.apiKeyDraft = ""
+                    voiceController.showsCredentialSheet = true
+                }
+                .buttonStyle(.bordered)
+
+                Button("Dismiss") {
+                    voiceController.dismissError()
+                }
+                .buttonStyle(.plain)
+            }
+            .font(.caption.weight(.semibold))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ScarfSpace.s2)
+        .background(ScarfColor.danger.opacity(0.09))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(ScarfColor.danger.opacity(0.28), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var voiceButtonSymbol: String {
@@ -915,8 +930,8 @@ struct ChatView: View {
         case .recording: return "Stop recording and send to Clawdia"
         case .speaking: return "Stop spoken response"
         case .preparing, .transcribing, .waitingForHermes: return voiceController.statusTitle
-        case .idle: return "Start voice message"
-        case .paused: return "Resume Drive Mode"
+        case .idle: return "Start voice conversation"
+        case .paused: return "Resume voice conversation"
         }
     }
 
@@ -956,12 +971,12 @@ struct ChatView: View {
         voicePressHeld = false
 
         if voicePressBeganIdle {
-            startVoiceRecording()
             voiceHoldTask?.cancel()
             voiceHoldTask = Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(360))
                 guard !Task.isCancelled, voiceTouchActive, voicePressBeganIdle else { return }
                 voicePressHeld = true
+                startVoiceConversation(pushToTalk: true)
             }
         }
     }
@@ -973,6 +988,8 @@ struct ChatView: View {
         if voicePressBeganIdle {
             if voicePressHeld {
                 voiceController.finishRecording()
+            } else {
+                startVoiceConversation()
             }
         } else {
             switch voiceController.phase {
@@ -981,7 +998,7 @@ struct ChatView: View {
             case .speaking:
                 voiceController.stopSpeaking()
             case .paused:
-                voiceController.resumeDriveMode()
+                voiceController.resumeConversation()
             case .idle, .transcribing, .waitingForHermes:
                 break
             }
@@ -1002,28 +1019,20 @@ struct ChatView: View {
         guard controller.state == .ready else { return }
         switch voiceController.phase {
         case .idle:
-            startVoiceRecording()
+            startVoiceConversation()
         case .preparing, .recording:
             voiceController.finishRecording()
         case .speaking:
             voiceController.stopSpeaking()
         case .paused:
-            voiceController.resumeDriveMode()
+            voiceController.resumeConversation()
         case .transcribing, .waitingForHermes:
             break
         }
     }
 
-    private func startVoiceRecording() {
-        voiceController.startRecording { transcript in
-            voiceController.noteHermesSend(sessionID: controller.vm.sessionId)
-            controller.draft = transcript
-            await controller.send()
-        }
-    }
-
-    private func startDriveMode() {
-        voiceController.startDriveMode { transcript in
+    private func startVoiceConversation(pushToTalk: Bool = false) {
+        voiceController.startConversation(pushToTalk: pushToTalk) { transcript in
             voiceController.noteHermesSend(sessionID: controller.vm.sessionId)
             controller.draft = transcript
             await controller.send()
@@ -1605,63 +1614,198 @@ struct ChatView: View {
 }
 
 private struct IOSVoiceWaveform: View {
-    let level: Float
+    let samples: [Float]
     let phase: IOSRealtimeVoiceController.Phase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var isAnimated: Bool { phase != .idle && phase != .paused }
-
-    private var intensity: CGFloat {
+    private var animatesAmbientState: Bool {
+        guard !reduceMotion else { return false }
         switch phase {
-        case .idle: return 0.06
-        case .preparing: return 0.12
-        case .transcribing: return 0.18
-        case .waitingForHermes: return 0.22
-        case .recording, .speaking: return CGFloat(max(0.08, level))
-        case .paused: return 0.08
+        case .preparing, .transcribing, .waitingForHermes: return true
+        case .idle, .recording, .speaking, .paused: return false
         }
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimated)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !animatesAmbientState)) { timeline in
             Canvas(rendersAsynchronously: true) { context, size in
                 let time = timeline.date.timeIntervalSinceReferenceDate
-                let centerY = size.height / 2
-                let amplitude = 10 + min(1, intensity) * 54
-                let colors: [Color] = [.orange, .pink, .cyan, .purple]
+                let values = renderedSamples(at: time)
+                let ribbon = Self.ribbonPath(values: values, in: size, scale: 1)
+                let core = Self.ribbonPath(values: values, in: size, scale: 0.52)
+                let colors = palette
+                let start = CGPoint(x: 0, y: size.height * 0.28)
+                let end = CGPoint(x: size.width, y: size.height * 0.72)
 
-                for layer in 0..<colors.count {
-                    var path = Path()
-                    let phaseOffset = Double(layer) * 0.9
-                    let frequency = 1.45 + Double(layer) * 0.24
-                    let layerAmplitude = amplitude * (1 - CGFloat(layer) * 0.13)
-                    let points = max(48, Int(size.width / 4))
-
-                    for index in 0...points {
-                        let progress = CGFloat(index) / CGFloat(points)
-                        let progressDouble = Double(progress)
-                        let x = progress * size.width
-                        let edgeEnvelope = sin(progressDouble * Double.pi)
-                        let spatialPhase = progressDouble * Double.pi * 2 * frequency
-                        let temporalPhase = time * (2.0 + Double(layer) * 0.18)
-                        let primary = sin(spatialPhase + temporalPhase + phaseOffset)
-                        let detailPhase = progressDouble * Double.pi * 5.2 - time * 1.25
-                        let detail = sin(detailPhase + phaseOffset) * 0.24
-                        let combined = CGFloat((primary + detail) * edgeEnvelope)
-                        let y = centerY + combined * layerAmplitude
-                        if index == 0 { path.move(to: CGPoint(x: x, y: y)) }
-                        else { path.addLine(to: CGPoint(x: x, y: y)) }
-                    }
-
-                    context.stroke(
-                        path,
-                        with: .color(colors[layer].opacity(0.78 - Double(layer) * 0.1)),
-                        style: StrokeStyle(lineWidth: 4 - CGFloat(layer) * 0.55, lineCap: .round)
+                var glow = context
+                glow.opacity = phase == .idle || phase == .paused ? 0.14 : 0.30
+                glow.addFilter(.blur(radius: 14))
+                glow.fill(
+                    ribbon,
+                    with: .linearGradient(
+                        Gradient(colors: colors),
+                        startPoint: start,
+                        endPoint: end
                     )
-                }
+                )
+
+                context.opacity = phase == .idle || phase == .paused ? 0.38 : 0.88
+                context.fill(
+                    ribbon,
+                    with: .linearGradient(
+                        Gradient(colors: colors),
+                        startPoint: start,
+                        endPoint: end
+                    )
+                )
+
+                context.opacity = phase == .idle || phase == .paused ? 0.10 : 0.22
+                context.fill(
+                    core,
+                    with: .linearGradient(
+                        Gradient(colors: [.white.opacity(0.2), .white, .white.opacity(0.15)]),
+                        startPoint: CGPoint(x: 0, y: size.height / 2),
+                        endPoint: CGPoint(x: size.width, y: size.height / 2)
+                    )
+                )
             }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private var palette: [Color] {
+        switch phase {
+        case .recording:
+            return [
+                Color(red: 1.00, green: 0.64, blue: 0.32),
+                ScarfColor.accent,
+                Color(red: 0.96, green: 0.28, blue: 0.48),
+                Color(red: 0.72, green: 0.25, blue: 0.82)
+            ]
+        case .speaking:
+            return [
+                Color(red: 0.22, green: 0.79, blue: 0.91),
+                Color(red: 0.47, green: 0.36, blue: 0.93),
+                Color(red: 0.96, green: 0.28, blue: 0.62),
+                ScarfColor.accent
+            ]
+        case .preparing, .transcribing, .waitingForHermes:
+            return [
+                ScarfColor.accent,
+                Color(red: 0.96, green: 0.34, blue: 0.55),
+                Color(red: 0.48, green: 0.39, blue: 0.91)
+            ]
+        case .idle, .paused:
+            return [ScarfColor.accent, ScarfColor.accentHover]
+        }
+    }
+
+    private func renderedSamples(at time: TimeInterval) -> [CGFloat] {
+        let count = 56
+        switch phase {
+        case .recording, .speaking:
+            var values = Array(samples.suffix(count)).map { CGFloat(min(1, max(0, $0))) }
+            if values.count < count {
+                values.insert(contentsOf: repeatElement(0, count: count - values.count), at: 0)
+            }
+            // Two compact smoothing passes keep speech dynamics intact while
+            // removing the jagged barcode look of raw PCM buckets.
+            for _ in 0..<2 {
+                var next = values
+                for index in values.indices {
+                    let previous = values[max(values.startIndex, index - 1)]
+                    let following = values[min(values.index(before: values.endIndex), index + 1)]
+                    next[index] = previous * 0.2 + values[index] * 0.6 + following * 0.2
+                }
+                values = next
+            }
+            return values.map { 0.025 + pow($0, 0.72) * 0.975 }
+
+        case .idle, .paused:
+            return Self.ambientSamples(count: count, time: 0, intensity: 0.025, moves: false)
+
+        case .preparing:
+            return Self.ambientSamples(count: count, time: time, intensity: 0.08, moves: !reduceMotion)
+
+        case .transcribing:
+            return Self.ambientSamples(count: count, time: time, intensity: 0.11, moves: !reduceMotion)
+
+        case .waitingForHermes:
+            return Self.ambientSamples(count: count, time: time, intensity: 0.14, moves: !reduceMotion)
+        }
+    }
+
+    private static func ambientSamples(
+        count: Int,
+        time: TimeInterval,
+        intensity: CGFloat,
+        moves: Bool
+    ) -> [CGFloat] {
+        let clock = moves ? time : 0
+        let breath = 0.78 + 0.22 * sin(clock * 2.1)
+        return (0..<count).map { index in
+            let progress = Double(index) / Double(max(1, count - 1))
+            let broadEnvelope = 0.58 + 0.42 * sin(progress * .pi)
+            let ripple = 0.86 + 0.14 * sin(progress * .pi * 4.4 - clock * 1.5)
+            return max(0.012, intensity * CGFloat(breath * broadEnvelope * ripple))
+        }
+    }
+
+    private static func ribbonPath(
+        values: [CGFloat],
+        in size: CGSize,
+        scale: CGFloat
+    ) -> Path {
+        guard values.count > 1 else { return Path() }
+        let centerY = size.height / 2
+        let maxAmplitude = size.height * 0.42 * scale
+        let step = size.width / CGFloat(values.count - 1)
+        let top = values.enumerated().map { index, value in
+            CGPoint(
+                x: CGFloat(index) * step,
+                y: centerY - (2.5 + min(1, value) * maxAmplitude)
+            )
+        }
+        let bottom = values.enumerated().reversed().map { index, value in
+            CGPoint(
+                x: CGFloat(index) * step,
+                y: centerY + (2.5 + min(1, value) * maxAmplitude)
+            )
+        }
+
+        var path = Path()
+        addSmooth(points: top, to: &path, movesToStart: true)
+        addSmooth(points: bottom, to: &path, movesToStart: false)
+        path.closeSubpath()
+        return path
+    }
+
+    private static func addSmooth(
+        points: [CGPoint],
+        to path: inout Path,
+        movesToStart: Bool
+    ) {
+        guard let first = points.first else { return }
+        if movesToStart { path.move(to: first) }
+        else { path.addLine(to: first) }
+
+        guard points.count > 1 else { return }
+        for index in 0..<(points.count - 1) {
+            let p0 = points[max(0, index - 1)]
+            let p1 = points[index]
+            let p2 = points[index + 1]
+            let p3 = points[min(points.count - 1, index + 2)]
+            let control1 = CGPoint(
+                x: p1.x + (p2.x - p0.x) / 6,
+                y: p1.y + (p2.y - p0.y) / 6
+            )
+            let control2 = CGPoint(
+                x: p2.x - (p3.x - p1.x) / 6,
+                y: p2.y - (p3.y - p1.y) / 6
+            )
+            path.addCurve(to: p2, control1: control1, control2: control2)
+        }
     }
 }
 

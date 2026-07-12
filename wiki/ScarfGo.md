@@ -40,7 +40,7 @@ Onboarding details:
 
 | Feature | What you can do |
 |---|---|
-| **Multi-server** | Configure as many Hermes hosts as you like. Soft Disconnect keeps credentials; Forget wipes a server end-to-end. |
+| **Multi-server** | Configure as many Hermes hosts as you like. With one fully configured server Clawdia connects automatically at launch; with multiple servers it shows the picker. Soft Disconnect keeps credentials; Forget wipes a server end-to-end. |
 | **Dashboard** | Total sessions / messages / tool calls + a 25-session list with project badges. Filter by project. |
 | **Chat** | Streamed agent responses, tool-call disclosure groups, code blocks with horizontal scroll. Project-scoped chat picks a project from your registry, writes the same Scarf-managed `AGENTS.md` block as the Mac app, and spawns `hermes acp` with the project as the working directory. |
 | **Session resume** | Tap a row on the Dashboard → opens that session's transcript in Chat. CLI-started sessions hydrate from `state.db`; ACP sessions show an empty-state because Hermes doesn't persist ACP transcripts to the DB (same on Mac). |

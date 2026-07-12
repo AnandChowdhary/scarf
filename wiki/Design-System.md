@@ -15,7 +15,7 @@ If you're building a new view or polishing an existing one, reach for these toke
 ```
 scarf/Packages/ScarfDesign/
   Sources/ScarfDesign/
-    ScarfBrand.xcassets/        # color set: brand rust, grayscale, semantic, tool kinds
+    ScarfBrand.xcassets/        # Scarf rust + Clawdia orange, grayscale, semantic, tool kinds
     ScarfTheme.swift            # ScarfColor accessors + environment keys
     ScarfTypography.swift       # ScarfFont scale + .scarfStyle modifier
     ScarfComponents.swift       # PageHeader, Card, Badge, TextField, button styles
@@ -23,15 +23,15 @@ scarf/Packages/ScarfDesign/
     ScarfPreview.swift          # preview canvas helpers
 ```
 
-The `ScarfBrand.xcassets` color set ships in the package; both targets resolve `Color("AccentColor", bundle: .module)` to the rust accent automatically. No per-target asset duplication.
+The `ScarfBrand.xcassets` color set ships in the package. Semantic accent tokens are platform-specific: macOS Scarf resolves them to the established rust palette, while iOS Clawdia resolves them to the pumpkin-orange palette sampled from its app icon. The iOS target's own `AccentColor.colorset` mirrors the Clawdia values for native controls that resolve the app-level tint instead of package resources.
 
 ## Color tokens
 
 | Token | Use |
 |---|---|
-| `ScarfColor.accent` | Primary brand rust. Buttons, focused states, chat user-bubble fill. |
+| `ScarfColor.accent` | Primary platform accent: Scarf rust on macOS, Clawdia pumpkin orange on iOS. Buttons, focused states, chat user-bubble fill. |
 | `ScarfColor.accentTint` | Translucent accent for chip backgrounds + selection rows. |
-| `ScarfColor.onAccent` | Foreground on rust fills (high-contrast). |
+| `ScarfColor.onAccent` | Foreground on accent fills. |
 | `ScarfColor.foregroundPrimary` | Default body text. |
 | `ScarfColor.foregroundMuted` | Secondary text — captions, list-row subtitles. |
 | `ScarfColor.foregroundFaint` | Tertiary text — metadata, "12 / 100 chars" hints. |
@@ -89,7 +89,7 @@ The iOS app already clamps Dynamic Type at the scene root (`ScarfIOSApp.swift`: 
 
 Don't retrofit `ScarfPageHeader` over iOS tab roots. iOS uses `.navigationTitle(...)` + `.navigationBarTitleDisplayMode(.large)` as its native page-header pattern; stacking ScarfPageHeader on top creates double titles. Use ScarfPageHeader only on iOS sub-views without a native large-title bar (rare).
 
-iOS button styling: only swap `.borderedProminent` → `ScarfPrimaryButton`. **Leave `.bordered` native** — it's the iOS convention and inherits rust through `AccentColor.colorset` automatically. Same for `.plain` (used as compact tap targets in lists).
+iOS button styling: only swap `.borderedProminent` → `ScarfPrimaryButton`. **Leave `.bordered` native** — it's the iOS convention and inherits Clawdia orange through `AccentColor.colorset` automatically. Same for `.plain` (used as compact tap targets in lists).
 
 ## Spacing, radius, shadow
 

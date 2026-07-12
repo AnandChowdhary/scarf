@@ -23,6 +23,34 @@ struct Scarf_iOSTests {
         #expect(IOSPCM16Meter.level(decibels: -12) > 0.6)
     }
 
+    @Test func pcmEnvelopePreservesRecentAudioShape() {
+        var shaped = Data(repeating: 0, count: 400)
+        for _ in 0..<200 { shaped.append(contentsOf: [0xFF, 0x7F]) }
+
+        let envelope = IOSPCM16Meter.envelope(in: shaped, bucketCount: 4)
+
+        #expect(envelope.count == 4)
+        #expect(envelope[0] == 0)
+        #expect(envelope[1] == 0)
+        #expect(envelope[2] > 0.9)
+        #expect(envelope[3] > 0.9)
+    }
+
+    @Test func waveformHistoryIsBoundedAndKeepsNewestSamples() {
+        let history = IOSVoiceWaveformHistory.appending(
+            [0.1, 0.4, 0.8, 1.2],
+            to: IOSVoiceWaveformHistory.silence
+        )
+
+        #expect(history.count == IOSVoiceWaveformHistory.capacity)
+        #expect(Array(history.suffix(4)) == [0.1, 0.4, 0.8, 1.0])
+    }
+
+    @Test func audioSessionFailuresHaveActionableMessages() {
+        #expect(IOSRealtimeVoiceError.audioSessionInUse.errorDescription?.contains("current call") == true)
+        #expect(IOSRealtimeVoiceError.audioRouteUnavailable.errorDescription?.contains("Reconnect") == true)
+    }
+
     @Test func automaticListeningTimeoutIsNotAnUtteranceLimit() {
         #expect(IOSAutomaticListeningPolicy.shouldStop(
             startedAt: 100,
@@ -36,6 +64,12 @@ struct Scarf_iOSTests {
         ))
     }
 
+    @Test func realtimeManualCommitRequiresOneHundredMillisecondsOfPCM() {
+        #expect(!IOSRealtimeAudioBufferPolicy.shouldCommit(byteCount: 0))
+        #expect(!IOSRealtimeAudioBufferPolicy.shouldCommit(byteCount: 4_799))
+        #expect(IOSRealtimeAudioBufferPolicy.shouldCommit(byteCount: 4_800))
+    }
+
     @Test func realtimeTranscriptionUsesServerSilenceDetectionWithoutAutoResponse() throws {
         let json = try IOSRealtimeProtocol.transcriptionSessionUpdate(usesServerVAD: true)
         let data = try #require(json.data(using: .utf8))
@@ -44,12 +78,18 @@ struct Scarf_iOSTests {
         let audio = try #require(session["audio"] as? [String: Any])
         let input = try #require(audio["input"] as? [String: Any])
         let vad = try #require(input["turn_detection"] as? [String: Any])
+        let transcription = try #require(input["transcription"] as? [String: Any])
 
         #expect(vad["type"] as? String == "server_vad")
+        #expect(vad["threshold"] as? Double == 0.35)
         #expect(vad["silence_duration_ms"] as? Int == 2_000)
         #expect(vad["create_response"] as? Bool == false)
         #expect(vad["interrupt_response"] as? Bool == false)
         #expect((input["noise_reduction"] as? [String: Any])?["type"] as? String == "far_field")
+        #expect(transcription["model"] as? String == "gpt-4o-mini-transcribe")
+        #expect(transcription["delay"] == nil)
+        #expect(json.contains("\"threshold\":0.35"))
+        #expect(!json.contains("0.34999999999999998"))
     }
 
     @Test func streamingSpeechBufferNeverRepeatsGrowingHermesText() {
@@ -88,7 +128,7 @@ struct Scarf_iOSTests {
     @Test func speechSessionUsesConfiguredVoiceSpeedAndStyle() throws {
         let preferences = IOSRealtimeVoicePreferences(
             voice: .cedar,
-            speed: 1.25,
+            speed: 1.1,
             style: .warm,
             customInstructions: "Use subtle dry humor."
         )
@@ -101,7 +141,8 @@ struct Scarf_iOSTests {
         let instructions = try #require(session["instructions"] as? String)
 
         #expect(output["voice"] as? String == "cedar")
-        #expect(output["speed"] as? Double == 1.25)
+        #expect(output["speed"] as? Double == 1.1)
+        #expect(json.contains("\"speed\":1.1"))
         #expect(instructions.contains("warm, empathetic"))
         #expect(instructions.contains("subtle dry humor"))
         #expect(instructions.contains("verbatim"))
@@ -124,20 +165,20 @@ struct Scarf_iOSTests {
         #expect(preferences.customInstructions == "Pause between key ideas.")
     }
 
-    @Test func driveModeInactivityRequiresTenIdleMinutes() {
-        let timeout = IOSDriveModeInactivityPolicy.shutdownInterval
+    @Test func voiceConversationInactivityRequiresTenIdleMinutes() {
+        let timeout = IOSVoiceConversationInactivityPolicy.shutdownInterval
         #expect(timeout == 600)
-        #expect(!IOSDriveModeInactivityPolicy.shouldEnd(
+        #expect(!IOSVoiceConversationInactivityPolicy.shouldEnd(
             lastActivity: 100,
             now: 100 + timeout - 0.01
         ))
-        #expect(IOSDriveModeInactivityPolicy.shouldEnd(
+        #expect(IOSVoiceConversationInactivityPolicy.shouldEnd(
             lastActivity: 100,
             now: 100 + timeout
         ))
     }
 
-    @Test func driveModeDecodesAudioInterruptionsAndRouteAvailability() {
+    @Test func voiceConversationDecodesAudioInterruptionsAndRouteAvailability() {
         let began = IOSRealtimeAudioEventDecoder.interruption(userInfo: [
             AVAudioSessionInterruptionTypeKey:
                 NSNumber(value: AVAudioSession.InterruptionType.began.rawValue)
@@ -227,5 +268,83 @@ struct Scarf_iOSTests {
         #expect(coordinator.selectedTab == .chat)
         #expect(coordinator.takeSystemEntry() == request)
         #expect(coordinator.takeSystemEntry() == nil)
+    }
+
+    @MainActor
+    @Test func rootModelAutomaticallyConnectsItsOnlyUsableServer() async throws {
+        let serverID = ServerID()
+        let config = IOSServerConfig(
+            host: "only-server.example",
+            user: "tester",
+            displayName: "Only Server"
+        )
+        let key = SSHKeyBundle(
+            privateKeyPEM: "test-private-key",
+            publicKeyOpenSSH: "ssh-ed25519 test-public-key",
+            comment: "test-only",
+            createdAt: "2026-07-12T00:00:00Z"
+        )
+        let configStore = InMemoryIOSServerConfigStore()
+        let keyStore = InMemorySSHKeyStore()
+        try await configStore.save(config, id: serverID)
+        try await keyStore.save(key, for: serverID)
+
+        let model = RootModel(keyStore: keyStore, configStore: configStore)
+        await model.load()
+
+        guard case .connected(let selectedID, let selectedConfig, let selectedKey) = model.state else {
+            Issue.record("Expected one usable server to connect automatically")
+            return
+        }
+        #expect(selectedID == serverID)
+        #expect(selectedConfig == config)
+        #expect(selectedKey == key)
+    }
+
+    @MainActor
+    @Test func rootModelKeepsMultipleServersInThePicker() async throws {
+        let firstID = ServerID()
+        let secondID = ServerID()
+        let configStore = InMemoryIOSServerConfigStore()
+        let keyStore = InMemorySSHKeyStore()
+        let key = SSHKeyBundle(
+            privateKeyPEM: "test-private-key",
+            publicKeyOpenSSH: "ssh-ed25519 test-public-key",
+            comment: "test-only",
+            createdAt: "2026-07-12T00:00:00Z"
+        )
+        try await configStore.save(
+            IOSServerConfig(host: "first.example", displayName: "First"),
+            id: firstID
+        )
+        try await configStore.save(
+            IOSServerConfig(host: "second.example", displayName: "Second"),
+            id: secondID
+        )
+        try await keyStore.save(key, for: firstID)
+        try await keyStore.save(key, for: secondID)
+
+        let model = RootModel(keyStore: keyStore, configStore: configStore)
+        await model.load()
+
+        #expect(model.state == .serverList)
+    }
+
+    @MainActor
+    @Test func rootModelKeepsAnIncompleteOnlyServerInThePicker() async throws {
+        let serverID = ServerID()
+        let configStore = InMemoryIOSServerConfigStore()
+        try await configStore.save(
+            IOSServerConfig(host: "missing-key.example", displayName: "Missing Key"),
+            id: serverID
+        )
+
+        let model = RootModel(
+            keyStore: InMemorySSHKeyStore(),
+            configStore: configStore
+        )
+        await model.load()
+
+        #expect(model.state == .serverList)
     }
 }

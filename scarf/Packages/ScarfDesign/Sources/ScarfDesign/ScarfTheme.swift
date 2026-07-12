@@ -32,15 +32,43 @@ public enum ScarfColor {
     public static let brandAmber        = asset("Brand/BrandAmber")
     public static let brandRustDeep     = asset("Brand/BrandRustDeep")
 
+    // Clawdia's iOS identity uses the brighter pumpkin oranges sampled from
+    // its app icon. Keep these separate from Scarf's macOS rust palette so
+    // the two products can share semantic component APIs without sharing a
+    // visual identity.
+    private static let clawdiaOrange       = asset("Brand/ClawdiaOrange")
+    private static let clawdiaOrangeHover  = asset("Brand/ClawdiaOrangeHover")
+    private static let clawdiaOrangeActive = asset("Brand/ClawdiaOrangeActive")
+
     /// Semantic alias: the "primary" accent. Use this in component code,
     /// not `brandRust` directly — it lets you re-skin without a refactor.
-    public static var accent: Color        { brandRust }
-    public static var accentHover: Color   { brandRustHover }
-    public static var accentActive: Color  { brandRustActive }
+    public static var accent: Color {
+        #if os(iOS)
+        clawdiaOrange
+        #else
+        brandRust
+        #endif
+    }
+
+    public static var accentHover: Color {
+        #if os(iOS)
+        clawdiaOrangeHover
+        #else
+        brandRustHover
+        #endif
+    }
+
+    public static var accentActive: Color {
+        #if os(iOS)
+        clawdiaOrangeActive
+        #else
+        brandRustActive
+        #endif
+    }
 
     /// Tinted accent for hover halos, selection backgrounds.
-    public static var accentTint: Color { brandRust.opacity(0.10) }
-    public static var accentTintStrong: Color { brandRust.opacity(0.18) }
+    public static var accentTint: Color { accent.opacity(0.10) }
+    public static var accentTintStrong: Color { accent.opacity(0.18) }
 
     // Surfaces
     public static let backgroundPrimary   = asset("Surface/BackgroundPrimary")
@@ -77,6 +105,17 @@ public enum ScarfColor {
 
 public enum ScarfGradient {
     /// Tri-stop amber → rust → deep rust. Used on app icon, hero buttons, brand splashes.
+    #if os(iOS)
+    public static let brand = LinearGradient(
+        colors: [
+            Color(red: 0.996, green: 0.640, blue: 0.318), // #FEA351
+            Color(red: 0.953, green: 0.459, blue: 0.094), // #F37518
+            Color(red: 0.804, green: 0.361, blue: 0.043)  // #CD5C0B
+        ],
+        startPoint: .topLeading,
+        endPoint:   .bottomTrailing
+    )
+    #else
     public static let brand = LinearGradient(
         colors: [
             Color(red: 0.910, green: 0.576, blue: 0.376), // #E89360
@@ -86,6 +125,7 @@ public enum ScarfGradient {
         startPoint: .topLeading,
         endPoint:   .bottomTrailing
     )
+    #endif
 
     /// Soft amber wash for empty states, onboarding moments.
     public static let brandSoft = LinearGradient(

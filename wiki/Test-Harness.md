@@ -120,4 +120,27 @@ A few alternatives we considered + rejected:
 
 The harness is being built on the [`dogfooding-templates` branch](https://github.com/awizemann/scarf/tree/dogfooding-templates) under issue tracking the v2.7 cycle. Initial scope is Layer A + the env-var seam + the HN Digest fixture. Layer B + accessibility IDs land in the same release.
 
+## Clawdia voice gate
+
+Clawdia has a separate two-level voice verification command:
+
+```bash
+scripts/verify-ios-voice-e2e.sh
+scripts/verify-ios-voice-e2e.sh --live
+```
+
+The default command is hermetic. It runs the iOS voice protocol, PCM threshold and waveform-envelope/history checks, streaming speech-buffer, continuous Voice lifecycle, and prompt-completion regression tests without network calls.
+
+`--live` additionally selects the dedicated **Clawdia Voice E2E** Xcode scheme. The selected simulator must already contain a configured Hermes server and a saved OpenAI Realtime API key. The Debug app synthesizes a labeled utterance, converts it to the production 24 kHz mono PCM16 format, paces it through the same Realtime input stream, and verifies the complete path:
+
+1. Realtime detects and transcribes the speech fixture.
+2. Clawdia sends the transcript through the normal Hermes ACP prompt path.
+3. Hermes returns the requested `VOICE E2E OK` response through the normal streaming UI.
+4. Realtime produces and plays speech audio.
+5. Voice automatically returns to listening, then the test ends the conversation cleanly.
+
+The synthetic-microphone seam is compiled only in Debug builds. After the response, the test substitutes digital silence instead of the simulator microphone so output playback cannot create a feedback turn. A surfaced voice error fails immediately; the live test is retried once to tolerate a one-off WebSocket setup race. Both XCTest result bundles and the success screenshot are kept under `build/voice-e2e/`.
+
+The live form deliberately sends one labeled Hermes message and consumes OpenAI Realtime API usage, so it belongs in the TestFlight-candidate checklist rather than ordinary per-edit CI.
+
 When this page reads "the harness is in production," you can run the entire pre-release sweep with `xcodebuild test -scheme scarf -destination 'platform=macOS'` and have confidence equivalent to a manual click-through.

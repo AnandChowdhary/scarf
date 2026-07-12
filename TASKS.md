@@ -60,11 +60,24 @@
 
 ## Doing
 
+- [ ] Ship Clawdia TestFlight build 55 (id: t-d62e91) (added: 2026-07-12)
 - [ ] Hermes v0.17 — Tier 2: capability gates + tests + new platforms + config surfaces, bump target to v0.17 (id: t-8f0f7ac0) (added: 2026-06-21)
 - [ ] Refresh marketing site + README FAQ for v2.15 Projects (supersede PR #109) (id: t-83c4c692) (added: 2026-06-28)
 
 ## Done
 
+- [x] Make Clawdia's waveform audio-reactive and more expressive (id: t-a31b72) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Fold Drive Mode into Clawdia Voice (id: t-f2c981) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Match Clawdia orange and streamline single-server launch (id: t-c04a71) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Add a repeatable Clawdia voice end-to-end verification gate (id: t-a8e4f1) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Fix Clawdia voice failures and tab-bar overlap (id: t-5af3c2) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Ship Clawdia TestFlight build 54 with the new portrait (id: t-54c1a0) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Rename user-facing Hermes language to Clawdia on iOS (id: t-c1a7d1) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Add Clawdia system entry points with App Intents (id: t-4c1a2f) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Add a dedicated Drive Mode lifecycle (id: t-9d41c8) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Add configurable Realtime voice settings (id: t-7f32ad) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Keep active voice conversations alive with the screen locked (id: t-b8c7d1) (added: 2026-07-12) (completed: 2026-07-12)
+- [x] Stream Hermes replies and use Realtime turn detection (id: t-5e17ce) (added: 2026-07-12) (completed: 2026-07-12)
 - [x] Performance and reliability issues on large state.db (lag, crashes, missing sessions) (id: t-b8a6c3) (source: gh#61) (added: 2026-06-13)
 - [x] iOS Settings: route config reads through the Hermes CLI wrapper for Docker hosts (config dir is in-container) (id: t-ios-cfg-get) (source: gh#112 failure 2) (added: 2026-06-06)
 - [x] gh#123: macOS remote dies until remove/re-add — stale ControlMaster recovery (wake observer + reactive -O exit on ACP connect failure) (id: t-8c8fef22) (added: 2026-07-12)
