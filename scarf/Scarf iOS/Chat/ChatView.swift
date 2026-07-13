@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AVKit
 import ScarfCore
 import ScarfIOS
 import ScarfDesign
@@ -7,6 +8,34 @@ import os
 #if canImport(PhotosUI)
 import PhotosUI
 #endif
+
+/// Apple's system output-device button. The menu owns route discovery and
+/// selection; Clawdia keeps its existing audio-session policy so selecting
+/// the local iPhone route resolves to the loudspeaker, while explicit
+/// Bluetooth, wired, AirPlay, and other external choices remain respected.
+struct IOSAudioRoutePicker: UIViewRepresentable {
+    static let accessibilityIdentifier = "clawdia.voice.audio-route"
+
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        Self.makeRoutePickerView()
+    }
+
+    func updateUIView(_ routePickerView: AVRoutePickerView, context: Context) {
+        routePickerView.tintColor = .label
+        routePickerView.activeTintColor = .systemOrange
+    }
+
+    static func makeRoutePickerView() -> AVRoutePickerView {
+        let routePickerView = AVRoutePickerView()
+        routePickerView.prioritizesVideoDevices = false
+        routePickerView.tintColor = .label
+        routePickerView.activeTintColor = .systemOrange
+        routePickerView.accessibilityIdentifier = accessibilityIdentifier
+        routePickerView.accessibilityLabel = "Choose audio output"
+        routePickerView.accessibilityHint = "Choose iPhone, headphones, Bluetooth, AirPlay, or another available speaker."
+        return routePickerView
+    }
+}
 
 // The Chat feature on iOS is gated on `canImport(SQLite3)` because
 // `RichChatViewModel` reads session history from `HermesDataService`
@@ -154,6 +183,12 @@ struct ChatView: View {
             // equivalent of Mac's SessionInfoBar project-chip pattern.
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if presentationMode == .voice {
+                    IOSAudioRoutePicker()
+                        .frame(width: 36, height: 36)
+                        .accessibilityIdentifier(IOSAudioRoutePicker.accessibilityIdentifier)
+                        .accessibilityLabel("Choose audio output")
+                        .accessibilityHint("Choose iPhone, headphones, Bluetooth, AirPlay, or another available speaker.")
+
                     Button {
                         voiceController.apiKeyDraft = ""
                         voiceController.showsCredentialSheet = true

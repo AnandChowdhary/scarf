@@ -6,6 +6,7 @@
 //
 
 @preconcurrency import AVFoundation
+@preconcurrency import AVKit
 import Foundation
 import ScarfCore
 import Testing
@@ -232,6 +233,15 @@ struct Scarf_iOSTests {
         #expect(!IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
             outputPortTypes: [.builtInReceiver, .bluetoothHFP]
         ))
+    }
+
+    @Test @MainActor func voiceRoutePickerUsesTheNativeAudioFirstConfiguration() {
+        let routePicker = IOSAudioRoutePicker.makeRoutePickerView()
+
+        #expect(routePicker.prioritizesVideoDevices == false)
+        #expect(routePicker.accessibilityIdentifier == IOSAudioRoutePicker.accessibilityIdentifier)
+        #expect(routePicker.accessibilityLabel == "Choose audio output")
+        #expect(routePicker.accessibilityHint?.contains("Bluetooth") == true)
     }
 
     @Test func appDeclaresAudioBackgroundMode() {

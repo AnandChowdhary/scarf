@@ -54,6 +54,12 @@ final class Scarf_iOSUITests: XCTestCase {
         voiceTab.tap()
         XCTAssertTrue(app.navigationBars["Voice"].waitForExistence(timeout: 10))
 
+        let audioRoutePicker = app.descendants(matching: .any)["clawdia.voice.audio-route"]
+        XCTAssertTrue(
+            audioRoutePicker.waitForExistence(timeout: 5),
+            "Voice mode did not expose the native audio-output picker in its toolbar."
+        )
+
         let microphone = app.buttons["clawdia.voice.microphone"]
         XCTAssertTrue(
             microphone.waitForExistence(timeout: 5),
