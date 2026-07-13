@@ -14,6 +14,83 @@ import Testing
 
 @Suite("Clawdia iOS")
 struct Scarf_iOSTests {
+    @MainActor
+    @Test func voiceWaveformUsesOnlyOrderedClawdiaOrangeStops() {
+        let fullPalette: [IOSVoiceWaveformPalette.Stop] = [
+            .lightOrange,
+            .midOrange,
+            .deepOrange
+        ]
+        let brandedStops = Set(fullPalette)
+
+        for phase in [
+            IOSRealtimeVoiceController.Phase.recording,
+            .speaking,
+            .preparing,
+            .transcribing,
+            .waitingForHermes
+        ] {
+            let stops = IOSVoiceWaveformPalette.stops(for: phase)
+            #expect(stops == fullPalette)
+            #expect(Set(stops).isSubset(of: brandedStops))
+        }
+
+        #expect(IOSVoiceWaveformPalette.stops(for: .idle) == [.midOrange, .deepOrange])
+        #expect(IOSVoiceWaveformPalette.stops(for: .paused) == [.midOrange, .deepOrange])
+    }
+
+    @MainActor
+    @Test func voiceWaitingStateUsesOnePrimaryThinkingIndicator() {
+        #expect(
+            IOSRealtimeVoiceController.statusTitle(for: .waitingForHermes)
+                == "Clawdia is thinking…"
+        )
+        #expect(
+            IOSVoiceWorkingPresentation.showsLargeWorkingSpinner(for: .waitingForHermes)
+        )
+        #expect(!IOSVoiceWorkingPresentation.showsLargeWorkingSpinner(for: .transcribing))
+        #expect(!IOSVoiceWorkingPresentation.showsLargeWorkingSpinner(for: .speaking))
+        #expect(
+            IOSVoiceWorkingPresentation.showsTranscriptThinking(
+                isGenerating: true,
+                mode: .text
+            )
+        )
+        #expect(
+            !IOSVoiceWorkingPresentation.showsTranscriptThinking(
+                isGenerating: true,
+                mode: .voice
+            )
+        )
+    }
+
+    @MainActor
+    @Test func initialConnectionGateHidesApplicationUntilReady() {
+        var gate = IOSInitialConnectionGate()
+
+        #expect(gate.presentation(for: .idle) == .connecting)
+        #expect(gate.presentation(for: .connecting) == .connecting)
+        #expect(gate.presentation(for: .offline(reason: "No network")) == .connecting)
+        #expect(gate.presentation(for: .reconnecting(attempt: 1, of: 3)) == .connecting)
+        #expect(gate.presentation(for: .failed("No route")) == .failure("No route"))
+        #expect(gate.presentation(for: .ready) == .application)
+
+        gate.observe(.ready)
+
+        #expect(gate.presentation(for: .ready) == .application)
+    }
+
+    @MainActor
+    @Test func initialConnectionGateNeverRehidesEstablishedApplication() {
+        var gate = IOSInitialConnectionGate()
+        gate.observe(.ready)
+
+        #expect(gate.presentation(for: .connecting) == .application)
+        #expect(gate.presentation(for: .reconnecting(attempt: 2, of: 3)) == .application)
+        #expect(gate.presentation(for: .offline(reason: "Airplane mode")) == .application)
+        #expect(gate.presentation(for: .failed("Connection dropped")) == .application)
+    }
+
     @Test func pcmMeterDistinguishesSilenceFromSpeech() {
         let silence = Data(repeating: 0, count: 512)
         var loud = Data()
@@ -204,20 +281,29 @@ struct Scarf_iOSTests {
             AVAudioSessionRouteChangeReasonKey:
                 NSNumber(value: AVAudioSession.RouteChangeReason.newDeviceAvailable.rawValue)
         ])
+        let categoryChanged = IOSRealtimeAudioEventDecoder.routeChange(userInfo: [
+            AVAudioSessionRouteChangeReasonKey:
+                NSNumber(value: AVAudioSession.RouteChangeReason.categoryChange.rawValue)
+        ])
 
         #expect(began == .interruptionBegan)
         #expect(ended == .interruptionEnded(shouldResume: true))
         #expect(unavailable == .routeUnavailable)
         #expect(available == .routeAvailable)
+        #expect(categoryChanged == .routeAvailable)
     }
 
-    @Test func voiceAudioOverridesOnlyTheBuiltInReceiverToSpeaker() {
+    @Test func voiceAudioOverridesOnlyDeviceLocalRoutesToSpeaker() {
         #expect(IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
             outputPortTypes: [.builtInReceiver]
         ))
-        #expect(!IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
+        #expect(IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
             outputPortTypes: [.builtInSpeaker]
         ))
+        #expect(IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
+            outputPortTypes: [.builtInReceiver, .builtInSpeaker]
+        ))
+        #expect(!IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(outputPortTypes: []))
         #expect(!IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
             outputPortTypes: [.bluetoothHFP]
         ))
@@ -230,6 +316,13 @@ struct Scarf_iOSTests {
         #expect(!IOSRealtimeAudioRoutePolicy.shouldOverrideToSpeaker(
             outputPortTypes: [.builtInReceiver, .bluetoothHFP]
         ))
+    }
+
+    @Test func voiceAudioSessionUsesFullLevelSpeakerConfiguration() {
+        #expect(IOSRealtimeAudioSessionConfiguration.category == .playAndRecord)
+        #expect(IOSRealtimeAudioSessionConfiguration.mode == .default)
+        #expect(IOSRealtimeAudioSessionConfiguration.options.contains(.defaultToSpeaker))
+        #expect(IOSRealtimeAudioSessionConfiguration.options.contains(.allowBluetoothHFP))
     }
 
     @Test @MainActor func voiceRoutePickerUsesTheNativeAudioFirstConfiguration() {

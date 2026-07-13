@@ -40,6 +40,19 @@ public enum ScarfColor {
     private static let clawdiaOrangeHover  = asset("Brand/ClawdiaOrangeHover")
     private static let clawdiaOrangeActive = asset("Brand/ClawdiaOrangeActive")
 
+    /// Exact light → mid → deep orange stops sampled from Clawdia's app icon.
+    /// Use these when a branded visualization needs the full icon palette,
+    /// rather than a single semantic accent color.
+    public static let clawdiaIconOrangeLight = Color(
+        red: 0.996, green: 0.640, blue: 0.318
+    ) // #FEA351
+    public static let clawdiaIconOrangeMid = Color(
+        red: 0.953, green: 0.459, blue: 0.094
+    ) // #F37518
+    public static let clawdiaIconOrangeDeep = Color(
+        red: 0.804, green: 0.361, blue: 0.043
+    ) // #CD5C0B
+
     /// Semantic alias: the "primary" accent. Use this in component code,
     /// not `brandRust` directly — it lets you re-skin without a refactor.
     public static var accent: Color {
@@ -108,9 +121,9 @@ public enum ScarfGradient {
     #if os(iOS)
     public static let brand = LinearGradient(
         colors: [
-            Color(red: 0.996, green: 0.640, blue: 0.318), // #FEA351
-            Color(red: 0.953, green: 0.459, blue: 0.094), // #F37518
-            Color(red: 0.804, green: 0.361, blue: 0.043)  // #CD5C0B
+            ScarfColor.clawdiaIconOrangeLight,
+            ScarfColor.clawdiaIconOrangeMid,
+            ScarfColor.clawdiaIconOrangeDeep
         ],
         startPoint: .topLeading,
         endPoint:   .bottomTrailing

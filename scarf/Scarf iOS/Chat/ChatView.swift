@@ -341,8 +341,6 @@ struct ChatView: View {
         .overlay {
             if case .failed(let msg) = controller.state {
                 errorOverlay(msg)
-            } else if controller.state == .connecting {
-                connectingOverlay
             }
         }
         .sheet(isPresented: Binding(
@@ -513,7 +511,10 @@ struct ChatView: View {
                     .equatable()
                     .id(msg.id)
                 }
-                if controller.vm.isGenerating {
+                if IOSVoiceWorkingPresentation.showsTranscriptThinking(
+                    isGenerating: controller.vm.isGenerating,
+                    mode: presentationMode
+                ) {
                     HStack {
                         ProgressView()
                         Text("Agent is thinking…")
@@ -854,14 +855,25 @@ struct ChatView: View {
                             )
                         )
 
-                    Image(systemName: voiceButtonSymbol)
-                        .font(.system(size: 62, weight: .medium))
-                        .foregroundStyle(voiceButtonForeground)
-                        .symbolEffect(
-                            .pulse,
-                            options: .repeating,
-                            isActive: voiceController.phase == .recording
-                        )
+                    if IOSVoiceWorkingPresentation.showsLargeWorkingSpinner(
+                        for: voiceController.phase
+                    ) {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .controlSize(.large)
+                            .scaleEffect(1.45)
+                            .tint(ScarfColor.accent)
+                            .accessibilityHidden(true)
+                    } else {
+                        Image(systemName: voiceButtonSymbol)
+                            .font(.system(size: 62, weight: .medium))
+                            .foregroundStyle(voiceButtonForeground)
+                            .symbolEffect(
+                                .pulse,
+                                options: .repeating,
+                                isActive: voiceController.phase == .recording
+                            )
+                    }
                 }
                 .frame(maxWidth: .infinity, minHeight: 210)
                 .contentShape(Rectangle())
@@ -931,7 +943,9 @@ struct ChatView: View {
         switch voiceController.phase {
         case .recording: return "stop.fill"
         case .speaking: return "speaker.wave.3.fill"
-        case .preparing, .transcribing, .waitingForHermes: return "waveform"
+        case .preparing, .transcribing: return "waveform"
+        // `waitingForHermes` renders the native progress indicator instead.
+        case .waitingForHermes: return "hourglass"
         case .idle: return "mic.fill"
         case .paused: return "play.fill"
         }
@@ -1588,24 +1602,6 @@ struct ChatView: View {
         text.count <= 28 ? text : String(text.prefix(25)) + "…"
     }
 
-    /// Shown while we're opening the SSH exec channel + spawning
-    /// `hermes acp` + creating the ACP session. Typically ~0.5–1.5 s
-    /// on a warm network — silent before this overlay existed, which
-    /// made the app feel frozen (pass-1 M7 #3).
-    @ViewBuilder
-    private var connectingOverlay: some View {
-        VStack(spacing: 12) {
-            ProgressView()
-                .controlSize(.large)
-            Text("Connecting to \(config.displayName)…")
-                .font(.callout)
-                .foregroundStyle(ScarfColor.foregroundMuted)
-        }
-        .padding(24)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
     @ViewBuilder
     private func errorOverlay(_ message: String) -> some View {
         VStack(spacing: 12) {
@@ -1628,6 +1624,54 @@ struct ChatView: View {
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .padding()
+    }
+}
+
+/// Keeps Voice mode's primary working feedback in the large control while
+/// preserving Text mode's transcript-level generation status.
+enum IOSVoiceWorkingPresentation {
+    static func showsLargeWorkingSpinner(
+        for phase: IOSRealtimeVoiceController.Phase
+    ) -> Bool {
+        phase == .waitingForHermes
+    }
+
+    static func showsTranscriptThinking(
+        isGenerating: Bool,
+        mode: IOSRealtimeVoiceController.ComposerMode
+    ) -> Bool {
+        isGenerating && mode == .text
+    }
+}
+
+/// Phase-to-color mapping for the Voice ribbon. Stop identities stay separate
+/// from `Color` so tests can enforce that no off-brand hue enters the palette.
+enum IOSVoiceWaveformPalette {
+    enum Stop: Hashable {
+        case lightOrange
+        case midOrange
+        case deepOrange
+
+        var color: Color {
+            switch self {
+            case .lightOrange: return ScarfColor.clawdiaIconOrangeLight
+            case .midOrange: return ScarfColor.clawdiaIconOrangeMid
+            case .deepOrange: return ScarfColor.clawdiaIconOrangeDeep
+            }
+        }
+    }
+
+    static func stops(for phase: IOSRealtimeVoiceController.Phase) -> [Stop] {
+        switch phase {
+        case .recording, .speaking, .preparing, .transcribing, .waitingForHermes:
+            return [.lightOrange, .midOrange, .deepOrange]
+        case .idle, .paused:
+            return [.midOrange, .deepOrange]
+        }
+    }
+
+    static func colors(for phase: IOSRealtimeVoiceController.Phase) -> [Color] {
+        stops(for: phase).map(\.color)
     }
 }
 
@@ -1693,30 +1737,7 @@ private struct IOSVoiceWaveform: View {
     }
 
     private var palette: [Color] {
-        switch phase {
-        case .recording:
-            return [
-                Color(red: 1.00, green: 0.64, blue: 0.32),
-                ScarfColor.accent,
-                Color(red: 0.96, green: 0.28, blue: 0.48),
-                Color(red: 0.72, green: 0.25, blue: 0.82)
-            ]
-        case .speaking:
-            return [
-                Color(red: 0.22, green: 0.79, blue: 0.91),
-                Color(red: 0.47, green: 0.36, blue: 0.93),
-                Color(red: 0.96, green: 0.28, blue: 0.62),
-                ScarfColor.accent
-            ]
-        case .preparing, .transcribing, .waitingForHermes:
-            return [
-                ScarfColor.accent,
-                Color(red: 0.96, green: 0.34, blue: 0.55),
-                Color(red: 0.48, green: 0.39, blue: 0.91)
-            ]
-        case .idle, .paused:
-            return [ScarfColor.accent, ScarfColor.accentHover]
-        }
+        IOSVoiceWaveformPalette.colors(for: phase)
     }
 
     private func renderedSamples(at time: TimeInterval) -> [CGFloat] {

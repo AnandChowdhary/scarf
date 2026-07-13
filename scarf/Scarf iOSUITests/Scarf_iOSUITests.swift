@@ -49,7 +49,10 @@ final class Scarf_iOSUITests: XCTestCase {
             "Clawdia did not reach Text using the simulator's configured server."
         )
 
-        let voiceTab = app.tabBars.buttons["Voice"]
+        // iOS 26 exposes both a label proxy and the actual tab control with
+        // the same accessible name. Target the real system-image-backed
+        // button so the live gate never attempts an ambiguous tap.
+        let voiceTab = app.tabBars.buttons["waveform"]
         XCTAssertTrue(voiceTab.waitForExistence(timeout: 20))
         voiceTab.tap()
         XCTAssertTrue(app.navigationBars["Voice"].waitForExistence(timeout: 10))
@@ -83,7 +86,7 @@ final class Scarf_iOSUITests: XCTestCase {
         )
         assertStatus("Listening…", element: status, errorElement: voiceError, timeout: 15)
         keepScreenshot(named: "Clawdia waveform — listening", from: app, after: 0.8)
-        assertStatus("Clawdia is responding…", element: status, errorElement: voiceError, timeout: 45)
+        assertStatus("Clawdia is thinking…", element: status, errorElement: voiceError, timeout: 45)
         assertStatus("Clawdia is speaking…", element: status, errorElement: voiceError, timeout: 120)
         keepScreenshot(named: "Clawdia waveform — speaking", from: app, after: 3.0)
 
@@ -121,7 +124,9 @@ final class Scarf_iOSUITests: XCTestCase {
         }
 
         XCTAssertTrue(app.navigationBars["Text"].waitForExistence(timeout: 20))
-        let systemTab = app.tabBars.buttons["System"]
+        // See the Voice-tab note above: the SF Symbol identifier uniquely
+        // addresses the hittable tab button on iOS 26.
+        let systemTab = app.tabBars.buttons["gearshape.fill"]
         XCTAssertTrue(systemTab.waitForExistence(timeout: 10))
         systemTab.tap()
 

@@ -169,6 +169,7 @@ private struct ProfileScopedTabs: View {
 
     @State private var chatController: ChatController
     @State private var voiceController: IOSRealtimeVoiceController
+    @State private var initialConnectionGate = IOSInitialConnectionGate()
 
     init(
         config: IOSServerConfig,
@@ -189,87 +190,149 @@ private struct ProfileScopedTabs: View {
 
     var body: some View {
         @Bindable var coordinator = coordinator
-        TabView(selection: $coordinator.selectedTab) {
-            // 1 — Dashboard: stats + recent sessions.
-            NavigationStack {
-                DashboardView(config: config, key: key, onSoftDisconnect: onSoftDisconnect)
-            }
-            .tabItem {
-                Label("Dashboard", systemImage: "gauge.with.needle")
-            }
-            .tag(ScarfGoCoordinator.Tab.dashboard)
-            .accessibilityLabel("Dashboard tab")
+        let connectionPresentation = initialConnectionGate.presentation(
+            for: chatController.state
+        )
 
-            // 2 — Text: full transcript plus the keyboard composer.
-            NavigationStack {
-                ChatView(
-                    config: config,
-                    key: key,
-                    presentationMode: .text,
-                    controller: chatController,
-                    voiceController: voiceController
-                )
-            }
-            .tabItem {
-                Label("Text", systemImage: "text.bubble.fill")
-            }
-            .tag(ScarfGoCoordinator.Tab.text)
-            .accessibilityLabel("Text tab")
+        ZStack {
+            TabView(selection: $coordinator.selectedTab) {
+                // 1 — Dashboard: stats + recent sessions.
+                NavigationStack {
+                    DashboardView(config: config, key: key, onSoftDisconnect: onSoftDisconnect)
+                }
+                .tabItem {
+                    Label("Dashboard", systemImage: "gauge.with.needle")
+                }
+                .tag(ScarfGoCoordinator.Tab.dashboard)
+                .accessibilityLabel("Dashboard tab")
 
-            // 3 — Voice: the same transcript/session with the continuous,
-            // background-capable voice composer. Centered for thumb reach.
-            NavigationStack {
-                ChatView(
-                    config: config,
-                    key: key,
-                    presentationMode: .voice,
-                    controller: chatController,
-                    voiceController: voiceController
-                )
-            }
-            .tabItem {
-                Label("Voice", systemImage: "waveform")
-            }
-            .tag(ScarfGoCoordinator.Tab.voice)
-            .accessibilityLabel("Voice tab")
+                // 2 — Text: full transcript plus the keyboard composer.
+                NavigationStack {
+                    ChatView(
+                        config: config,
+                        key: key,
+                        presentationMode: .text,
+                        controller: chatController,
+                        voiceController: voiceController
+                    )
+                }
+                .tabItem {
+                    Label("Text", systemImage: "text.bubble.fill")
+                }
+                .tag(ScarfGoCoordinator.Tab.text)
+                .accessibilityLabel("Text tab")
 
-            // 4 — Skills: Installed | Browse Hub | Updates, mirroring
-            // the Mac app's 3-tab skills surface.
-            NavigationStack {
-                SkillsView(config: config)
-            }
-            .tabItem {
-                Label("Skills", systemImage: "lightbulb")
-            }
-            .tag(ScarfGoCoordinator.Tab.skills)
-            .accessibilityLabel("Skills tab")
+                // 3 — Voice: the same transcript/session with the continuous,
+                // background-capable voice composer. Centered for thumb reach.
+                NavigationStack {
+                    ChatView(
+                        config: config,
+                        key: key,
+                        presentationMode: .voice,
+                        controller: chatController,
+                        voiceController: voiceController
+                    )
+                }
+                .tabItem {
+                    Label("Voice", systemImage: "waveform")
+                }
+                .tag(ScarfGoCoordinator.Tab.voice)
+                .accessibilityLabel("Voice tab")
 
-            // 5 — System: server identity, Memory, Cron, Settings, plus
-            // the destructive disconnect / forget actions. Renamed from
-            // "More" to match the user-facing v2.5 vocabulary; the
-            // .sidebarAdaptable system fallback label happens not to
-            // matter here because we never overflow.
-            NavigationStack {
-                SystemTab(
-                    config: config,
-                    onSoftDisconnect: onSoftDisconnect,
-                    onForget: onForget
-                )
+                // 4 — Skills: Installed | Browse Hub | Updates, mirroring
+                // the Mac app's 3-tab skills surface.
+                NavigationStack {
+                    SkillsView(config: config)
+                }
+                .tabItem {
+                    Label("Skills", systemImage: "lightbulb")
+                }
+                .tag(ScarfGoCoordinator.Tab.skills)
+                .accessibilityLabel("Skills tab")
+
+                // 5 — System: server identity, Memory, Cron, Settings, plus
+                // the destructive disconnect / forget actions. Renamed from
+                // "More" to match the user-facing v2.5 vocabulary; the
+                // .sidebarAdaptable system fallback label happens not to
+                // matter here because we never overflow.
+                NavigationStack {
+                    SystemTab(
+                        config: config,
+                        onSoftDisconnect: onSoftDisconnect,
+                        onForget: onForget
+                    )
+                }
+                .tabItem {
+                    Label("System", systemImage: "gearshape.fill")
+                }
+                .tag(ScarfGoCoordinator.Tab.system)
+                .accessibilityLabel("System tab")
             }
-            .tabItem {
-                Label("System", systemImage: "gearshape.fill")
-            }
-            .tag(ScarfGoCoordinator.Tab.system)
-            .accessibilityLabel("System tab")
+            // Keep the selected Text/Voice view mounted while the launch
+            // screen is visible: its `.task` owns the ACP startup. Hiding
+            // interaction and accessibility prevents the invisible app
+            // chrome from competing with the full-screen connection UI.
+            .opacity(connectionPresentation == .application ? 1 : 0)
+            .allowsHitTesting(connectionPresentation == .application)
+            .accessibilityHidden(connectionPresentation != .application)
+
+            initialConnectionLayer(for: connectionPresentation)
+                .zIndex(connectionPresentation == .application ? 0 : 1)
         }
         // Pulls the sidebar-on-iPad affordance into the same code path
         // as the bottom-bar-on-iPhone one. No-op on iPhone today.
         .tabViewStyle(.sidebarAdaptable)
+        .animation(.easeInOut(duration: 0.24), value: connectionPresentation)
         .onAppear {
             synchronizeConversationPresentation(for: coordinator.selectedTab)
+            initialConnectionGate.observe(chatController.state)
         }
         .onChange(of: coordinator.selectedTab) { _, selectedTab in
             synchronizeConversationPresentation(for: selectedTab)
+        }
+        .onChange(of: chatController.state) { _, state in
+            initialConnectionGate.observe(state)
+        }
+    }
+
+    @ViewBuilder
+    private func initialConnectionLayer(
+        for presentation: IOSInitialConnectionGate.Presentation
+    ) -> some View {
+        switch presentation {
+        case .application:
+            EmptyView()
+        case .connecting:
+            ClawdiaConnectionSplash(
+                serverName: config.displayName,
+                statusText: initialConnectionStatusText,
+                failureMessage: nil,
+                onRetry: {},
+                onChooseServer: {}
+            )
+        case .failure(let message):
+            ClawdiaConnectionSplash(
+                serverName: config.displayName,
+                statusText: "",
+                failureMessage: message,
+                onRetry: {
+                    Task { await chatController.start() }
+                },
+                onChooseServer: {
+                    Task { await onSoftDisconnect() }
+                }
+            )
+        }
+    }
+
+    private var initialConnectionStatusText: String {
+        switch chatController.state {
+        case .offline:
+            return "Waiting for a network connection…"
+        case .reconnecting(let attempt, let total):
+            return "Reconnecting to \(config.displayName) (\(attempt) of \(total))…"
+        case .idle, .connecting, .ready, .failed:
+            return "Connecting to \(config.displayName)…"
         }
     }
 
@@ -281,6 +344,157 @@ private struct ProfileScopedTabs: View {
             voiceController.selectMode(.voice)
         case .dashboard, .skills, .system:
             break
+        }
+    }
+}
+
+/// One-way launch gate for a server/profile-scoped application tree. A
+/// successful initial connection permanently reveals the application; later
+/// transient reconnects and failures remain contextual inside the app.
+struct IOSInitialConnectionGate: Equatable {
+    enum Presentation: Equatable {
+        case connecting
+        case failure(String)
+        case application
+    }
+
+    private(set) var hasEstablishedConnection = false
+
+    mutating func observe(_ state: ChatController.State) {
+        if state == .ready {
+            hasEstablishedConnection = true
+        }
+    }
+
+    func presentation(for state: ChatController.State) -> Presentation {
+        if hasEstablishedConnection || state == .ready {
+            return .application
+        }
+        if case .failed(let message) = state {
+            return .failure(message)
+        }
+        return .connecting
+    }
+}
+
+/// Full-screen initial connection experience. It deliberately lives above the
+/// tab tree so no application chrome appears until ACP is usable.
+private struct ClawdiaConnectionSplash: View {
+    let serverName: String
+    let statusText: String
+    let failureMessage: String?
+    let onRetry: () -> Void
+    let onChooseServer: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isPulsing = false
+
+    var body: some View {
+        ZStack {
+            ScarfColor.backgroundPrimary
+                .ignoresSafeArea()
+
+            Circle()
+                .fill(ScarfColor.accentTintStrong)
+                .frame(width: 340, height: 340)
+                .blur(radius: 32)
+                .offset(y: -105)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                ZStack {
+                    Circle()
+                        .fill(ScarfGradient.brand)
+                        .frame(width: 112, height: 112)
+                        .shadow(color: ScarfColor.accent.opacity(0.26), radius: 24, y: 12)
+
+                    Image(systemName: failureMessage == nil
+                          ? "waveform"
+                          : "exclamationmark.triangle.fill")
+                        .font(.system(size: failureMessage == nil ? 42 : 38, weight: .semibold))
+                        .foregroundStyle(ScarfColor.onAccent)
+                        .symbolEffect(
+                            .variableColor.iterative,
+                            options: reduceMotion ? .nonRepeating : .repeating,
+                            isActive: failureMessage == nil
+                        )
+                }
+                .scaleEffect(isPulsing ? 1.035 : 0.98)
+                .animation(
+                    reduceMotion || failureMessage != nil
+                        ? nil
+                        : .easeInOut(duration: 1.25).repeatForever(autoreverses: true),
+                    value: isPulsing
+                )
+                .accessibilityHidden(true)
+
+                Text("Clawdia")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(ScarfColor.foregroundPrimary)
+                    .padding(.top, 28)
+
+                if let failureMessage {
+                    failureContent(failureMessage)
+                } else {
+                    connectingContent
+                }
+
+                Spacer()
+                Spacer()
+            }
+            .frame(maxWidth: 440)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 24)
+        }
+        .accessibilityIdentifier("clawdia.connection-splash")
+        .onAppear {
+            isPulsing = true
+        }
+    }
+
+    private var connectingContent: some View {
+        VStack(spacing: 18) {
+            Text(statusText)
+                .font(.body)
+                .foregroundStyle(ScarfColor.foregroundMuted)
+                .multilineTextAlignment(.center)
+                .padding(.top, 10)
+
+            ProgressView()
+                .controlSize(.large)
+                .tint(ScarfColor.accent)
+                .accessibilityLabel(statusText)
+
+            Text("Establishing a secure connection")
+                .font(.caption)
+                .foregroundStyle(ScarfColor.foregroundFaint)
+        }
+    }
+
+    private func failureContent(_ message: String) -> some View {
+        VStack(spacing: 16) {
+            Text("Couldn't connect to \(serverName)")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+                .padding(.top, 12)
+
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(ScarfColor.foregroundMuted)
+                .multilineTextAlignment(.center)
+
+            VStack(spacing: 12) {
+                Button("Try again", action: onRetry)
+                    .buttonStyle(ScarfPrimaryButton())
+                    .frame(maxWidth: .infinity)
+
+                Button("Choose another server", action: onChooseServer)
+                    .buttonStyle(ScarfSecondaryButton())
+                    .frame(maxWidth: .infinity)
+            }
+            .padding(.top, 6)
         }
     }
 }

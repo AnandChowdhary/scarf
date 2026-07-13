@@ -609,13 +609,31 @@ actor IOSRealtimeClient {
 }
 
 nonisolated enum IOSRealtimeAudioRoutePolicy {
-    /// `.defaultToSpeaker` normally promotes a receiver route to the
-    /// loudspeaker, but iOS can retain the receiver across audio-engine and
-    /// route transitions. Only repair that one built-in route: connected
-    /// Bluetooth, wired, AirPlay, and other outputs must remain selected.
+    /// The system route UI calls the device-local destination “iPhone
+    /// Speaker,” but the active session can still be using receiver-level
+    /// behavior. Explicitly apply the speaker override for either built-in
+    /// route description. Connected Bluetooth, wired, AirPlay, and other
+    /// outputs must remain selected.
     static func shouldOverrideToSpeaker(outputPortTypes: [AVAudioSession.Port]) -> Bool {
-        outputPortTypes == [.builtInReceiver]
+        let localOutputs: Set<AVAudioSession.Port> = [.builtInReceiver, .builtInSpeaker]
+        return !outputPortTypes.isEmpty
+            && outputPortTypes.allSatisfy(localOutputs.contains)
     }
+}
+
+nonisolated enum IOSRealtimeAudioSessionConfiguration {
+    static let category: AVAudioSession.Category = .playAndRecord
+
+    /// Clawdia alternates microphone capture and playback across plain
+    /// `AVAudioEngine` instances; it does not use Voice Processing I/O.
+    /// Apple's chat modes attenuate output in that setup, so use the normal
+    /// full-level mode and express speakerphone routing through category
+    /// options plus the explicit local-route override below.
+    static let mode: AVAudioSession.Mode = .default
+    static let options: AVAudioSession.CategoryOptions = [
+        .defaultToSpeaker,
+        .allowBluetoothHFP
+    ]
 }
 
 @MainActor
@@ -626,9 +644,9 @@ enum IOSRealtimeAudioSession {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(
-                .playAndRecord,
-                mode: .voiceChat,
-                options: [.defaultToSpeaker, .allowBluetoothHFP]
+                IOSRealtimeAudioSessionConfiguration.category,
+                mode: IOSRealtimeAudioSessionConfiguration.mode,
+                options: IOSRealtimeAudioSessionConfiguration.options
             )
             try session.setActive(true)
             try enforceSpeakerDefault(on: session)
@@ -717,11 +735,11 @@ nonisolated enum IOSRealtimeAudioEventDecoder {
                 bluetoothTypes.contains($0.portType)
             } ?? false
             return .outputDisconnected(wasBluetooth: wasBluetooth)
-        case .newDeviceAvailable, .wakeFromSleep, .routeConfigurationChange:
+        case .newDeviceAvailable, .wakeFromSleep, .routeConfigurationChange, .categoryChange:
             return .routeAvailable
         case .noSuitableRouteForCategory:
             return .routeUnavailable
-        case .unknown, .categoryChange, .override:
+        case .unknown, .override:
             return nil
         @unknown default:
             return nil
@@ -900,6 +918,12 @@ final class IOSRealtimeMicrophoneRecorder {
         } catch {
             stop()
             throw IOSRealtimeVoiceError.recordingFailed
+        }
+        do {
+            try IOSRealtimeAudioSession.enforceSpeakerDefault()
+        } catch {
+            stop()
+            throw error
         }
         return stream
     }
@@ -1091,7 +1115,13 @@ final class IOSRealtimePCMStreamPlayer {
         stop()
         try IOSRealtimeAudioSession.activate()
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+            try IOSRealtimeAudioSession.enforceSpeakerDefault()
+        } catch {
+            stop()
+            throw error
+        }
     }
 
     func enqueue(_ data: Data) {
@@ -1262,6 +1292,7 @@ final class IOSRealtimeWaitingSoundPlayer {
             try IOSRealtimeAudioSession.activate()
             engine.prepare()
             try engine.start()
+            try IOSRealtimeAudioSession.enforceSpeakerDefault()
         } catch {
             player.stop()
             engine.stop()
@@ -1364,6 +1395,7 @@ final class IOSRealtimeStateCuePlayer {
             try IOSRealtimeAudioSession.activate()
             engine.prepare()
             try engine.start()
+            try IOSRealtimeAudioSession.enforceSpeakerDefault()
             player.scheduleBuffer(makeBuffer(for: cue))
             player.play()
             stopTask = Task { [weak self] in
@@ -1496,12 +1528,16 @@ final class IOSRealtimeVoiceController {
     }
 
     var statusTitle: String {
+        Self.statusTitle(for: phase)
+    }
+
+    static func statusTitle(for phase: Phase) -> String {
         switch phase {
         case .idle: return "Tap the microphone to start"
         case .preparing: return "Starting the microphone…"
         case .recording: return "Listening…"
         case .transcribing: return "Transcribing…"
-        case .waitingForHermes: return "Clawdia is responding…"
+        case .waitingForHermes: return "Clawdia is thinking…"
         case .speaking: return "Clawdia is speaking…"
         case .paused: return "Voice conversation paused"
         }
