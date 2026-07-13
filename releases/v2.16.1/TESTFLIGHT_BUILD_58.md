@@ -19,4 +19,4 @@ Report issues through TestFlight feedback.
 
 - [x] Voice release gate passes.
 - [x] Archive and upload build 58 using automatic Sycamore signing.
-- [ ] Complete processing, export compliance, and `Anand Alone` assignment.
+- [x] Complete processing, export compliance, and `Anand Alone` assignment.
