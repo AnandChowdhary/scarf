@@ -19,5 +19,10 @@ Report issues through TestFlight feedback.
 ## Upload
 
 - [x] Voice release gate passes.
-- [ ] Archive and upload build 60 using automatic Sycamore signing.
-- [ ] Complete processing, export compliance, and `Anand Alone` assignment.
+- [x] Archive and upload build 60 using automatic Sycamore signing.
+- [x] Complete processing, export compliance, and `Anand Alone` assignment.
+
+App Store Connect accepted build 60 on July 13, 2026. The build completed
+processing, cleared export compliance, and was automatically distributed to the
+`Anand Alone` internal testing group. App Store Connect subsequently reported
+the tester on version 2.16.1 (60).
