@@ -27,10 +27,12 @@ Without --live, runs the hermetic iOS voice/protocol regression suite.
 With --live, also auditions the Settings voice preview and performs an
 API-backed UI round trip against the server and OpenAI key already saved in the
 selected simulator. The app synthesizes the test phrase internally and feeds
-its PCM into the production Realtime path, so no person needs to speak and
-laptop room acoustics do not affect the result.
+its PCM into the production Realtime transcription path, then streams the
+Hermes reply through the production Speech path, so no person needs to speak
+and laptop room acoustics do not affect the result.
 
-The live run sends one real Hermes message and uses the OpenAI Realtime API.
+The live run sends one real Hermes message and uses the OpenAI Realtime and
+Speech APIs.
 EOF
 }
 
@@ -83,7 +85,7 @@ xcodebuild \
 
 if [[ $RUN_LIVE -eq 0 ]]; then
   printf '\nVoice verification passed (hermetic).\n'
-  printf 'Run %s --live before a TestFlight candidate for the full Realtime/Hermes round trip.\n' "$0"
+  printf 'Run %s --live before a TestFlight candidate for the full OpenAI/Hermes voice round trip.\n' "$0"
   exit 0
 fi
 
@@ -98,5 +100,5 @@ xcodebuild \
   -only-testing:'Scarf iOSUITests/Scarf_iOSUITests/testLiveRealtimeVoiceSettingsPreview' \
   -only-testing:'Scarf iOSUITests/Scarf_iOSUITests/testLiveVoiceRoundTripFromSyntheticSpeech'
 
-printf '\nVoice verification passed (hermetic + live Realtime/Hermes round trip).\n'
+printf '\nVoice verification passed (hermetic + live OpenAI/Hermes voice round trip).\n'
 printf 'Artifacts: %s\n' "$RESULTS_DIR"

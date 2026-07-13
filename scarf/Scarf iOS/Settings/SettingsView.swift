@@ -25,10 +25,6 @@ struct SettingsView: View {
     private var realtimeVoice = IOSRealtimeVoice.marin.rawValue
     @AppStorage(IOSRealtimeVoicePreferences.speedKey)
     private var realtimeVoiceSpeed = 1.0
-    @AppStorage(IOSRealtimeVoicePreferences.styleKey)
-    private var realtimeVoiceStyle = IOSRealtimeSpeakingStyle.natural.rawValue
-    @AppStorage(IOSRealtimeVoicePreferences.customInstructionsKey)
-    private var realtimeVoiceCustomInstructions = ""
     @State private var realtimeVoicePreview = IOSRealtimeVoicePreviewController()
 
     /// Drives v0.13 read-only surfaces (features-active badge,
@@ -318,19 +314,6 @@ struct SettingsView: View {
                 .accessibilityValue(realtimeVoiceSpeed.formatted(.number.precision(.fractionLength(2))) + " times")
             }
 
-            Picker("Speaking style", selection: $realtimeVoiceStyle) {
-                ForEach(IOSRealtimeSpeakingStyle.allCases) { style in
-                    Text(style.displayName).tag(style.rawValue)
-                }
-            }
-
-            TextField(
-                "Optional guidance, e.g. dry humor and short pauses",
-                text: $realtimeVoiceCustomInstructions,
-                axis: .vertical
-            )
-            .lineLimit(2...5)
-
             Button {
                 realtimeVoicePreview.toggle(preferences: currentRealtimeVoicePreferences)
             } label: {
@@ -365,22 +348,18 @@ struct SettingsView: View {
                 realtimeVoicePreview.stop()
                 realtimeVoice = IOSRealtimeVoice.marin.rawValue
                 realtimeVoiceSpeed = 1
-                realtimeVoiceStyle = IOSRealtimeSpeakingStyle.natural.rawValue
-                realtimeVoiceCustomInstructions = ""
             }
         } header: {
             Text("Realtime Voice (Clawdia)")
         } footer: {
-            Text("Preview uses the OpenAI key saved from Voice and reflects the controls above. Voice and speed are OpenAI Realtime controls; speaking style and custom guidance are best-effort instructions. Changes apply to the next spoken reply.")
+            Text("Preview uses the OpenAI key saved from Voice and reflects the controls above. Clawdia sends reply text directly for streaming speech without adding prompt instructions. Changes apply to the next spoken reply.")
         }
     }
 
     private var currentRealtimeVoicePreferences: IOSRealtimeVoicePreferences {
         IOSRealtimeVoicePreferences(
             voice: IOSRealtimeVoice(rawValue: realtimeVoice) ?? .marin,
-            speed: realtimeVoiceSpeed,
-            style: IOSRealtimeSpeakingStyle(rawValue: realtimeVoiceStyle) ?? .natural,
-            customInstructions: realtimeVoiceCustomInstructions
+            speed: realtimeVoiceSpeed
         )
     }
 

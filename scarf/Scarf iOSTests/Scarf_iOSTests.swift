@@ -113,40 +113,41 @@ struct Scarf_iOSTests {
         #expect(buffer.takeChunk(force: true) == "Absolutely")
     }
 
-    @Test func speechResponsesAreOutOfBandAndCarryOnlyTheNewChunk() throws {
-        let json = try IOSRealtimeProtocol.createAudioResponse(for: "Only this new fragment")
-        let data = try #require(json.data(using: .utf8))
+    @Test func speechRequestCarriesOnlyTheExactNewChunkWithoutInstructions() throws {
+        let exactText = "  Only this new fragment.\nKeep its spacing.  "
+        let request = try IOSRealtimeProtocol.speechRequest(
+            apiKey: "test-key",
+            text: exactText
+        )
+        let data = try #require(request.httpBody)
         let root = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let response = try #require(root["response"] as? [String: Any])
-        let input = try #require(response["input"] as? [[String: Any]])
-        let message = try #require(input.first)
-        let content = try #require(message["content"] as? [[String: Any]])
 
-        #expect(response["conversation"] as? String == "none")
-        #expect(content.first?["text"] as? String == "Only this new fragment")
+        #expect(request.url?.absoluteString == "https://api.openai.com/v1/audio/speech")
+        #expect(request.httpMethod == "POST")
+        #expect(root["model"] as? String == "gpt-4o-mini-tts")
+        #expect(root["input"] as? String == exactText)
+        #expect(root["response_format"] as? String == "pcm")
+        #expect(root["instructions"] == nil)
+        #expect(!String(decoding: data, as: UTF8.self).contains("verbatim"))
+        #expect(!String(decoding: data, as: UTF8.self).contains("speech renderer"))
     }
 
-    @Test func speechSessionUsesConfiguredVoiceSpeedAndStyle() throws {
+    @Test func speechRequestUsesConfiguredVoiceAndSpeed() throws {
         let preferences = IOSRealtimeVoicePreferences(
             voice: .cedar,
-            speed: 1.1,
-            style: .warm,
-            customInstructions: "Use subtle dry humor."
+            speed: 1.1
         )
-        let json = try IOSRealtimeProtocol.speechSessionUpdate(preferences: preferences)
-        let data = try #require(json.data(using: .utf8))
+        let request = try IOSRealtimeProtocol.speechRequest(
+            apiKey: "test-key",
+            text: "Hello from Clawdia.",
+            preferences: preferences
+        )
+        let data = try #require(request.httpBody)
         let root = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let session = try #require(root["session"] as? [String: Any])
-        let audio = try #require(session["audio"] as? [String: Any])
-        let output = try #require(audio["output"] as? [String: Any])
-        let instructions = try #require(session["instructions"] as? String)
 
-        #expect(output["voice"] as? String == "cedar")
-        #expect(output["speed"] as? Double == 1.1)
-        #expect(json.contains("\"speed\":1.1"))
-        #expect(instructions.contains("warm, empathetic"))
-        #expect(instructions.contains("subtle dry humor"))
-        #expect(instructions.contains("verbatim"))
+        #expect(root["voice"] as? String == "cedar")
+        #expect(root["speed"] as? Double == 1.1)
+        #expect(String(decoding: data, as: UTF8.self).contains("\"speed\":1.1"))
     }
 
     @Test func realtimeVoicePreviewUsesAStableSpokenSample() {
@@ -164,15 +165,11 @@ struct Scarf_iOSTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("not-a-voice", forKey: IOSRealtimeVoicePreferences.voiceKey)
         defaults.set(4.0, forKey: IOSRealtimeVoicePreferences.speedKey)
-        defaults.set(IOSRealtimeSpeakingStyle.calm.rawValue, forKey: IOSRealtimeVoicePreferences.styleKey)
-        defaults.set("  Pause between key ideas.  ", forKey: IOSRealtimeVoicePreferences.customInstructionsKey)
 
         let preferences = IOSRealtimeVoicePreferences.load(defaults: defaults)
 
         #expect(preferences.voice == .marin)
         #expect(preferences.speed == IOSRealtimeVoicePreferences.maximumSpeed)
-        #expect(preferences.style == .calm)
-        #expect(preferences.customInstructions == "Pause between key ideas.")
     }
 
     @Test func voiceConversationInactivityRequiresTenIdleMinutes() {

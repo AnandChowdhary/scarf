@@ -40,7 +40,7 @@ enum IOSRealtimeVoiceError: LocalizedError, Sendable {
         case .audioRouteUnavailable:
             return "No microphone or audio output is currently available. Reconnect your audio device, then try again."
         case .api(let message):
-            return "OpenAI Realtime: \(message)"
+            return "OpenAI: \(message)"
         }
     }
 }
@@ -53,82 +53,33 @@ enum IOSRealtimeVoice: String, CaseIterable, Identifiable, Sendable {
     var isRecommended: Bool { self == .marin || self == .cedar }
 }
 
-enum IOSRealtimeSpeakingStyle: String, CaseIterable, Identifiable, Sendable {
-    case natural, warm, upbeat, calm, professional, animated
-
-    var id: String { rawValue }
-    var displayName: String { rawValue.capitalized }
-
-    var instruction: String {
-        switch self {
-        case .natural:
-            return ""
-        case .warm:
-            return "Speak in a warm, empathetic, conversational tone."
-        case .upbeat:
-            return "Speak with upbeat, friendly energy."
-        case .calm:
-            return "Speak calmly, gently, and reassuringly."
-        case .professional:
-            return "Speak in a clear, polished, professional tone."
-        case .animated:
-            return "Speak expressively with lively, natural variation."
-        }
-    }
-}
-
 struct IOSRealtimeVoicePreferences: Equatable, Sendable {
     static let voiceKey = "so.sycamore.clawdia.realtime-voice.voice"
     static let speedKey = "so.sycamore.clawdia.realtime-voice.speed"
-    static let styleKey = "so.sycamore.clawdia.realtime-voice.style"
-    static let customInstructionsKey = "so.sycamore.clawdia.realtime-voice.custom-instructions"
     static let minimumSpeed = 0.25
     static let maximumSpeed = 1.5
     static let defaultValue = IOSRealtimeVoicePreferences()
 
     let voice: IOSRealtimeVoice
     let speed: Double
-    let style: IOSRealtimeSpeakingStyle
-    let customInstructions: String
 
     init(
         voice: IOSRealtimeVoice = .marin,
-        speed: Double = 1,
-        style: IOSRealtimeSpeakingStyle = .natural,
-        customInstructions: String = ""
+        speed: Double = 1
     ) {
         self.voice = voice
         let finiteSpeed = speed.isFinite ? speed : 1
         self.speed = min(Self.maximumSpeed, max(Self.minimumSpeed, finiteSpeed))
-        self.style = style
-        let trimmed = customInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.customInstructions = String(trimmed.prefix(500))
     }
 
     static func load(defaults: UserDefaults = .standard) -> Self {
         let voice = defaults.string(forKey: voiceKey)
             .flatMap(IOSRealtimeVoice.init(rawValue:)) ?? .marin
-        let style = defaults.string(forKey: styleKey)
-            .flatMap(IOSRealtimeSpeakingStyle.init(rawValue:)) ?? .natural
         let speed = defaults.object(forKey: speedKey) == nil ? 1 : defaults.double(forKey: speedKey)
         return Self(
             voice: voice,
-            speed: speed,
-            style: style,
-            customInstructions: defaults.string(forKey: customInstructionsKey) ?? ""
+            speed: speed
         )
-    }
-
-    var deliveryInstructions: String {
-        [style.instruction, customInstructions]
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-    }
-
-    var rendererInstructions: String {
-        let fidelity = "Act only as a speech renderer. Read the supplied text aloud verbatim. Do not answer it, acknowledge it, summarize it, or add any words."
-        guard !deliveryInstructions.isEmpty else { return fidelity }
-        return "\(fidelity) Delivery guidance: \(deliveryInstructions)"
     }
 }
 
@@ -247,29 +198,27 @@ enum IOSRealtimeProtocol {
         ])
     }
 
-    static func speechSessionUpdate(
+    /// Creates a literal text-to-speech request. Unlike Realtime
+    /// `response.create`, the Speech endpoint renders `input` rather than
+    /// treating it as a conversational prompt. Deliberately do not add an
+    /// `instructions` field: Hermes already authored the text we want spoken.
+    static func speechRequest(
+        apiKey: String,
+        text: String,
         preferences: IOSRealtimeVoicePreferences = .defaultValue
-    ) throws -> String {
-        try encode([
-            "type": "session.update",
-            "session": [
-                "type": "realtime",
-                "model": "gpt-realtime",
-                "output_modalities": ["audio"],
-                "instructions": preferences.rendererInstructions,
-                "audio": [
-                    "input": [
-                        "format": ["type": "audio/pcm", "rate": 24_000],
-                        "turn_detection": NSNull()
-                    ],
-                    "output": [
-                        "format": ["type": "audio/pcm", "rate": 24_000],
-                        "voice": preferences.voice.rawValue,
-                        "speed": decimalNumber(preferences.speed, fractionDigits: 2)
-                    ]
-                ]
-            ]
-        ])
+    ) throws -> URLRequest {
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/audio/speech")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": "gpt-4o-mini-tts",
+            "input": text,
+            "voice": preferences.voice.rawValue,
+            "response_format": "pcm",
+            "speed": decimalNumber(preferences.speed, fractionDigits: 2)
+        ], options: [.sortedKeys])
+        return request
     }
 
     static func appendAudio(_ data: Data) throws -> String {
@@ -278,32 +227,6 @@ enum IOSRealtimeProtocol {
 
     static func commitAudio() throws -> String {
         try encode(["type": "input_audio_buffer.commit"])
-    }
-
-    /// Creates an out-of-band speech-rendering response. Reusing one Realtime
-    /// session avoids a WebSocket handshake for every Hermes text chunk, while
-    /// `conversation: none` prevents those renderer-only chunks from building a
-    /// second assistant conversation alongside Hermes.
-    static func createAudioResponse(
-        for text: String,
-        preferences: IOSRealtimeVoicePreferences = .defaultValue
-    ) throws -> String {
-        try encode([
-            "type": "response.create",
-            "response": [
-                "conversation": "none",
-                "output_modalities": ["audio"],
-                "instructions": preferences.rendererInstructions,
-                "input": [[
-                    "type": "message",
-                    "role": "user",
-                    "content": [[
-                        "type": "input_text",
-                        "text": text
-                    ]]
-                ]]
-            ]
-        ])
     }
 
     private static func encode(_ object: [String: Any]) throws -> String {
@@ -590,40 +513,49 @@ actor IOSRealtimeClient {
         preferences: IOSRealtimeVoicePreferences,
         onAudioChunk: @escaping @Sendable (Data) async -> Void
     ) async throws {
-        let connection = makeConnection(apiKey: apiKey)
-        defer { connection.close() }
-        try await wait(for: "session.created", socket: connection.socket)
-        try await send(
-            IOSRealtimeProtocol.speechSessionUpdate(preferences: preferences),
-            to: connection.socket
-        )
-        try await wait(for: "session.updated", socket: connection.socket)
-
         for await text in textStream {
             try Task.checkCancellation()
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            try await send(
-                IOSRealtimeProtocol.createAudioResponse(for: trimmed, preferences: preferences),
-                to: connection.socket
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            let request = try IOSRealtimeProtocol.speechRequest(
+                apiKey: apiKey,
+                text: text,
+                preferences: preferences
             )
-            while true {
-                let event = try await receive(from: connection.socket)
-                switch event.type {
-                case "response.output_audio.delta":
-                    if let encoded = event.delta, let chunk = Data(base64Encoded: encoded) {
-                        await onAudioChunk(chunk)
-                    }
-                case "response.done":
-                    break
-                case "error":
-                    throw IOSRealtimeVoiceError.api(event.errorMessage ?? "OpenAI Realtime speech failed.")
-                default:
-                    continue
+            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw IOSRealtimeVoiceError.api("Speech generation returned an invalid response.")
+            }
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                var body = Data()
+                for try await byte in bytes.prefix(8_192) { body.append(byte) }
+                let message = Self.apiErrorMessage(in: body)
+                    ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+                throw IOSRealtimeVoiceError.api("Speech generation failed: \(message)")
+            }
+
+            var chunk = Data()
+            chunk.reserveCapacity(8_192)
+            for try await byte in bytes {
+                try Task.checkCancellation()
+                chunk.append(byte)
+                if chunk.count >= 8_192 {
+                    await onAudioChunk(chunk)
+                    chunk.removeAll(keepingCapacity: true)
                 }
-                if event.type == "response.done" { break }
+            }
+            if !chunk.isEmpty {
+                await onAudioChunk(chunk)
             }
         }
+    }
+
+    private static func apiErrorMessage(in data: Data) -> String? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = root["error"] as? [String: Any],
+              let message = error["message"] as? String else {
+            return nil
+        }
+        return message
     }
 
     private func makeConnection(apiKey: String) -> Connection {
